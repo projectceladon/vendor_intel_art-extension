@@ -36,8 +36,11 @@ class HLoopInformation_X86;
  */
 class HFindInductionVariables : public HOptimization_X86 {
  protected:
-  void DetectAndInitializeBasicIV(HLoopInformation_X86* info, HInstruction* insn);
+  void DetectAndInitializeBasicIV(HLoopInformation_X86* info, HPhi* phi);
   void FindInductionVariablesHelper(HLoopInformation_X86* info);
+  HIf* FindLoopIf(HLoopInformation_X86* loop);
+  bool FindLoopUpperBound(HLoopInformation_X86* info, int64_t& upper_bound);
+  bool IsValidCastForIV(HInstruction* candidate, HLoopInformation_X86* loop);
 
  public:
   explicit HFindInductionVariables(HGraph* graph, OptimizingCompilerStats* stats = nullptr)

@@ -32,7 +32,7 @@ namespace art {
  * @class CompareLoops
  * @brief A comparison between loops.
  */
-class CompareLoops {
+class HCompareLoops {
  public:
   /**
    * @brief Compare both loops.
@@ -53,7 +53,7 @@ void HLoopFormation::Run() {
    *  This means that when adding the loops:
    *    They are either sibling or nested, they cannot contain a previously added loop.
    */
-  std::priority_queue<HLoopInformation_X86*, std::vector<HLoopInformation_X86*>, CompareLoops> queue;
+  std::priority_queue<HLoopInformation_X86*, std::vector<HLoopInformation_X86*>, HCompareLoops> queue;
   std::set<HLoopInformation_X86*> info_set;
 
   // Post order visit to visit inner loops before outer loops.

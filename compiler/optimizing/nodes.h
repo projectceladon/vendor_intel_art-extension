@@ -38,6 +38,9 @@
 #include "utils/array_ref.h"
 #include "utils/intrusive_forward_list.h"
 
+// Art-extension includes.
+#include "bound_information.h"
+
 namespace art {
 
 class GraphChecker;

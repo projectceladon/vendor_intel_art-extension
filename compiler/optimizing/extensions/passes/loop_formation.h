@@ -28,7 +28,7 @@
 namespace art {
 
 /**
- * Implements optimizations specific to each instruction.
+ * @brief Implements optimizations specific to each instruction.
  */
 class HLoopFormation : public HOptimization_X86 {
  public:

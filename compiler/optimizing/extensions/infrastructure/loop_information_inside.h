@@ -125,10 +125,28 @@ class HLoopInformation_X86 : public HLoopInformation {
     return inner_ == nullptr;
   }
 
+  /**
+    * @brief Get the loop basic induction variable.
+    * @return the basic induction variable.
+    */
+  HInductionVariable* GetBasicIV() const {
+    return bound_info_.loop_biv_;
+  }
 
+  /**
+   * @brief Get the induction variables.
+   * @return the induction variables.
+   */
   ArenaVector<HInductionVariable*>& GetInductionVariables() {
     return iv_list_;
   }
+
+  /**
+   * @brief Get the induction variable using the instruction.
+   * @param insn the HInstruction we care about, it can be the linear or phi.
+   * @return the induction variable associated to the register.
+   */
+  HInductionVariable* GetInductionVariable(HInstruction* insn) const;
 
   /**
    * @brief Clear inter iteration variables.
@@ -171,11 +189,48 @@ class HLoopInformation_X86 : public HLoopInformation {
   }
 
   /**
+   * @brief Is the basic block executed every iteration?
+   * @param bb the basic block.
+   * @return whether or not the block is executed every iteration.
+   */
+  bool ExecutedPerIteration(HBasicBlock* bb) const;
+
+  /**
    * @brief Is the instruction executed every iteration?
    * @param candidate the HInstruction.
    * @return whether or not the instruction is executed every iteration.
    */
   bool ExecutedPerIteration(HInstruction* candidate) const;
+
+
+  /**
+   * @brief Does the loop only have one exit block?
+   * @return whether or not the loop has one single exit block.
+   */
+  bool HasOneExitBlock() const;
+
+  /**
+   * @brief Get the exit block if there is only one.
+   * @return the exit block, nullptr if more than one.
+   */
+  HBasicBlock* GetExitBlock() const;
+
+  /**
+   * @brief Get the number of iterations of given basic block.
+   *        Before calling this method, ensure that bb is
+   *        ExecutedPerIteration.
+   * @param bb The basic block.
+   * @return the number of iterations, -1 if unknown.
+   */
+  int64_t GetNumIterations(HBasicBlock* bb) const;
+
+  /**
+   * @brief Do we know the number of iterations?
+   * @return whether we know the number of iterations.
+   */
+  bool HasKnownNumIterations() const {
+    return (bound_info_.num_iterations_ != -1);
+  }
 
 #ifndef NDEBUG
   static HLoopInformation_X86* DownCast(HLoopInformation* info) {
@@ -188,7 +243,35 @@ class HLoopInformation_X86 : public HLoopInformation {
   }
 #endif
 
+  /**
+   * @brief Compute the bound information.
+   */
+  bool ComputeBoundInformation();
+
+  /**
+   * @brief Get the HBoundInformation.
+   * @return the bound information.
+   */
+  const HLoopBoundInformation& GetBoundInformation() const {
+    return bound_info_;
+  }
+
  protected:
+  /**
+   * @brief Find the constant entry SSA associated to the Phi instruction.
+   * @param phi the HPhi instruction.
+   * @return the constant that is the entry point to the Phi, nullptr otherwise.
+   */
+  HConstant* FindBIVEntrySSA(HPhi* phi) const;
+
+  /**
+   * @brief Fill the floating-point bound information.
+   * @param entry_value the constant definining the loop's start value.
+   * @param is_double are we dealing with 64-bit value.
+   * @return whether or not the information was filled.
+   */
+  bool FillFloatingPointBound(HConstant* entry_value, bool is_double);
+
 #ifndef NDEBUG
   uint32_t down_cast_checker_;
 #endif
@@ -200,6 +283,9 @@ class HLoopInformation_X86 : public HLoopInformation {
   HLoopInformation_X86* sibling_previous_;
   HLoopInformation_X86* sibling_next_;
   HLoopInformation_X86* inner_;
+
+  /** @brief The bound information. */
+  HLoopBoundInformation bound_info_;
 
   /** @brief The Induction Variable list. */
   ArenaVector<HInductionVariable*> iv_list_;

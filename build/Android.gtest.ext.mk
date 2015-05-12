@@ -24,7 +24,8 @@ ifeq ($(findstring loop_hierarchy_test,$(COMPILER_GTEST_COMMON_SRC_FILES)),)
   VENDOR_EXTENSIONS_FOLDER := compiler/optimizing/extensions
 
   COMPILER_GTEST_EXTENSION_SRC_FILES := \
-    $(VENDOR_EXTENSIONS_FOLDER)/passes/loop_hierarchy_test.cc
+    $(VENDOR_EXTENSIONS_FOLDER)/passes/loop_hierarchy_test.cc \
+    $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/loops_iv_bounds_test.cc
 
   COMPILER_GTEST_COMMON_SRC_FILES += \
     $(COMPILER_GTEST_EXTENSION_SRC_FILES)
@@ -32,10 +33,14 @@ ifeq ($(findstring loop_hierarchy_test,$(COMPILER_GTEST_COMMON_SRC_FILES)),)
   # Although we added to the common files, add them to target and host as well because
   # the point where extensions makefile is included is after those get initialized
   # from the common list of files.
-  COMPILER_GTEST_TARGET_SRC_FILES += \
+  TMP := $(COMPILER_GTEST_TARGET_SRC_FILES)
+  COMPILER_GTEST_TARGET_SRC_FILES := \
+    $(TMP) \
     $(COMPILER_GTEST_EXTENSION_SRC_FILES)
 
-  COMPILER_GTEST_HOST_SRC_FILES += \
+  TMP := $(COMPILER_GTEST_HOST_SRC_FILES)
+  COMPILER_GTEST_HOST_SRC_FILES := \
+    $(TMP) \
     $(COMPILER_GTEST_EXTENSION_SRC_FILES)
 
 endif

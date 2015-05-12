@@ -60,5 +60,68 @@ namespace art {
    * @param tokens The output set for tokens.
    */
   void SplitStringIntoSet(const std::string& s, char delim, std::unordered_set<std::string>& tokens);
+
+  /**
+   * @brief Get the integer constant value from the HConstant.
+   * @param constant the HConstant we care about.
+   * @param value the destination where we put the HConstant value.
+   * @return if we obtained the constant value.
+   */
+  bool GetIntConstantValue(HConstant* constant, int64_t& value);
+
+  /**
+   * @brief Get the compare instruction from the uses of instruction.
+   * @param instruction the base instruction.
+   * @return the compare instruction based on the uses of the instruction,
+             instruction if neither is one.
+   */
+  HInstruction* GetCompareInstruction(HInstruction* instruction);
+
+  /**
+   * @brief Get the FP Constant value.
+   * @param constant the HConstant.
+   * @param value the value of the constant filled out.
+   * @return whether or not the constant is assessed.
+   */
+  bool GetFPConstantValue(HConstant* constant, double& value);
+
+  /**
+   * @brief Flip the condition if we flip the operands.
+   * @details if we have A OP B, this returns OP2 with B OP2 A being equivalent.
+   * @param cond the original condition.
+   * @return the new flipped condition.
+   */
+  IfCondition FlipConditionForOperandSwap(IfCondition cond);
+
+  /**
+   * @brief Get the negated conditional operation.
+   * For example, for if-ge, it returns if-lt.
+   * @param cond The conditional if operation to negate.
+   * @return Returns the negated conditional if.
+   */
+  IfCondition NegateCondition(IfCondition cond);
+
+  /**
+   * @brief Get sign, power and mantissa of floating point value.
+   * @param value The FP value represented as double.
+   * @param is_double Whether the value is double-precision FP or not.
+   * @param with_implicit_one Whether we should get mantissa with implicit 1 or not.
+   * @param sign The output value for sign (0 or 1).
+   * @param power The output value for power. Derived from the exponent of FP.
+                  For non-zeros, power = exponent - 1111...11; power(1) = 0.
+   * @param mantissa The output value for mantissa. If with_implicit_one was true, it will
+   *                 also contain the 23-rd (52-nd for double) bit set to 1 for non-zero value.
+   */
+  void DeconstructFP(double value, bool is_double, bool with_implicit_one, int32_t& sign, int32_t& power, int64_t& mantissa);
+
+  /**
+   * @brief Get the number of zeros in the end of mantissa of floating point value.
+   * @param mantissa The mantissa.
+   * @param is_double Whether the mantissa is of double-precision FP or not.
+   * @return The number of zeros in the end of mantissa. The maximum return
+   *         value is mantissa length (23 for single FP and 52 for double FP).
+   */
+  int CountEndZerosInMantissa(int64_t mantissa, bool is_double);
+
 }  // namespace art
 #endif  // COMPILER_OPTIMIZING_EXTENSIONS_INFRASTRUCTURE_EXT_UTILITIES_H

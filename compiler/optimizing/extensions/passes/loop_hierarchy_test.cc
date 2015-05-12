@@ -40,7 +40,7 @@ static HGraph* TestCode(const uint16_t* data, ArenaAllocator* allocator) {
   graph->AnalyzeNaturalLoops();
 
   // Run our pass.
-  LoopFormation formation(graph);
+  HLoopFormation formation(graph);
   formation.Run();
 
   return graph;
