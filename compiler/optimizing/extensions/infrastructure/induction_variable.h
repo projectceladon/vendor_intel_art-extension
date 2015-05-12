@@ -33,10 +33,10 @@ namespace art {
  */
 class HInductionVariable {
  public:
-  int ssa_reg_;                   // The ssa register defined by expression for IV.
-  HConstant_X86 loop_increment_;  // Loop increment. Only relevant for basic IV to keep the loop increment/decrement.
-  HInstruction* linear_insn_;     // HInstruction associated with the linear operation.
-  HInstruction* phi_insn_;        // HInstruction associated with the phi node. May be null but never for Basic IV.
+  int ssa_reg_;                   /**< @brief The ssa register defined by expression for IV. */
+  HConstant_X86 loop_increment_;  /**< @brief Loop increment. Only relevant for basic IV to keep the loop increment/decrement. */
+  HInstruction* linear_insn_;     /**< @brief HInstruction associated with the linear operation. */
+  HPhi* phi_insn_;                /**< @brief HPhi associated with the phi node. May be null but never for Basic IV. */
 
   /**
    * @brief Constructor for a Basic IV.
@@ -48,7 +48,7 @@ class HInductionVariable {
    * @param phi_insn The phi for this BIV (cannot be null).
    */
   HInductionVariable(int ssa_sreg, HConstant* increment, bool is_wide, bool is_fp,
-                     HInstruction* linear_insn, HInstruction* phi_insn) :
+                     HInstruction* linear_insn, HPhi* phi_insn) :
     ssa_reg_(ssa_sreg),
     loop_increment_(increment, is_wide, is_fp),
     linear_insn_(linear_insn), phi_insn_(phi_insn) {
@@ -77,7 +77,7 @@ class HInductionVariable {
    * @brief Used to Get the HInstruction that represents the phi node.
    * @return Returns the phi mir if one exists. Guaranteed to be not-null for BIVs.
    */
-  HInstruction* GetPhiInsn() const {
+  HPhi* GetPhiInsn() const {
     return phi_insn_;
   }
 

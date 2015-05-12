@@ -20,6 +20,7 @@
  *
  */
 
+#include "ext_utility.h"
 #include "find_ivs.h"
 #include "graph_x86.h"
 #include "induction_variable.h"
@@ -62,7 +63,131 @@ void HFindInductionVariables::FindInductionVariablesHelper(HLoopInformation_X86*
   }
 }
 
-void HFindInductionVariables::DetectAndInitializeBasicIV(HLoopInformation_X86* info, HInstruction* phi) {
+HIf* HFindInductionVariables::FindLoopIf(HLoopInformation_X86* loop) {
+  DCHECK(loop != nullptr);
+
+  // Get the only exit block.
+  HBasicBlock* exit_block = loop->GetExitBlock();
+  DCHECK(exit_block != nullptr);
+
+  // exit_block always has only one predecessor and it comes from the loop.
+  DCHECK_EQ(exit_block->GetPredecessors().size(), 1u);
+  HBasicBlock* loop_block = exit_block->GetPredecessors()[0];
+  DCHECK(loop_block != nullptr);
+
+  // Get last instruction.
+  HInstruction* last_insn = loop_block->GetLastInstruction();
+  DCHECK(last_insn != nullptr);
+
+  // return last instruction if it is an if or nullptr.
+  return last_insn->AsIf();
+}
+
+bool HFindInductionVariables::FindLoopUpperBound(HLoopInformation_X86* loop, int64_t& upper_bound) {
+  DCHECK(loop != nullptr);
+
+  if (!loop->HasOneExitBlock()) {
+    return false;
+  }
+
+  const ArenaVector<HBasicBlock*>& back_edges = loop->GetBackEdges();
+  size_t back_edges_size = back_edges.size();
+
+  if (back_edges_size != 1u) {
+    return false;
+  }
+
+  HInstruction* if_insn = FindLoopIf(loop);
+
+  if (if_insn == nullptr) {
+    return false;
+  }
+
+  // The input to the if should be our condition.
+  HInstruction* condition = if_insn->InputAt(0);
+
+  if (!condition->IsCondition()) {
+    return false;
+  }
+
+  // We are only supporting GreaterOrEqual at this point.
+  switch (condition->GetKind()) {
+    case HInstruction::kLessThan:
+      FALLTHROUGH_INTENDED;
+    case HInstruction::kEqual:
+      return false;
+    default:
+      break;
+  };
+
+  DCHECK_EQ(condition->InputCount(), 2u);
+
+  // Find the out-of-loop value to get the upper-bound.
+  bool upper_bound_found = false;
+  for (size_t input_id = 0, e = condition->InputCount(); input_id < e; input_id++) {
+    HInstruction* input = condition->InputAt(input_id);
+
+    HConstant* cst = input->AsConstant();
+    if (cst != nullptr) {
+      // All constants are defined in block 0, and are therefore out of the loop.
+      DCHECK(!loop->Contains(*cst->GetBlock()));
+      if (cst->IsIntConstant()) {
+        upper_bound = static_cast<int64_t>(cst->AsIntConstant()->GetValue());
+        upper_bound_found = true;
+      } else if (cst->IsLongConstant()) {
+        upper_bound = static_cast<int64_t>(cst->AsLongConstant()->GetValue());
+        upper_bound_found = true;
+      }
+    }
+  }
+
+  return upper_bound_found;
+}
+
+bool HFindInductionVariables::IsValidCastForIV(HInstruction* candidate, HLoopInformation_X86* loop) {
+  DCHECK(candidate != nullptr);
+  DCHECK(loop != nullptr);
+
+  HTypeConversion* cast = candidate->AsTypeConversion();
+
+  // If the operation is not a cast, there is no point to go further.
+  if (cast == nullptr) {
+    return false;
+  }
+
+  Primitive::Type result = cast->GetResultType();
+  Primitive::Type input = cast->InputAt(0)->GetType();
+
+  bool int_to_short = (result == Primitive::kPrimShort && input == Primitive::kPrimInt);
+  bool int_to_byte = (result == Primitive::kPrimByte && input == Primitive::kPrimInt);
+
+  // We only support int-to-byte and int-to-short for now.
+  if (!int_to_short && !int_to_byte) {
+    return false;
+  }
+
+  // Fetch the upper bound of the loop to check it is within the range of the converted type.
+  int64_t upper_bound = 0;
+  if (!FindLoopUpperBound(loop, upper_bound)) {
+    return false;
+  }
+
+  constexpr int64_t max_byte = std::numeric_limits<char>::max();
+  constexpr int64_t min_byte = std::numeric_limits<char>::min();
+  constexpr int64_t max_short = std::numeric_limits<int16_t>::max();
+  constexpr int64_t min_short = std::numeric_limits<int16_t>::min();
+
+  // We have to make sure the loop bound are within the type limits.
+  if (int_to_byte && (upper_bound > max_byte || upper_bound < min_byte)) {
+    return false;
+  } else if (int_to_short && (upper_bound > max_short || upper_bound < min_short)) {
+    return false;
+  }
+
+  return true;
+}
+
+void HFindInductionVariables::DetectAndInitializeBasicIV(HLoopInformation_X86* info, HPhi* phi) {
   size_t input_count = phi->InputCount();
 
   // For now accept only PHI nodes that have two uses and one define.
@@ -85,7 +210,7 @@ void HFindInductionVariables::DetectAndInitializeBasicIV(HLoopInformation_X86* i
 
     // If candidate is executed per iteration of current loop, then we
     // can keep it and run it through the IV detection criteria.
-    if (info->ExecutedPerIteration(candidate) == true) {
+    if (info->ExecutedPerIteration(candidate)) {
       break;
     }
 
@@ -97,6 +222,14 @@ void HFindInductionVariables::DetectAndInitializeBasicIV(HLoopInformation_X86* i
 
   // If we found a candidate, check that it matches criteria for basic IV.
   if (candidate != nullptr) {
+    // The type conversions might occur after the add operation, therefore we want to trim it.
+    if (candidate->IsTypeConversion()) {
+      if (IsValidCastForIV(candidate, info)) {
+        candidate = candidate->InputAt(0);
+      } else {
+        return;
+      }
+    }
     // We want the right side of the instruction.
     // Currently we only look at additions, future work consists of handling negative increments.
     if (candidate->IsAdd()) {
@@ -133,7 +266,7 @@ void HFindInductionVariables::DetectAndInitializeBasicIV(HLoopInformation_X86* i
           }
 
           // Only accept this IV if the delta_value is positive for now.
-          if (is_positive_or_zero == true) {
+          if (is_positive_or_zero) {
             ArenaAllocator* arena = graph_->GetArena();
             ArenaVector<HInductionVariable*>& iv_list = info->GetInductionVariables();
 
@@ -157,9 +290,15 @@ void HFindInductionVariables::DetectAndInitializeBasicIV(HLoopInformation_X86* i
 void HFindInductionVariables::Run() {
   HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
   HLoopInformation_X86* loop_info = graph->GetLoopInformation();
-  for (HOutToInLoopIterator loop_iter(loop_info); loop_iter.Done() == false; loop_iter.Advance()) {
-    FindInductionVariablesHelper(loop_iter.Current());
+  PRINT_PASS_OSTREAM_MESSAGE(this, "Find IVs: Begin " << GetMethodName(graph));
+  for (HOutToInLoopIterator loop_iter(loop_info); !loop_iter.Done(); loop_iter.Advance()) {
+    HLoopInformation_X86* current = loop_iter.Current();
+    // Two things are done here:
+    FindInductionVariablesHelper(current);
+    // And also calculate the loop bounds.
+    current->ComputeBoundInformation();
   }
+  PRINT_PASS_OSTREAM_MESSAGE(this, "Find IVs: End " << GetMethodName(graph));
 }
 }  // namespace art
 
