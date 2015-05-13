@@ -88,6 +88,14 @@ art_cc_defaults {
         "optimizing/ssa_liveness_analysis.cc",
         "optimizing/ssa_phi_elimination.cc",
         "optimizing/stack_map_stream.cc",
+        // neeraj - added below intel sepcific "extensions" files
+        "optimizing/extensions/infrastructure/loop_information.cc",
+        "optimizing/extensions/infrastructure/ext_utility.cc",
+        "optimizing/extensions/infrastructure/graph_x86.cc",
+        "optimizing/extensions/infrastructure/pass_framework.cc",
+        "optimizing/extensions/passes/loop_formation.cc",
+        "optimizing/extensions/passes/find_ivs.cc",
+        // neeraj - end
         "trampolines/trampoline_compiler.cc",
         "utils/assembler.cc",
         "utils/jni_macro_assembler.cc",
@@ -205,7 +213,11 @@ art_cc_defaults {
         "liblz4",
         "liblzma",
     ],
-    include_dirs: ["vendor/intel/art-extension/disassembler"],
+    // neeraj - added "compiler/optimizing" & "compiler/optimizing/extensions/infrastructure" to resolve build errors
+    include_dirs: ["vendor/intel/art-extension/disassembler",
+                   "vendor/intel/art-extension/compiler/optimizing",
+                   "vendor/intel/art-extension/compiler/optimizing/extensions/infrastructure",
+                   "vendor/intel/art-extension/compiler/optimizing/extensions/passes"],
     export_include_dirs: ["."],
 
     // For SHA-1 checksumming of build ID

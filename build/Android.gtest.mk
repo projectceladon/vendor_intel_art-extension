@@ -268,6 +268,12 @@ ifneq ($(HOST_PREFER_32_BIT),true)
     $(ART_TEST_LIST_host_$(2ND_ART_HOST_ARCH)_$(m)))
 endif
 
+# Include the vendor gtest makefile which may add additional directives.
+VENDOR_GTEST_EXT_MK := $(VENDOR_ART_PATH)/build/Android.gtest.ext.mk
+ifneq ($(wildcard $(VENDOR_GTEST_EXT_MK)),)
+  include $(VENDOR_GTEST_EXT_MK)
+endif
+
 # Variables holding collections of gtest pre-requisits used to run a number of gtests.
 ART_TEST_HOST_GTEST$(ART_PHONY_TEST_HOST_SUFFIX)_RULES :=
 ART_TEST_HOST_GTEST$(2ND_ART_PHONY_TEST_HOST_SUFFIX)_RULES :=

@@ -586,7 +586,10 @@ class HGraph : public ArenaObject<kArenaAllocGraph> {
   void SetNumberOfCHAGuards(uint32_t num) { number_of_cha_guards_ = num; }
   void IncrementNumberOfCHAGuards() { number_of_cha_guards_++; }
 
- private:
+ protected:
+  void VisitBlockForDominatorTree(HBasicBlock* block,
+                                  HBasicBlock* predecessor,
+                                  ArenaVector<size_t>* visits);
   void RemoveInstructionsAsUsersFromDeadBlocks(const ArenaBitVector& visited) const;
   void RemoveDeadBlocks(const ArenaBitVector& visited);
 
@@ -732,6 +735,8 @@ class HGraph : public ArenaObject<kArenaAllocGraph> {
   friend class SsaLivenessAnalysis;  // For the linear order.
   friend class HInliner;             // For the reverse post order.
   ART_FRIEND_TEST(GraphTest, IfSuccessorSimpleJoinBlock1);
+
+ private:
   DISALLOW_COPY_AND_ASSIGN(HGraph);
 };
 
@@ -828,7 +833,7 @@ class HLoopInformation : public ArenaObject<kArenaAllocLoopInfo> {
 
   bool HasExitEdge() const;
 
- private:
+protected:
   // Internal recursive implementation of `Populate`.
   void PopulateRecursive(HBasicBlock* block);
   void PopulateIrreducibleRecursive(HBasicBlock* block, ArenaBitVector* finalized);
@@ -840,6 +845,7 @@ class HLoopInformation : public ArenaObject<kArenaAllocLoopInfo> {
   ArenaVector<HBasicBlock*> back_edges_;
   ArenaBitVector blocks_;
 
+ private:
   DISALLOW_COPY_AND_ASSIGN(HLoopInformation);
 };
 
@@ -895,6 +901,8 @@ class TryCatchInformation : public ArenaObject<kArenaAllocTryCatchInfo> {
   const DexFile* catch_dex_file_;
   const dex::TypeIndex catch_type_index_;
 };
+
+#include "loop_information_inside.h"
 
 static constexpr size_t kNoLifetime = -1;
 static constexpr uint32_t kInvalidBlockId = static_cast<uint32_t>(-1);
@@ -962,7 +970,7 @@ class HBasicBlock : public ArenaObject<kArenaAllocBasicBlock> {
 
   void AddBackEdge(HBasicBlock* back_edge) {
     if (loop_information_ == nullptr) {
-      loop_information_ = new (graph_->GetArena()) HLoopInformation(this, graph_);
+      loop_information_ = new (graph_->GetArena()) HLoopInformation_X86(this, graph_);
     }
     DCHECK_EQ(loop_information_->GetHeader(), this);
     loop_information_->AddBackEdge(back_edge);
@@ -6785,6 +6793,26 @@ class HGraphDelegateVisitor : public HGraphVisitor {
 
  private:
   DISALLOW_COPY_AND_ASSIGN(HGraphDelegateVisitor);
+};
+
+// neeraj - added below structure (from N-Silver) to resolve build error
+class HPostOrderIterator : public ValueObject {
+ public:
+  explicit HPostOrderIterator(const HGraph& graph)
+      : graph_(graph), index_(graph_.GetReversePostOrder().size()) {
+    // Check that reverse post order of the graph has been built.
+    DCHECK(!graph.GetReversePostOrder().empty());
+  }
+
+  bool Done() const { return index_ == 0; }
+  HBasicBlock* Current() const { return graph_.GetReversePostOrder()[index_ - 1u]; }
+  void Advance() { --index_; }
+
+ private:
+  const HGraph& graph_;
+  size_t index_;
+
+  DISALLOW_COPY_AND_ASSIGN(HPostOrderIterator);
 };
 
 // Iterator over the blocks that art part of the loop. Includes blocks part

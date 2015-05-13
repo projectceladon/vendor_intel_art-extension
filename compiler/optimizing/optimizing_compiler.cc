@@ -100,11 +100,15 @@
 #include "utils/assembler.h"
 #include "verifier/verifier_compiler_binding.h"
 
+#include "graph_x86.h"
+#include "pass_framework.h"
+
 namespace art {
 
 static constexpr size_t kArenaAllocatorMemoryReportThreshold = 8 * MB;
 
-static constexpr const char* kPassNameSeparator = "$";
+// nneraj - resolve build error
+//static constexpr const char* kPassNameSeparator = "$";
 
 /**
  * Used by the code generator, to allocate the code in a vector.
@@ -302,6 +306,11 @@ class PassScope : public ValueObject {
   PassObserver* const pass_observer_;
 };
 
+void RunOptWithPassScope::Run() {
+  PassScope scope(opt_->GetPassName(), pass_observer_);
+  opt_->Run();
+}
+
 class OptimizingCompiler FINAL : public Compiler {
  public:
   explicit OptimizingCompiler(CompilerDriver* driver);
@@ -395,7 +404,8 @@ class OptimizingCompiler FINAL : public Compiler {
                        CompilerDriver* driver,
                        const DexCompilationUnit& dex_compilation_unit,
                        PassObserver* pass_observer,
-                       VariableSizedHandleScope* handles) const;
+                       VariableSizedHandleScope* handles,
+                       ArenaVector<HOptimization*>& opt_list) const;
 
   void RunArchOptimizations(InstructionSet instruction_set,
                             HGraph* graph,
@@ -456,6 +466,7 @@ static bool IsInstructionSetSupported(InstructionSet instruction_set) {
       || instruction_set == kX86_64;
 }
 
+#if 0	//neeraj - to check - resolve build error (below function defined in O-Bronze, became unused by N-Silver patch)
 // Strip pass name suffix to get optimization name.
 static std::string ConvertPassNameToOptimizationName(const std::string& pass_name) {
   size_t pos = pass_name.find(kPassNameSeparator);
@@ -588,6 +599,7 @@ static ArenaVector<HOptimization*> BuildOptimizations(
   }
   return ret;
 }
+#endif	//neeraj - end
 
 void OptimizingCompiler::RunOptimizations(HOptimization* optimizations[],
                                           size_t length,
@@ -603,7 +615,8 @@ void OptimizingCompiler::MaybeRunInliner(HGraph* graph,
                                          CompilerDriver* driver,
                                          const DexCompilationUnit& dex_compilation_unit,
                                          PassObserver* pass_observer,
-                                         VariableSizedHandleScope* handles) const {
+                                         VariableSizedHandleScope* handles,
+                                         ArenaVector<HOptimization*>& opt_list) const {
   OptimizingCompilerStats* stats = compilation_stats_.get();
   const CompilerOptions& compiler_options = driver->GetCompilerOptions();
   bool should_inline = (compiler_options.GetInlineMaxCodeUnits() > 0);
@@ -625,7 +638,17 @@ void OptimizingCompiler::MaybeRunInliner(HGraph* graph,
       /* parent */ nullptr);
   HOptimization* optimizations[] = { inliner };
 
-  RunOptimizations(optimizations, arraysize(optimizations), pass_observer);
+  // FIXME: We don't invoke SILVER for methods with try/catch
+  if (graph->HasTryCatch() ||
+  // FIXME: We don't invoke SILVER for methods with irreducible
+  // loops because of a crash in full loop unrolling phase.
+      graph->HasIrreducibleLoops()) {
+    RunOptimizations(optimizations, arraysize(optimizations), pass_observer);
+  } else {
+    for (size_t i = 0; i < arraysize(optimizations); ++i) {
+      opt_list.push_back(optimizations[i]);
+    }
+  }
 }
 
 void OptimizingCompiler::RunArchOptimizations(InstructionSet instruction_set,
@@ -746,20 +769,7 @@ void OptimizingCompiler::RunOptimizations(HGraph* graph,
                                           VariableSizedHandleScope* handles) const {
   OptimizingCompilerStats* stats = compilation_stats_.get();
   ArenaAllocator* arena = graph->GetArena();
-  if (driver->GetCompilerOptions().GetPassesToRun() != nullptr) {
-    ArenaVector<HOptimization*> optimizations = BuildOptimizations(
-        *driver->GetCompilerOptions().GetPassesToRun(),
-        arena,
-        graph,
-        stats,
-        codegen,
-        driver,
-        dex_compilation_unit,
-        handles);
-    RunOptimizations(&optimizations[0], optimizations.size(), pass_observer);
-    return;
-  }
-
+  ArenaVector<HOptimization*> opt_list(graph->GetArena()->Adapter(kArenaAllocMisc));
   HDeadCodeElimination* dce1 = new (arena) HDeadCodeElimination(
       graph, stats, "dead_code_elimination$initial");
   HDeadCodeElimination* dce2 = new (arena) HDeadCodeElimination(
@@ -803,7 +813,19 @@ void OptimizingCompiler::RunOptimizations(HGraph* graph,
   };
   RunOptimizations(optimizations1, arraysize(optimizations1), pass_observer);
 
-  MaybeRunInliner(graph, codegen, driver, dex_compilation_unit, pass_observer, handles);
+  // FIXME: We don't invoke SILVER for methods with try/catch
+  if (graph->HasTryCatch() ||
+  // FIXME: We don't invoke SILVER for methods with irreducible
+  // loops because of a crash in full loop unrolling phase.
+      graph->HasIrreducibleLoops()) {
+    RunOptimizations(optimizations1, arraysize(optimizations1), pass_observer);
+  } else {
+    for (size_t i = 0; i < arraysize(optimizations1); ++i) {
+      opt_list.push_back(optimizations1[i]);
+    }
+  }
+
+  MaybeRunInliner(graph, codegen, driver, dex_compilation_unit, pass_observer, handles, opt_list);
 
   HOptimization* optimizations2[] = {
     // SelectGenerator depends on the InstructionSimplifier removing
@@ -830,7 +852,19 @@ void OptimizingCompiler::RunOptimizations(HGraph* graph,
     // HTypeConversion from a type to the same type.
     simplify4,
   };
-  RunOptimizations(optimizations2, arraysize(optimizations2), pass_observer);
+
+  // FIXME: We don't invoke SILVER for methods with try/catch
+  if (graph->HasTryCatch() ||
+  // FIXME: We don't invoke SILVER for methods with irreducible
+  // loops because of a crash in full loop unrolling phase.
+      graph->HasIrreducibleLoops()) {
+    RunOptimizations(optimizations2, arraysize(optimizations2), pass_observer);
+  } else {
+    for (size_t i = 0; i < arraysize(optimizations2); ++i) {
+      opt_list.push_back(optimizations2[i]);
+    }
+    RunOptimizationsX86(graph, driver, stats, opt_list, pass_observer);
+  }
 
   RunArchOptimizations(driver->GetInstructionSet(), graph, codegen, pass_observer);
 }
@@ -937,7 +971,7 @@ CodeGenerator* OptimizingCompiler::TryCompile(ArenaAllocator* arena,
       /* verified_method */ nullptr,
       dex_cache);
 
-  HGraph* graph = new (arena) HGraph(
+  HGraph* graph = new (arena) HGraph_X86(
       arena,
       dex_file,
       method_idx,
