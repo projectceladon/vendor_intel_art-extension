@@ -402,6 +402,12 @@ endif
 
 ART_TEST_CFLAGS :=
 
+# Include the vendor gtest makefile which may add additional directives.
+VENDOR_GTEST_EXT_MK := $(VENDOR_ART_PATH)/build/Android.gtest.ext.mk
+ifneq ($(wildcard $(VENDOR_GTEST_EXT_MK)),)
+  include $(VENDOR_GTEST_EXT_MK)
+endif
+
 include $(CLEAR_VARS)
 LOCAL_MODULE := libart-gtest
 LOCAL_MODULE_TAGS := optional

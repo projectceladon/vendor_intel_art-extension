@@ -43,6 +43,8 @@
 #include "scoped_thread_state_change.h"
 #include "thread.h"
 
+#include "graph_x86.h"
+
 namespace art {
 
 static constexpr size_t kMaximumNumberOfHInstructions = 32;
@@ -1076,7 +1078,7 @@ bool HInliner::TryBuildAndInlineHelper(HInvoke* invoke_instruction,
   }
 
   const int32_t caller_instruction_counter = graph_->GetCurrentInstructionId();
-  HGraph* callee_graph = new (graph_->GetArena()) HGraph(
+  HGraph* callee_graph = new (graph_->GetArena()) HGraph_X86(
       graph_->GetArena(),
       callee_dex_file,
       method_index,
@@ -1084,7 +1086,6 @@ bool HInliner::TryBuildAndInlineHelper(HInvoke* invoke_instruction,
       compiler_driver_->GetInstructionSet(),
       invoke_type,
       graph_->IsDebuggable(),
-      /* osr */ false,
       caller_instruction_counter);
   callee_graph->SetArtMethod(resolved_method);
 

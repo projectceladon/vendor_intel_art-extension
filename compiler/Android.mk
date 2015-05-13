@@ -177,6 +177,12 @@ LIBART_COMPILER_ENUM_OPERATOR_OUT_HEADER_FILES_x86 :=
 LIBART_COMPILER_ENUM_OPERATOR_OUT_HEADER_FILES_x86_64 := \
   $(LIBART_COMPILER_ENUM_OPERATOR_OUT_HEADER_FILES_x86)
 
+# Include the vendor compiler makefile which may add additional directives.
+VENDOR_COMPILER_EXT_MK := $(VENDOR_ART_PATH)/compiler/Android.ext.mk
+ifneq ($(wildcard $(VENDOR_COMPILER_EXT_MK)),)
+  include $(VENDOR_COMPILER_EXT_MK)
+endif
+
 # $(1): target or host
 # $(2): ndebug or debug
 # $(3): static or shared (empty means shared, applies only for host)

@@ -455,4 +455,10 @@ ifeq ($(ART_BUILD_HOST_DEBUG),true)
   ART_BUILD_DEBUG := true
 endif
 
+# Include the vendor common build makefile.
+VENDOR_COMMON_BUILD_MK := $(VENDOR_ART_PATH)/build/Android.common_build.ext.mk
+ifneq ($(wildcard $(VENDOR_COMMON_BUILD_MK)),)
+  include $(VENDOR_COMMON_BUILD_MK)
+endif
+
 endif # ART_ANDROID_COMMON_BUILD_MK
