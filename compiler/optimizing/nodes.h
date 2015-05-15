@@ -55,6 +55,7 @@ class HDoubleConstant;
 class HEnvironment;
 class HFloatConstant;
 class HGraphBuilder;
+class HGraph_X86;
 class HGraphVisitor;
 class HInstruction;
 class HIntConstant;
@@ -1854,6 +1855,7 @@ class HEnvironment : public ArenaObject<kArenaAllocEnvironment> {
   size_t Size() const { return vregs_.size(); }
 
   HEnvironment* GetParent() const { return parent_; }
+  void SetParent(HEnvironment* parent) { parent_ = parent; }
 
   void SetLocationAt(size_t index, Location location) {
     locations_[index] = location;
@@ -2032,6 +2034,16 @@ class HInstruction : public ArenaObject<kArenaAllocInstruction> {
     auto env_fixup_end = env_uses_.empty() ? env_uses_.begin() : ++env_uses_.begin();
     HUseListNode<HEnvironment*>* new_node =
         new (GetBlock()->GetGraph()->GetArena()) HUseListNode<HEnvironment*>(user, index);
+    env_uses_.push_front(*new_node);
+    FixUpUserRecordsAfterEnvUseInsertion(env_fixup_end);
+  }
+
+  void AddEnvUseAt(HEnvironment* user, size_t index, ArenaAllocator* arena) {
+    DCHECK(user != nullptr);
+    // Note: env_fixup_end remains valid across push_front().
+    auto env_fixup_end = env_uses_.empty() ? env_uses_.begin() : ++env_uses_.begin();
+    HUseListNode<HEnvironment*>* new_node =
+        new (arena) HUseListNode<HEnvironment*>(user, index);
     env_uses_.push_front(*new_node);
     FixUpUserRecordsAfterEnvUseInsertion(env_fixup_end);
   }
@@ -2584,96 +2596,6 @@ class HReturn FINAL : public HTemplateInstruction<1> {
 
  private:
   DISALLOW_COPY_AND_ASSIGN(HReturn);
-};
-
-class HPhi FINAL : public HVariableInputSizeInstruction {
- public:
-  HPhi(ArenaAllocator* arena,
-       uint32_t reg_number,
-       size_t number_of_inputs,
-       Primitive::Type type,
-       uint32_t dex_pc = kNoDexPc)
-      : HVariableInputSizeInstruction(
-            SideEffects::None(),
-            dex_pc,
-            arena,
-            number_of_inputs,
-            kArenaAllocPhiInputs),
-        reg_number_(reg_number) {
-    SetPackedField<TypeField>(ToPhiType(type));
-    DCHECK_NE(GetType(), Primitive::kPrimVoid);
-    // Phis are constructed live and marked dead if conflicting or unused.
-    // Individual steps of SsaBuilder should assume that if a phi has been
-    // marked dead, it can be ignored and will be removed by SsaPhiElimination.
-    SetPackedFlag<kFlagIsLive>(true);
-    SetPackedFlag<kFlagCanBeNull>(true);
-  }
-
-  // Returns a type equivalent to the given `type`, but that a `HPhi` can hold.
-  static Primitive::Type ToPhiType(Primitive::Type type) {
-    return Primitive::PrimitiveKind(type);
-  }
-
-  bool IsCatchPhi() const { return GetBlock()->IsCatchBlock(); }
-
-  Primitive::Type GetType() const OVERRIDE { return GetPackedField<TypeField>(); }
-  void SetType(Primitive::Type new_type) {
-    // Make sure that only valid type changes occur. The following are allowed:
-    //  (1) int  -> float/ref (primitive type propagation),
-    //  (2) long -> double (primitive type propagation).
-    DCHECK(GetType() == new_type ||
-           (GetType() == Primitive::kPrimInt && new_type == Primitive::kPrimFloat) ||
-           (GetType() == Primitive::kPrimInt && new_type == Primitive::kPrimNot) ||
-           (GetType() == Primitive::kPrimLong && new_type == Primitive::kPrimDouble));
-    SetPackedField<TypeField>(new_type);
-  }
-
-  bool CanBeNull() const OVERRIDE { return GetPackedFlag<kFlagCanBeNull>(); }
-  void SetCanBeNull(bool can_be_null) { SetPackedFlag<kFlagCanBeNull>(can_be_null); }
-
-  uint32_t GetRegNumber() const { return reg_number_; }
-
-  void SetDead() { SetPackedFlag<kFlagIsLive>(false); }
-  void SetLive() { SetPackedFlag<kFlagIsLive>(true); }
-  bool IsDead() const { return !IsLive(); }
-  bool IsLive() const { return GetPackedFlag<kFlagIsLive>(); }
-
-  bool IsVRegEquivalentOf(const HInstruction* other) const {
-    return other != nullptr
-        && other->IsPhi()
-        && other->AsPhi()->GetBlock() == GetBlock()
-        && other->AsPhi()->GetRegNumber() == GetRegNumber();
-  }
-
-  // Returns the next equivalent phi (starting from the current one) or null if there is none.
-  // An equivalent phi is a phi having the same dex register and type.
-  // It assumes that phis with the same dex register are adjacent.
-  HPhi* GetNextEquivalentPhiWithSameType() {
-    HInstruction* next = GetNext();
-    while (next != nullptr && next->AsPhi()->GetRegNumber() == reg_number_) {
-      if (next->GetType() == GetType()) {
-        return next->AsPhi();
-      }
-      next = next->GetNext();
-    }
-    return nullptr;
-  }
-
-  DECLARE_INSTRUCTION(Phi);
-
- private:
-  static constexpr size_t kFieldType = HInstruction::kNumberOfGenericPackedBits;
-  static constexpr size_t kFieldTypeSize =
-      MinimumBitsToStore(static_cast<size_t>(Primitive::kPrimLast));
-  static constexpr size_t kFlagIsLive = kFieldType + kFieldTypeSize;
-  static constexpr size_t kFlagCanBeNull = kFlagIsLive + 1;
-  static constexpr size_t kNumberOfPhiPackedBits = kFlagCanBeNull + 1;
-  static_assert(kNumberOfPhiPackedBits <= kMaxNumberOfPackedBits, "Too many packed fields.");
-  using TypeField = BitField<Primitive::Type, kFieldType, kFieldTypeSize>;
-
-  const uint32_t reg_number_;
-
-  DISALLOW_COPY_AND_ASSIGN(HPhi);
 };
 
 // The exit instruction is the only instruction of the exit block.
@@ -5235,6 +5157,100 @@ class HTypeConversion FINAL : public HExpression<1> {
 };
 
 static constexpr uint32_t kNoRegNumber = -1;
+
+// neeraj - keeping HPhi structure same as O-Master (due to incompatibility of N-Master structure with O-Master)
+class HPhi FINAL : public HVariableInputSizeInstruction {
+ public:
+  HPhi(ArenaAllocator* arena,
+       uint32_t reg_number,
+       size_t number_of_inputs,
+       Primitive::Type type,
+       uint32_t dex_pc = kNoDexPc)
+      : HVariableInputSizeInstruction(
+            SideEffects::None(),
+            dex_pc,
+            arena,
+            number_of_inputs,
+            kArenaAllocPhiInputs),
+        reg_number_(reg_number) {
+    SetPackedField<TypeField>(ToPhiType(type));
+    DCHECK_NE(GetType(), Primitive::kPrimVoid);
+    // Phis are constructed live and marked dead if conflicting or unused.
+    // Individual steps of SsaBuilder should assume that if a phi has been
+    // marked dead, it can be ignored and will be removed by SsaPhiElimination.
+    SetPackedFlag<kFlagIsLive>(true);
+    SetPackedFlag<kFlagCanBeNull>(true);
+  }
+
+  // Returns a type equivalent to the given `type`, but that a `HPhi` can hold.
+  static Primitive::Type ToPhiType(Primitive::Type type) {
+    return Primitive::PrimitiveKind(type);
+  }
+
+  bool IsCatchPhi() const { return GetBlock()->IsCatchBlock(); }
+
+  void AddInputNoUseUpdate(HInstruction* input);
+
+  Primitive::Type GetType() const OVERRIDE { return GetPackedField<TypeField>(); }
+  void SetType(Primitive::Type new_type) {
+    // Make sure that only valid type changes occur. The following are allowed:
+    //  (1) int  -> float/ref (primitive type propagation),
+    //  (2) long -> double (primitive type propagation).
+    DCHECK(GetType() == new_type ||
+           (GetType() == Primitive::kPrimInt && new_type == Primitive::kPrimFloat) ||
+           (GetType() == Primitive::kPrimInt && new_type == Primitive::kPrimNot) ||
+           (GetType() == Primitive::kPrimLong && new_type == Primitive::kPrimDouble));
+    SetPackedField<TypeField>(new_type);
+  }
+
+  bool CanBeNull() const OVERRIDE { return GetPackedFlag<kFlagCanBeNull>(); }
+  void SetCanBeNull(bool can_be_null) { SetPackedFlag<kFlagCanBeNull>(can_be_null); }
+
+  uint32_t GetRegNumber() const { return reg_number_; }
+
+  void SetDead() { SetPackedFlag<kFlagIsLive>(false); }
+  void SetLive() { SetPackedFlag<kFlagIsLive>(true); }
+  bool IsDead() const { return !IsLive(); }
+  bool IsLive() const { return GetPackedFlag<kFlagIsLive>(); }
+
+  bool IsVRegEquivalentOf(const HInstruction* other) const {
+    return other != nullptr
+        && other->IsPhi()
+        && other->AsPhi()->GetBlock() == GetBlock()
+        && other->AsPhi()->GetRegNumber() == GetRegNumber();
+  }
+
+  // Returns the next equivalent phi (starting from the current one) or null if there is none.
+  // An equivalent phi is a phi having the same dex register and type.
+  // It assumes that phis with the same dex register are adjacent.
+  HPhi* GetNextEquivalentPhiWithSameType() {
+    HInstruction* next = GetNext();
+    while (next != nullptr && next->AsPhi()->GetRegNumber() == reg_number_) {
+      if (next->GetType() == GetType()) {
+        return next->AsPhi();
+      }
+      next = next->GetNext();
+    }
+    return nullptr;
+  }
+
+  DECLARE_INSTRUCTION(Phi);
+
+ private:
+  static constexpr size_t kFieldType = HInstruction::kNumberOfGenericPackedBits;
+  static constexpr size_t kFieldTypeSize =
+      MinimumBitsToStore(static_cast<size_t>(Primitive::kPrimLast));
+  static constexpr size_t kFlagIsLive = kFieldType + kFieldTypeSize;
+  static constexpr size_t kFlagCanBeNull = kFlagIsLive + 1;
+  static constexpr size_t kNumberOfPhiPackedBits = kFlagCanBeNull + 1;
+  static_assert(kNumberOfPhiPackedBits <= kMaxNumberOfPackedBits, "Too many packed fields.");
+  using TypeField = BitField<Primitive::Type, kFieldType, kFieldTypeSize>;
+
+  const uint32_t reg_number_;
+
+  DISALLOW_COPY_AND_ASSIGN(HPhi);
+};
+
 
 class HNullCheck FINAL : public HExpression<1> {
  public:

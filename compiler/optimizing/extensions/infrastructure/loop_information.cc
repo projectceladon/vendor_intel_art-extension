@@ -20,9 +20,12 @@
  *
  */
 
+#include "cloning.h"
 #include "ext_utility.h"
+#include "graph_x86.h"
 #include "induction_variable.h"
 #include "loop_information.h"
+#include "optimization_x86.h"
 
 namespace art {
 
@@ -578,8 +581,12 @@ HConstant* HLoopInformation_X86::FindBIVEntrySSA(HPhi* phi) const {
   return nullptr;
 }
 
-bool HLoopInformation_X86::HasOneExitBlock() const {
-  return GetExitBlock() != nullptr;
+bool HLoopInformation_X86::HasOneExitEdge() const {
+  // We call GetExitBlock because we know that will bail as soon
+  // as it finds two exits.
+  bool has_one_exit = GetExitBlock() != nullptr;
+  DCHECK_EQ(has_one_exit, GetLoopExitCount() == 1u);
+  return has_one_exit;
 }
 
 HBasicBlock* HLoopInformation_X86::GetExitBlock() const {
@@ -589,8 +596,9 @@ HBasicBlock* HLoopInformation_X86::GetExitBlock() const {
     // Look for a successor that isn't in the loop.
     for (HBasicBlock* successor : loop_block->GetSuccessors()) {
       if (!Contains(*successor)) {
-        if (exit_block == nullptr || exit_block == successor) {
-          // First or duplicate exit block.
+        if (exit_block == nullptr) {
+          // This is the first exit edge we found.
+          // Note, we do not allow multiple edges to same block.
           exit_block = successor;
         } else {
           // More than one different exit blocks.
@@ -601,6 +609,22 @@ HBasicBlock* HLoopInformation_X86::GetExitBlock() const {
   }
 
   return exit_block;
+}
+
+size_t HLoopInformation_X86::GetLoopExitCount() const {
+  size_t count = 0u;
+
+  for (HBlocksInLoopIterator it_loop(*this); !it_loop.Done(); it_loop.Advance()) {
+    HBasicBlock* block = it_loop.Current();
+
+    for (HBasicBlock* successor : block->GetSuccessors()) {
+      if (!this->Contains(*successor)) {
+        count++;
+      }
+    }
+  }
+
+  return count;
 }
 
 void HLoopInformation_X86::InsertInstructionInSuspendBlock(HInstruction* instruction) {
@@ -727,6 +751,421 @@ void HLoopInformation_X86::AddToAll(HBasicBlock* block) {
   for (HLoopInformation_X86* current = this; current != nullptr; current = current->GetParent()) {
     static_cast<HLoopInformation*>(current)->Add(block);
   }
+}
+
+bool HLoopInformation_X86::HasCatchHandler() const {
+  // Walk through the loop's blocks to find a catch handler.
+  for (HBlocksInLoopIterator it_loop(*this); !it_loop.Done(); it_loop.Advance()) {
+    HBasicBlock* block = it_loop.Current();
+    if (block->IsCatchBlock()) {
+      return true;
+    }
+  }
+
+  // No catch handler found.
+  return false;
+}
+
+bool HLoopInformation_X86::IsPeelable(HOptimization_X86* optim) const {
+  if (!IsInner()) {
+    // Peeling an iteration of an outer loop, it means that in the peel we would have
+    // the inner loop. For now reject because it is unlikely to desire this behavior
+    // and we would need to make sure to update all loop structures to reflect the
+    // loops. Also, the peeling removes suspend checks and this is also not safe
+    // if inside the peel there is loop.
+    PRINT_PASS_OSTREAM_MESSAGE(optim, "Peeling failed because the loop is not an inner loop.");
+    return false;
+  }
+
+  if (HasCatchHandler()) {
+    // Catch information is stored specially and all data structures around this would
+    // need updated if we peeled this. Since this case is unlikely to be desired, reject
+    // for now and support only when needed.
+    PRINT_PASS_OSTREAM_MESSAGE(optim, "Peeling failed because the loop has a catch handler.");
+    return false;
+  }
+
+  if (!HasOneExitEdge()) {
+    // The peeler does not properly update phi nodes post loop if there is more than one exit.
+    // There is a lot of messiness around phi construction and that is why it is not handled.
+    // If ever desired in future, the cleanest approach to enable this is to allow entire graph
+    // phi regeneration instead of just localized regeneration.
+    PRINT_PASS_OSTREAM_MESSAGE(optim, "Peeling failed because the loop has multiple exits.");
+    return false;
+  }
+
+  HBasicBlock* header = GetHeader();
+  for (HInstructionIterator it(header->GetPhis()); !it.Done(); it.Advance()) {
+    HInstruction* phi = it.Current();
+    // We expect that loop phi nodes have two inputs:
+    // 1) From the original definition that is coming into the loop.
+    // 2) The output of the loop that is used in the loop after that initial iteration:
+    // The optimizing compiler does not hold the above true because of lack of move nodes,
+    // and therefore we explicitly check it now to avoid dealing with messiness.
+    if (phi->IsLoopHeaderPhi()) {
+      if (phi->InputCount() != 2u) {
+        PRINT_PASS_OSTREAM_MESSAGE(optim,
+          "Peeling failed because the loop phi does not have 2 inputs.");
+        return false;
+      }
+
+      HInstruction* first_input = phi->InputAt(0);
+      HInstruction* second_input = phi->InputAt(1);
+      bool first_from_loop = Contains(*(first_input->GetBlock()));
+      bool second_from_loop = Contains(*(second_input->GetBlock()));
+
+      if (first_from_loop == second_from_loop) {
+        PRINT_PASS_OSTREAM_MESSAGE(optim,
+          "Peeling failed because the loop phi doesn't have expected form.");
+        return false;
+      }
+    }
+  }
+
+  // Since peeling requires cloning, walk through loop to check for any instructions
+  // that cannot be cloned. We do not enable cloning since we simply want to visit.
+  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(this->graph_);
+  constexpr bool enable_cloning = false;
+  HInstructionCloner cloner(graph, enable_cloning);
+  for (HBlocksInLoopIterator it_loop(*this); !it_loop.Done(); it_loop.Advance()) {
+    HBasicBlock* block = it_loop.Current();
+
+    // Check if there is a non-loop phi. We reject in this case because this can happen
+    // when there is a control flow in graph. This is not really a problem BUT phis expected
+    // that if their inputs come from predecessor, the index of predecessor is index of
+    // use in phi. Thus a repair phase is needed after phi duplication to fix those inputs.
+    if (block != header) {
+      if (!block->GetPhis().IsEmpty()) {
+        PRINT_PASS_OSTREAM_MESSAGE(optim,
+          "Peeling failed because loop has control flow with phi merges.");
+        return false;
+      }
+    }
+
+    cloner.VisitBasicBlock(block);
+
+    // Found an instruction which cannot be cloned.
+    if (cloner.AllOkay() == false) {
+      PRINT_PASS_OSTREAM_MESSAGE(optim,
+        "Peeling failed because found instruction which cannot be cloned: " <<
+            cloner.GetDebugNameForFailedClone());
+      return false;
+    }
+  }
+
+  // As far as we know, there is nothing blocking us from peeling.
+  return true;
+}
+
+/**
+ * @brief Used to add new phis to the exits.
+ * @details The new phis are added because the peeled iteration copies all edges
+ * to the exits. Therefore, a merge of values has to be created for the peel define
+ * and the original define.
+ * @param graph The graph in which all the instructions reside.
+ * @param loop The loop currently being peeled.
+ * @param loop_exits Set of the exits of loop currently being peeled.
+ * @param orig The original instruction in loop before the peel.
+ * @param clone The cloned instruction in the peel.
+ */
+static void AddExitPhisAfterPeel(const HGraph_X86* graph, const HLoopInformation_X86* loop,
+                                 const std::set<HBasicBlock*>& loop_exits,
+                                 HInstruction* orig, HInstruction* clone) {
+  // Note that the logic here that handles insertion of phis, makes assumption that there is
+  // a single exit. That way we do not have to check which definition was live at which exit.
+  DCHECK_EQ(loop_exits.size(), 1u);
+  HBasicBlock* exit_bb = *(loop_exits.begin());
+
+  // Attempt to give a valid phi number to the new created phi. This is not important,
+  // but helps with debugging of graph.
+  HPhi* new_phi = nullptr;
+  uint32_t reg_number = kNoRegNumber;
+  if (orig->IsLoopHeaderPhi()) {
+    reg_number = orig->AsPhi()->GetRegNumber();
+  }
+
+  //neeraj - resolve build errors (using HUseList in place of HUseIterator)
+  const HUseList<HInstruction*>& uses = orig->GetUses();
+  for (auto use_it = uses.begin(), end2 = uses.end(); use_it != end2; ++use_it) {
+      HInstruction* user = use_it->GetUser();
+    // We do not want to add phi nodes for uses inside the loop.
+    if (!loop->Contains(*(user->GetBlock()))) {
+      if (user->IsPhi() && user->GetBlock() == exit_bb) {
+        // Be careful here, only add if not already a user.
+        HPhi* existing_phi = user->AsPhi();
+        bool found_input = false;
+        for (size_t input_idx = 0u; input_idx != existing_phi->InputCount(); input_idx++) {
+          if (existing_phi->InputAt(input_idx) == clone) {
+            found_input = true;
+            break;
+          }
+        }
+        if (!found_input) {
+          // Only add the clone because this phi already is using the original output.
+          DCHECK_EQ(clone->GetType(), existing_phi->GetType());
+          existing_phi->AddInput(clone);
+        }
+      } else {
+        if (new_phi == nullptr) {
+          new_phi = new (graph->GetArena()) HPhi(graph->GetArena(), reg_number,
+              0, HPhi::ToPhiType(orig->GetType()));
+          exit_bb->AddPhi(new_phi);
+          new_phi->AddInput(orig);
+          new_phi->AddInput(clone);
+        }
+
+         //neeraj - resolve build error
+        //size_t input_index = use_it.Current()->GetIndex();
+        size_t input_index = use_it->GetIndex();
+        user->ReplaceInput(new_phi, input_index);
+      }
+    }
+  }
+
+  //neeraj - resolve build errors (using HUseList in place of HUseIterator)
+  const HUseList<HEnvironment*>& uses1 = orig->GetEnvUses();
+  for (auto use_it = uses1.begin(), end2 = uses1.end(); use_it != end2; ++use_it) {
+      HEnvironment* user = use_it->GetUser();
+    // We do not want to add phi nodes for uses inside the loop.
+    if (!loop->Contains(*(user->GetHolder()->GetBlock()))) {
+      if (new_phi == nullptr) {
+        new_phi = new (graph->GetArena()) HPhi(graph->GetArena(), reg_number,
+            0, HPhi::ToPhiType(orig->GetType()));
+        exit_bb->AddPhi(new_phi);
+        new_phi->AddInput(orig);
+        new_phi->AddInput(clone);
+      }
+
+      //neeraj - resolve build error
+      //size_t input_index = use_it.Current()->GetIndex();
+      size_t input_index = use_it->GetIndex();
+
+      user->RemoveAsUserOfInput(input_index);
+      user->SetRawEnvAt(input_index, new_phi);
+      new_phi->AddEnvUseAt(user, input_index);
+    }
+  }
+}
+
+/**
+ * @brief Used to fix the inputs of loop phis to come from peel.
+ * @param header The loop header.
+ * @param cloner The instruction cloner that is being used to add instructions to peel.
+ */
+static void FixLoopPhis(const HBasicBlock* header, const HInstructionCloner& cloner) {
+  // During the peeling we might generate Phi duplicate:
+  // If two Phi nodes has a different pre-header input but the same from loop input
+  // then after peeling they will be identical and we can do a clean-up.
+  std::map<int, HPhi*> duplicates;
+  std::map<HPhi*, std::vector<HPhi*>> replacement;
+  for (HInstructionIterator it(header->GetPhis()); !it.Done(); it.Advance()) {
+    HInstruction* phi = it.Current();
+    DCHECK (phi->IsLoopHeaderPhi());
+    DCHECK_EQ(phi->InputCount(), 2u);
+    HInstruction* loop_input = phi->InputAt(1);
+
+    // Get clone of the loop's input.
+    HInstruction* clone = cloner.GetClone(loop_input);
+    if (clone != nullptr) {
+      phi->ReplaceInput(clone, 0);
+      // We replaced the pre-header input with a clone of from loop input.
+      // If we did before the same with other Phi node then we
+      // created a duplicate => eliminate it.
+      auto dup = duplicates.find(loop_input->GetId());
+      if (dup != duplicates.end()) {
+        // We cannot eliminate it now because duplicates may have different
+        // clones and if there is other Phi node which is not handled yet
+        // then it will use the incorrect clone. So for now just remember
+        // what we should eliminate and do it later.
+        replacement[dup->second].push_back(phi->AsPhi());
+      } else {
+        // Remember our change.
+        duplicates[loop_input->GetId()] = phi->AsPhi();
+      }
+    }
+  }
+
+  // Now eliminate duplicates if there are any.
+  for (auto it1 : replacement) {
+    for (auto it2 : it1.second) {
+      it2->ReplaceWith(it1.first);
+      it2->GetBlock()->RemovePhi(it2);
+    }
+  }
+}
+
+/**
+ * @brief Used to add cloned instructions to the cloned blocks.
+ * @param graph The graph in which all the instructions reside.
+ * @param loop The loop currently being peeled.
+ * @param loop_exits Set of the exits of loop currently being peeled.
+ * @param cloner The instruction cloner that is being used to add instructions to peel.
+ * @param old_to_new_bbs The mapping between original blocks and the cloned blocks.
+ * encompasses them.
+ */
+static void AddClonedInstructions(const HGraph_X86* graph,
+                                  const HLoopInformation_X86* loop,
+                                  const std::set<HBasicBlock*>& loop_exits,
+                                  const HInstructionCloner& cloner,
+                                  const SafeMap<HBasicBlock*, HBasicBlock*>& old_to_new_bbs) {
+  for (HBlocksInLoopReversePostOrderIterator  block_it(*loop); !block_it.Done(); block_it.Advance()) {
+    HBasicBlock* original_bb = block_it.Current();
+
+    HBasicBlock* copy_bb = old_to_new_bbs.Get(original_bb);
+
+    for (HInstructionIterator it(original_bb->GetPhis()); !it.Done(); it.Advance()) {
+      HInstruction* orig = it.Current();
+      HInstruction* clone = cloner.GetClone(orig);
+
+      // Sometimes the clone is manually added for phi nodes to represent original input.
+      // Because of this, we are careful to not add a non-phi node to the phi list.
+      if (clone != nullptr && clone->GetBlock() == nullptr) {
+        if (clone->IsPhi()) {
+          HPhi* phi_clone = clone->AsPhi();
+          copy_bb->AddPhi(phi_clone);
+        } else {
+          // We should not have a clone without a block if it is not equivalent
+          // to the type that it was cloned from - which is phi in this case.
+          DCHECK(false) << "Unreachable: Found non-phi clone for phi with no block.";
+        }
+      }
+
+      if (clone != nullptr && clone->GetBlock() != nullptr) {
+        // Now add appropriate phi nodes after loop.
+        AddExitPhisAfterPeel(graph, loop, loop_exits, orig, clone);
+      }
+    }
+    for (HInstructionIterator it(original_bb->GetInstructions()); !it.Done(); it.Advance()) {
+      HInstruction* orig = it.Current();
+      HInstruction* clone = cloner.GetClone(orig);
+      if (clone != nullptr && clone->GetBlock() == nullptr) {
+        copy_bb->AddInstruction(clone);
+      }
+
+      if (clone != nullptr && clone->GetBlock() != nullptr) {
+        // Now add appropriate phi nodes after loop.
+        AddExitPhisAfterPeel(graph, loop, loop_exits, orig, clone);
+      }
+    }
+  }
+}
+
+/**
+ * @brief Used to clone instruction from main loop to use for peel.
+ * @details Suspend checks and loop phis are treated specially.
+ * @param graph The graph that contains loop being peeled.
+ * @param loop The loop being peeled.
+ * @param cloner The instance of instruction cloner.
+ */
+static void CloneInstructionsForPeel(const HLoopInformation_X86* loop,
+                                     HInstructionCloner* cloner) {
+  // Walk in reverse post-order so that cloning works correctly in using cloned inputs.
+  for (HBlocksInLoopReversePostOrderIterator block_it(*loop); !block_it.Done(); block_it.Advance()) {
+    HBasicBlock* original_bb = block_it.Current();
+
+    for (HInstructionIterator it(original_bb->GetPhis()); !it.Done(); it.Advance()) {
+      HInstruction* phi = it.Current();
+      if (phi->IsLoopHeaderPhi()) {
+        // It is a requirement that loop has a single preheader so it must
+        // be the case that the phi has only two inputs. We make the assumption
+        // of this in the logic above so recheck it now.
+        DCHECK_EQ(phi->InputCount(), 2u);
+
+        // Loop phis can be skipped because the peel is no longer a loop.
+        // However, in the mapping table we want to make it so that the input to phi
+        // from define outside of loop is the actual mapping.
+        HInstruction* out_of_loop_input = phi->InputAt(0);
+        cloner->AddCloneManually(phi, out_of_loop_input);
+      } else {
+        phi->Accept(cloner);
+      }
+    }
+
+    for (HInstructionIterator it(original_bb->GetInstructions()); !it.Done(); it.Advance()) {
+      HInstruction* instruction = it.Current();
+      if (instruction->IsSuspendCheck()) {
+        // No need to copy suspend checks in the peel.
+        continue;
+      } else {
+        instruction->Accept(cloner);
+      }
+    }
+  }
+}
+
+bool HLoopInformation_X86::PeelHelperHead() {
+  SafeMap<HBasicBlock*, HBasicBlock*> old_to_new_bbs;
+  std::set<HBasicBlock*> loop_exits;
+
+  // Make a copy of each block.
+  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(this->graph_);
+
+  for (HBlocksInLoopIterator it_loop(*this); !it_loop.Done(); it_loop.Advance()) {
+    HBasicBlock* original = it_loop.Current();
+    HBasicBlock* copy = graph->CreateNewBasicBlock(original->GetDexPc());
+    DCHECK(copy != nullptr);
+    old_to_new_bbs.Put(original, copy);
+    peeled_blocks_.push_back(copy->GetBlockId());
+  }
+
+  // The loop's old preheader must now go to the copied header.
+  HBasicBlock* header = this->GetHeader();
+  HBasicBlock* preheader = this->GetPreHeader();
+  HLoopInformation_X86* outer_loop_info = LOOPINFO_TO_LOOPINFO_X86(preheader->GetLoopInformation());
+
+  // Fix the predecessors and successors by substituting links with the copy.
+  for (HBlocksInLoopIterator it_loop(*this); !it_loop.Done(); it_loop.Advance()) {
+    HBasicBlock* original = it_loop.Current();
+    HBasicBlock* copy = old_to_new_bbs.Get(original);
+    for (HBasicBlock* orig_successor : original->GetSuccessors()) {
+      if (orig_successor == header) {
+        // Handle case where it goes to header - since this is peeled version,
+        // we must go to the old header.
+        // Use predecessor replacement because it preserves index of predecessor,
+        // which is important for phi nodes.
+        header->ReplacePredecessor(preheader, copy);
+      } else if (old_to_new_bbs.count(orig_successor) == 0) {
+        // Handle the case where this is an exit from loop.
+        copy->AddSuccessor(orig_successor);
+        // We are creating two critical edges, so split them here.
+        graph->SplitCriticalEdgeAndUpdateLoopInformation(copy, orig_successor);
+        graph->SplitCriticalEdgeAndUpdateLoopInformation(original, orig_successor);
+        loop_exits.insert(orig_successor);
+      } else {
+        // Handle the normal case where we must link to the copy.
+        HBasicBlock* copy_successor = old_to_new_bbs.Get(orig_successor);
+        copy->AddSuccessor(copy_successor);
+      }
+    }
+
+    // At same time, fix the loop information of outer loop to contain the peeled blocks.
+    if (outer_loop_info != nullptr) {
+      // AddToAll will set loop info for our block.
+      outer_loop_info->AddToAll(copy);
+    }
+  }
+
+  // Attach the peeled blocks to old pre-header.
+  preheader->AddSuccessor(old_to_new_bbs.Get(header));
+
+  // Copy the instructions without adding them to any block yet.
+  HInstructionCloner cloner(graph);
+  CloneInstructionsForPeel(this, &cloner);
+  DCHECK(cloner.AllOkay());
+
+  // Now that instructions are copied, we must add them to their appropriate blocks.
+  AddClonedInstructions(graph, this, loop_exits, cloner, old_to_new_bbs);
+
+  // Finally fix all of the phi inputs to actual loop. This is because the original
+  // definition that was incoming to the loop will be coming from the peel now.
+  FixLoopPhis(header, cloner);
+
+  // Fix up the domination information now.
+  // We would save on compile time if we did it incrementally, but doing this
+  // way allows fewer mistakes to be made.
+  graph->RebuildDomination();
+
+  return true;
 }
 
 }  // namespace art

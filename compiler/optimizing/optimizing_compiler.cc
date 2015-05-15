@@ -465,7 +465,7 @@ static bool IsInstructionSetSupported(InstructionSet instruction_set) {
       || instruction_set == kX86_64;
 }
 
-#if 1 //neeraj - to check - resolve build error (below function defined in O-Bronze, became unused by N-Silver patch)
+// TOCHECK - resolve build error (below function defined in O-Bronze, became unused by N-Silver patch)
 // Strip pass name suffix to get optimization name.
 static std::string ConvertPassNameToOptimizationName(const std::string& pass_name) {
   size_t pos = pass_name.find(kPassNameSeparator);
@@ -598,7 +598,7 @@ static ArenaVector<HOptimization*> BuildOptimizations(
   }
   return ret;
 }
-#endif	//neeraj - end
+
 
 void OptimizingCompiler::RunOptimizations(HOptimization* optimizations[],
                                           size_t length,
@@ -809,7 +809,7 @@ void OptimizingCompiler::RunOptimizations(HGraph* graph,
   InstructionSimplifier* simplify2 = new (arena) InstructionSimplifier(
       graph, codegen, stats, "instruction_simplifier$after_inlining");
   InstructionSimplifier* simplify3 = new (arena) InstructionSimplifier(
-      graph, codegen, stats, "instruction_simplifier$after_bce");
+      graph, codegen, stats, "instruction_simplifier_after_bce");
   InstructionSimplifier* simplify4 = new (arena) InstructionSimplifier(
       graph, codegen, stats, "instruction_simplifier$before_codegen");
   IntrinsicsRecognizer* intrinsics = new (arena) IntrinsicsRecognizer(graph, stats);

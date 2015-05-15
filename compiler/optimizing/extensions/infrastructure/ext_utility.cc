@@ -94,6 +94,7 @@ namespace art {
     return os;
   }
 
+  //neeraj - added cases for kCondB, kCondBE, kCondA & kCondAE
   IfCondition NegateCondition(IfCondition cond) {
     switch (cond) {
       case kCondNE:
@@ -108,6 +109,14 @@ namespace art {
         return kCondLE;
       case kCondLE:
         return kCondGT;
+      case kCondB:
+        return kCondAE;
+      case kCondBE:
+        return kCondA;
+      case kCondA:
+        return kCondBE;
+      case kCondAE:
+        return kCondB;
       default:
         LOG(FATAL) << "Unknown if condition";
     }
@@ -116,6 +125,7 @@ namespace art {
     return kCondEQ;
   }
 
+  //neeraj - added cases for kCondB, kCondBE, kCondA & kCondAE
   IfCondition FlipConditionForOperandSwap(IfCondition cond) {
     switch (cond) {
       case kCondEQ:
@@ -131,6 +141,14 @@ namespace art {
         return kCondLT;
       case kCondGE:
         return kCondLE;
+      case kCondB:
+        return kCondA;
+      case kCondBE:
+        return kCondAE;
+      case kCondA:
+        return kCondB;
+      case kCondAE:
+        return kCondBE;
       default:
         LOG(FATAL) << "Unknown if condition";
     }

@@ -776,8 +776,6 @@ static void UpdateInputsUsers(HInstruction* instruction) {
   for (size_t i = 0; i < inputs.size(); ++i) {
     inputs[i]->AddUseAt(instruction, i);
   }
-  // Environment should be created later.
-  DCHECK(!instruction->HasEnvironment());
 }
 
 void HBasicBlock::ReplaceAndRemoveInstructionWith(HInstruction* initial,
@@ -1154,6 +1152,10 @@ void HVariableInputSizeInstruction::RemoveInputAt(size_t index) {
     DCHECK_EQ(inputs_[i].GetUseNode()->GetIndex(), i + 1u);
     inputs_[i].GetUseNode()->SetIndex(i);
   }
+}
+
+void HPhi::AddInputNoUseUpdate(HInstruction* input) {
+  inputs_.push_back(HUserRecord<HInstruction*>(input));
 }
 
 #define DEFINE_ACCEPT(name, super)                                             \

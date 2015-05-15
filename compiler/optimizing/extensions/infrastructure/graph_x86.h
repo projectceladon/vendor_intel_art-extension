@@ -111,6 +111,24 @@ class HGraph_X86 : public HGraph {
 #endif
 
   /**
+   * @brief Used to create a new basic that is added to graph.
+   * @param dex_pc The dex pc of this block (optional).
+   * @return Returns the newly created block.
+   */
+  HBasicBlock* CreateNewBasicBlock(uint32_t dex_pc = kNoDexPc) {
+    HBasicBlock* new_block = new (arena_) HBasicBlock(this, dex_pc);
+    AddBlock(new_block);
+    return new_block;
+  }
+
+  /**
+   * @brief Split critial edge and set loop information splitter.
+   * @param from input of new critical edge.
+   * @param to output of new critical edge.
+   */
+  void SplitCriticalEdgeAndUpdateLoopInformation(HBasicBlock* from, HBasicBlock* to);
+
+  /**
    * @brief Called after an optimization pass in order to rebuild domination
    * information and ordering.
    * @details This also has effect of cleaning up graph and normalizing loops

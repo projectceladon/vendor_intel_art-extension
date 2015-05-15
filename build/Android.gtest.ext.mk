@@ -25,6 +25,7 @@ ifeq ($(findstring loop_hierarchy_test,$(COMPILER_GTEST_COMMON_SRC_FILES)),)
 
   COMPILER_GTEST_EXTENSION_SRC_FILES := \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/loop_hierarchy_test.cc \
+    $(VENDOR_EXTENSIONS_FOLDER)/passes/loop_peeling_test.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/loops_iv_bounds_test.cc
 
   COMPILER_GTEST_COMMON_SRC_FILES += \
