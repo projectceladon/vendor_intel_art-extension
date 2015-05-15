@@ -30,6 +30,7 @@
 #include "loop_formation.h"
 #include "optimization.h"
 #include "pass_framework.h"
+#include "remove_unused_loops.h"
 //#include "scoped_thread_state_change.h"
 #include "scoped_thread_state_change-inl.h"	//neeraj -- added to resolve build error
 #include "thread.h"
@@ -59,6 +60,7 @@ struct HCustomPassPlacement {
 static HCustomPassPlacement kPassCustomPlacement[] = {
   { "loop_formation", "instruction_simplifier_after_types", kPassInsertAfter},
   { "find_ivs", "loop_formation", kPassInsertAfter},
+  { "remove_unused_loops", "find_ivs", kPassInsertAfter},
 };
 
 /**
@@ -351,9 +353,11 @@ void RunOptimizationsX86(HGraph* graph,
   // Create the array for the opts.
   HLoopFormation loop_formation(graph);
   HFindInductionVariables find_ivs(graph, stats);
+  HRemoveUnusedLoops remove_unused_loops(graph, stats);
   HOptimization_X86* opt_array[] = {
     &loop_formation,
     &find_ivs,
+    &remove_unused_loops,
   };
 
   // Create the array for the post-opts.

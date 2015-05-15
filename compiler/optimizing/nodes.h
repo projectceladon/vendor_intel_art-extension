@@ -2375,6 +2375,22 @@ class HInstruction : public ArenaObject<kArenaAllocInstruction> {
 };
 std::ostream& operator<<(std::ostream& os, const HInstruction::InstructionKind& rhs);
 
+// neeraj - below structure copied from N-Silver to resolve build errors
+class HInputIterator : public ValueObject {
+ public:
+  explicit HInputIterator(HInstruction* instruction) : instruction_(instruction), index_(0) {}
+
+  bool Done() const { return index_ == instruction_->InputCount(); }
+  HInstruction* Current() const { return instruction_->InputAt(index_); }
+  void Advance() { index_++; }
+
+ private:
+  HInstruction* instruction_;
+  size_t index_;
+
+  DISALLOW_COPY_AND_ASSIGN(HInputIterator);
+};
+
 // Iterates over the instructions, while preserving the next instruction
 // in case the current instruction gets removed from the list by the user
 // of this iterator.

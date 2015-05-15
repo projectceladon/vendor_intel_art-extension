@@ -87,6 +87,7 @@ enum MethodCompilationStat {
   kNotInlinedRecursiveBudget,
   kNotInlinedProxy,
   kIntelBIVFound,
+  kIntelRemoveUnusedLoops,
   kLastStat
 };
 
@@ -204,6 +205,7 @@ class OptimizingCompilerStats {
       case kNotInlinedRecursiveBudget: name = "NotInlinedRecursiveBudget"; break;
       case kNotInlinedProxy: name = "NotInlinedProxy"; break;
       case kIntelBIVFound: return "kIntelBIVFound";
+      case kIntelRemoveUnusedLoops: return "kIntelRemoveUnusedLoops";
 
       case kLastStat:
         LOG(FATAL) << "invalid stat "

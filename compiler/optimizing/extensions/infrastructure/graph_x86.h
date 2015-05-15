@@ -72,6 +72,13 @@ class HGraph_X86 : public HGraph {
     }
   }
 
+  /**
+   * @brief Delete a block, cleaning up all the loose ends such as
+   * successors, predecessors, etc.
+   * @param block Block to delete.
+   */
+  void DeleteBlock(HBasicBlock* block);
+
   void Dump();
 
 #ifndef NDEBUG
