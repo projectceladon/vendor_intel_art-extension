@@ -67,6 +67,7 @@ enum MethodCompilationStat {
   kExplicitNullCheckGenerated,
   kIntelBIVFound,
   kIntelRemoveUnusedLoops,
+  kIntelLoopPeeled,
   kLastStat
 };
 
@@ -147,6 +148,7 @@ class OptimizingCompilerStats {
       case kExplicitNullCheckGenerated: name = "ExplicitNullCheckGenerated"; break;
       case kIntelBIVFound: return "kIntelBIVFound";
       case kIntelRemoveUnusedLoops: return "kIntelRemoveUnusedLoops";
+      case kIntelLoopPeeled: return "kIntelLoopPeeled";
 
       case kLastStat:
         LOG(FATAL) << "invalid stat "

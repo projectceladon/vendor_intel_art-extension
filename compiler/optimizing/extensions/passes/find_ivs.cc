@@ -86,7 +86,7 @@ HIf* HFindInductionVariables::FindLoopIf(HLoopInformation_X86* loop) {
 bool HFindInductionVariables::FindLoopUpperBound(HLoopInformation_X86* loop, int64_t& upper_bound) {
   DCHECK(loop != nullptr);
 
-  if (!loop->HasOneExitBlock()) {
+  if (!loop->HasOneExitEdge()) {
     return false;
   }
 

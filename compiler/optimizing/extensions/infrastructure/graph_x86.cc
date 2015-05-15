@@ -78,23 +78,27 @@ void HGraph_X86::DeleteBlock(HBasicBlock* block) {
   }
 }
 
+void HGraph_X86::SplitCriticalEdgeAndUpdateLoopInformation(HBasicBlock* from, HBasicBlock* to) {
+  // Remember index, to find a new added splitter.
+  size_t index = to->GetPredecessorIndexOf(from);
+
+  // First split.
+  SplitCriticalEdge(from, to);
+
+  // Find splitter.
+  HBasicBlock* splitter = to->GetPredecessors()[index];
+
+  // Set loop information for splitter.
+  HLoopInformation* loop_information = to->IsLoopHeader() ?
+          from->GetLoopInformation() : to->GetLoopInformation();
+  if (loop_information != nullptr) {
+    LOOPINFO_TO_LOOPINFO_X86(loop_information)->AddToAll(splitter);
+  }
+}
+
 void HGraph_X86::RebuildDomination() {
-  // The rebuilding assumes several structures are empty - so ensure that now.
-  for (HBasicBlock* block : GetBlocks()) {
-    if (block != nullptr) {
-      block->dominator_ = nullptr;
-      block->dominated_blocks_.clear();
-    }
-  }
-  reverse_post_order_.clear();
-
-  // Clear all the loop back edges.
-  for (HOutToInLoopIterator iter(loop_information_); !iter.Done(); iter.Advance()) {
-    iter.Current()->ClearBackEdges();
-  }
-
-  // Now actually call the builder.
-  BuildDominatorTree();
+  ClearDominanceInformation();
+  ComputeDominanceInformation();
 }
 
 }  // namespace art
