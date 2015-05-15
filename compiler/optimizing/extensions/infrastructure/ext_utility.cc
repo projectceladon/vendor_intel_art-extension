@@ -22,6 +22,9 @@
 
 #include "ext_utility.h"
 
+#include "nodes.h"
+#include "optimization.h"
+
 namespace art {
 
   std::string GetMethodName(const HGraph* graph) {
@@ -37,6 +40,54 @@ namespace art {
         tokens.insert(item);
       }
     }
+  }
+
+  static char GetTypeId(Primitive::Type type) {
+    // Note that Primitive::Descriptor would not work for us
+    // because it does not handle reference types (that is kPrimNot).
+    switch (type) {
+      case Primitive::kPrimBoolean: return 'z';
+      case Primitive::kPrimByte: return 'b';
+      case Primitive::kPrimChar: return 'c';
+      case Primitive::kPrimShort: return 's';
+      case Primitive::kPrimInt: return 'i';
+      case Primitive::kPrimLong: return 'j';
+      case Primitive::kPrimFloat: return 'f';
+      case Primitive::kPrimDouble: return 'd';
+      case Primitive::kPrimNot: return 'l';
+      case Primitive::kPrimVoid: return 'v';
+    }
+    LOG(FATAL) << "Unreachable";
+    return 'v';
+  }
+
+  std::ostream& operator<<(std::ostream& os, HInstruction* instruction) {
+    os << GetTypeId(instruction->GetType()) << instruction->GetId() << " ";
+    os << instruction->DebugName();
+    switch (instruction->GetKind()) {
+      case HInstruction::kIntConstant:
+        os << ' ' << instruction->AsIntConstant()->GetValue();
+        break;
+      case HInstruction::kLongConstant:
+        os << ' ' << instruction->AsLongConstant()->GetValue();
+        break;
+      case HInstruction::kFloatConstant:
+        os << ' ' << instruction->AsFloatConstant()->GetValue();
+        break;
+      case HInstruction::kDoubleConstant:
+        os << ' ' << instruction->AsDoubleConstant()->GetValue();
+        break;
+      default:
+        break;
+    }
+    if (instruction->InputCount() > 0) {
+      os << " [ ";
+      for (HInputIterator inputs(instruction); !inputs.Done(); inputs.Advance()) {
+        os << GetTypeId(inputs.Current()->GetType()) << inputs.Current()->GetId() << ' ';
+      }
+      os << ']';
+    }
+    return os;
   }
 
   IfCondition NegateCondition(IfCondition cond) {
@@ -195,5 +246,34 @@ namespace art {
       mantissa >>= 1;
     }
     return ret;
+  }
+
+  void RemoveEnvAsUser(HInstruction* instruction) {
+    for (HEnvironment* environment = instruction->GetEnvironment();
+         environment != nullptr;
+         environment = environment->GetParent()) {
+      for (size_t i = 0, e = environment->Size(); i < e; ++i) {
+        if (environment->GetInstructionAt(i) != nullptr) {
+          environment->RemoveAsUserOfInput(i);
+        }
+      }
+    }
+  }
+
+  void RemoveAsUser(HInstruction* instruction) {
+    for (size_t i = 0; i < instruction->InputCount(); i++) {
+      instruction->RemoveAsUserOfInput(i);
+    }
+
+    RemoveEnvAsUser(instruction);
+  }
+
+  void RemoveFromEnvironmentUsers(HInstruction* insn) {
+    for (HUseIterator<HEnvironment*> use_it(insn->GetEnvUses()); !use_it.Done();
+         use_it.Advance()) {
+      HUseListNode<HEnvironment*>* user_node = use_it.Current();
+      HEnvironment* user = user_node->GetUser();
+      user->SetRawEnvAt(user_node->GetIndex(), nullptr);
+    }
   }
 }  // namespace art

@@ -29,6 +29,9 @@
 #include <unordered_set>
 
 namespace art {
+
+class HInstruction;
+
   // This macro can be used to print messages within passes. The possible usage is:
   // PRINT_PASS_MESSAGE(this, "Value of x = %.2f", x);
   #define PRINT_PASS_MESSAGE(pass, format, ...) \
@@ -122,6 +125,32 @@ namespace art {
    *         value is mantissa length (23 for single FP and 52 for double FP).
    */
   int CountEndZerosInMantissa(int64_t mantissa, bool is_double);
+
+  /**
+   * @brief Write an instruction to an output stream.
+   * @param os Output stream.
+   * @param instruction Instruction to write.
+   */
+  std::ostream& operator<<(std::ostream& os, HInstruction* instruction);
+
+  /**
+   * @brief Remove the given instruction as user of its inputs and its environment inputs.
+   * @param instruction The HInstruction to handle.
+   * @details RemoveEnvAsUser is called internally to handle environment inputs.
+   */
+  void RemoveAsUser(HInstruction* instruction);
+
+  /**
+   * @brief Remove the given instruction's environment as user of its inputs.
+   * @param instruction The HInstruction to handle.
+   */
+  void RemoveEnvAsUser(HInstruction* instruction);
+
+  /**
+   * @brief Used to mark the current instruction as not being used by any environments.
+   * @param instruction The HInstruction to handle.
+   */
+  void RemoveFromEnvironmentUsers(HInstruction* instruction);
 
 }  // namespace art
 #endif  // COMPILER_OPTIMIZING_EXTENSIONS_INFRASTRUCTURE_EXT_UTILITIES_H

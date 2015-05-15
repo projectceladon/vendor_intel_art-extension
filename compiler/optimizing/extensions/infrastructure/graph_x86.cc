@@ -37,4 +37,44 @@ void HGraph_X86::Dump() {
   LOG(INFO) << print_string;
 }
 
+void HGraph_X86::DeleteBlock(HBasicBlock* block) {
+  // Remove all Phis.
+  for (HInstructionIterator it2(block->GetPhis()); !it2.Done(); it2.Advance()) {
+    HInstruction* insn = it2.Current();
+    RemoveAsUser(insn);
+    RemoveFromEnvironmentUsers(insn);
+    block->RemovePhi(insn->AsPhi(), false);
+  }
+
+  // Remove the rest of the instructions.
+  for (HInstructionIterator it2(block->GetInstructions()); !it2.Done(); it2.Advance()) {
+    HInstruction* insn = it2.Current();
+    RemoveAsUser(insn);
+    RemoveFromEnvironmentUsers(insn);
+    block->RemoveInstruction(insn, false);
+  }
+
+  // Remove all successors from the block.
+  const ArenaVector<HBasicBlock*>& successors = block->GetSuccessors();
+  for (size_t j = successors.size(); j > 0; j--) {
+    HBasicBlock* successor = successors[j - 1];
+    if (std::find(successor->GetPredecessors().begin(),
+                  successor->GetPredecessors().end(),
+                  block) != successor->GetPredecessors().end()) {
+      successor->RemovePredecessor(block);
+    }
+    block->RemoveSuccessor(successor);
+  }
+
+  // Remove all predecessors.
+  block->ClearAllPredecessors();
+
+  // Remove all data structures pointing to the block.
+  blocks_[block->GetBlockId()] = nullptr;
+  RemoveElement(reverse_post_order_, block);
+  if (linear_order_.size() > 0) {
+    RemoveElement(linear_order_, block);
+  }
+}
+
 }  // namespace art
