@@ -23,6 +23,7 @@
 
 #include "ext_utility.h"
 #include "graph_x86.h"
+#include "loop_formation.h"
 #include "loop_iterators.h"
 #include "base/stringprintf.h"
 
@@ -39,6 +40,7 @@ void HRemoveUnusedLoops::Run() {
   HLoopInformation_X86 *graph_loop_info = graph->GetLoopInformation();
 
   // Walk all the inner loops in the graph.
+  bool changed = false;
   for (HOnlyInnerLoopIterator it(graph_loop_info); !it.Done(); it.Advance()) {
     HLoopInformation_X86* loop_info = it.Current();
     HBasicBlock* pre_header = loop_info->GetPreHeader();
@@ -90,10 +92,17 @@ void HRemoveUnusedLoops::Run() {
     if (loop_is_empty) {
       RemoveLoop(loop_info, pre_header, exit_block);
       MaybeRecordStat(MethodCompilationStat::kIntelRemoveUnusedLoops);
+      changed = true;
     }
   }
   if (debug_pass) {
     LOG(INFO) << "HRemoveUnusedLoops: end";
+  }
+
+  if (changed) {
+    // We have to rebuild our loops properly, now that we have removed loops.
+    HLoopFormation form_loops(graph_);
+    form_loops.Run();
   }
 }
 

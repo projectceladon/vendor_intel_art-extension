@@ -44,11 +44,19 @@ class HLoopInformation_X86 : public HLoopInformation {
       depth_(0), count_up_(false),
       outer_(nullptr), sibling_previous_(nullptr),
       sibling_next_(nullptr), inner_(nullptr),
+      test_suspend_(nullptr), suspend_(nullptr),
       iv_list_(graph->GetArena()->Adapter(kArenaAllocMisc)),
       inter_iteration_variables_(graph->GetArena()->Adapter(kArenaAllocMisc)) {
 #ifndef NDEBUG
         down_cast_checker_ = LOOPINFO_MAGIC;
 #endif
+  }
+
+  /**
+   * @brief Clear back edges.
+   */
+  void ClearBackEdges() {
+    back_edges_.clear();
   }
 
   /**
@@ -202,7 +210,6 @@ class HLoopInformation_X86 : public HLoopInformation {
    */
   bool ExecutedPerIteration(HInstruction* candidate) const;
 
-
   /**
    * @brief Does the loop only have one exit block?
    * @return whether or not the loop has one single exit block.
@@ -232,6 +239,71 @@ class HLoopInformation_X86 : public HLoopInformation {
     return (bound_info_.num_iterations_ != -1);
   }
 
+  /**
+   * @brief Split a SuspendCheck into a TestSuspend and an Suspend.
+   */
+  void SplitSuspendCheck();
+
+  /**
+   * @brief Insert an HInstruction before the call to Suspend.  Will
+   * call SplitSuspendCheck if there isn't already a split suspend.
+   * @param instruction HInstruction to insert just before call to Suspend.
+   * @note RebuildDominators() must be called before an optimization that uses
+   * this method is returns.
+   */
+  void InsertInstructionInSuspendBlock(HInstruction* instruction);
+
+  /**
+   * @brief Add a block to all nested loops, and set the loop_information
+   * for the block to 'this'.
+   * @param block Block to add to loop nest.
+   */
+  void AddToAll(HBasicBlock* block);
+
+  /**
+   * @brief Return a pointer to the HSuspend instruction for this loop, if present.
+   * @returns HSuspend instruction, or nullptr.
+   */
+  HSuspend* GetSuspend() const { return suspend_; }
+
+  /**
+   * @brief Set the pointer to the HSuspend instruction for this loop.
+   * @param suspend HSuspend instruction for the loop.
+   */
+  void SetSuspend(HSuspend* suspend) { suspend_ = suspend; }
+
+  /**
+   * @brief Does this loop have an HSuspend instruction?
+   * @returns 'true' if there is an HSuspend instruction present in the loop.
+   */
+  bool HasSuspend() const { return suspend_ != nullptr; }
+
+  /**
+   * @brief Return a pointer to the HTestSuspend instruction for this loop, if present.
+   * @returns HTestSuspend instruction, or nullptr.
+   */
+  HTestSuspend* GetTestSuspend() const { return test_suspend_; }
+
+  /**
+   * @brief Set the pointer to the HTestSuspend instruction for this loop.
+   * @param test_suspend HTestSuspend instruction for the loop.
+   */
+  void SetTestSuspend(HTestSuspend* test_suspend) { test_suspend_ = test_suspend; }
+
+  /**
+   * @brief Does this loop have an HTestSuspend instruction?
+   * @returns 'true' if there is an HTestSuspend instruction present in the loop.
+   */
+  bool HasTestSuspend() const { return test_suspend_ != nullptr; }
+
+  /**
+   * @brief Does this loop need to have a HSuspendCheck added?
+   * @returns 'true' if a SuspendCheck should not be added.
+   * @note If we have converted to HTestSuspend/HSuspend, we don't want
+   * another HSuspendCheck to be added to the loop.
+   */
+  bool DontAddSuspendCheck() const OVERRIDE { return HasTestSuspend(); }
+
 #ifndef NDEBUG
   static HLoopInformation_X86* DownCast(HLoopInformation* info) {
     HLoopInformation_X86* res = static_cast<HLoopInformation_X86*>(info);
@@ -254,6 +326,16 @@ class HLoopInformation_X86 : public HLoopInformation {
    */
   const HLoopBoundInformation& GetBoundInformation() const {
     return bound_info_;
+  }
+
+  /*
+   * @brief Ensure that the links from this HLoopInformation_X86 are reset.
+   */
+  void ResetLinks() {
+    sibling_next_ = nullptr;
+    sibling_previous_ = nullptr;
+    inner_ = nullptr;
+    outer_ = nullptr;
   }
 
  protected:
@@ -286,6 +368,12 @@ class HLoopInformation_X86 : public HLoopInformation {
 
   /** @brief The bound information. */
   HLoopBoundInformation bound_info_;
+
+  /** @brief Pointer to the split HTestSuspend, if present. */
+  HTestSuspend* test_suspend_;
+
+  /** @brief Pointer to the split HSuspend, if present. */
+  HSuspend* suspend_;
 
   /** @brief The Induction Variable list. */
   ArenaVector<HInductionVariable*> iv_list_;

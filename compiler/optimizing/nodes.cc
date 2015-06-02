@@ -368,6 +368,12 @@ void HGraph::SimplifyLoop(HBasicBlock* header) {
     }
   }
 
+  // Is this a loop with a split SuspendCheck?
+  if (info->DontAddSuspendCheck()) {
+    // We have already split the SuspendCheck.
+    return;
+  }
+
   HInstruction* first_instruction = header->GetFirstInstruction();
   if (first_instruction != nullptr && first_instruction->IsSuspendCheck()) {
     // Called from DeadBlockElimination. Update SuspendCheck pointer.
@@ -1800,7 +1806,8 @@ void HBasicBlock::DisconnectAndDelete() {
       // successor. Replace those with a HGoto.
       DCHECK(last_instruction->IsIf() ||
              last_instruction->IsPackedSwitch() ||
-             (last_instruction->IsTryBoundary() && IsCatchBlock()));
+             (last_instruction->IsTryBoundary() && IsCatchBlock()) ||
+             last_instruction->IsTestSuspend());
       predecessor->RemoveInstruction(last_instruction);
       predecessor->AddInstruction(new (graph_->GetArena()) HGoto(last_instruction->GetDexPc()));
     } else if (num_pred_successors == 0u) {

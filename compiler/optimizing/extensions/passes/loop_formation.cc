@@ -57,6 +57,7 @@ void HLoopFormation::Run() {
   std::set<HLoopInformation_X86*> info_set;
 
   // Post order visit to visit inner loops before outer loops.
+  GRAPH_TO_GRAPH_X86(graph_)->ClearLoopInformation();
   for (HPostOrderIterator it(*graph_); !it.Done(); it.Advance()) {
     HBasicBlock* block = it.Current();
     if (block->IsLoopHeader()) {

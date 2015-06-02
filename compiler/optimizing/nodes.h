@@ -57,7 +57,9 @@ class HInvoke;
 class HLongConstant;
 class HNullConstant;
 class HPhi;
+class HSuspend;
 class HSuspendCheck;
+class HTestSuspend;
 class HTryBoundary;
 class LiveInterval;
 class LocationSummary;
@@ -744,6 +746,12 @@ class HLoopInformation : public ArenaObject<kArenaAllocLoopInfo> {
 
   bool DominatesAllBackEdges(HBasicBlock* block);
 
+  // Should a HSuspendCheck be added to this loop?
+  virtual bool DontAddSuspendCheck() const { return false; }
+
+  // Needed due to above.
+  virtual ~HLoopInformation() {}
+
  protected:
   // Internal recursive implementation of `Populate`.
   void PopulateRecursive(HBasicBlock* block);
@@ -1168,6 +1176,7 @@ class HBasicBlock : public ArenaObject<kArenaAllocBasicBlock> {
 
   friend class HGraph;
   friend class HInstruction;
+  friend class HGraph_X86;
 
   DISALLOW_COPY_AND_ASSIGN(HBasicBlock);
 };
@@ -1320,7 +1329,9 @@ class HLoopInformationOutwardIterator : public ValueObject {
 
 #if defined(ART_ENABLE_CODEGEN_x86) || defined(ART_ENABLE_CODEGEN_x86_64)
 #define FOR_EACH_CONCRETE_INSTRUCTION_X86_COMMON(M)                     \
-  M(X86BoundsCheckMemory, Instruction)
+  M(X86BoundsCheckMemory, Instruction)                                  \
+  M(Suspend, Instruction)                                               \
+  M(TestSuspend, Instruction)
 #else
 #define FOR_EACH_CONCRETE_INSTRUCTION_X86_COMMON(M)
 #endif
@@ -5349,6 +5360,50 @@ class HNativeDebugInfo : public HTemplateInstruction<0> {
 
  private:
   DISALLOW_COPY_AND_ASSIGN(HNativeDebugInfo);
+};
+
+// Test for a SuspendCheck. A block ending with an HTestSuspend instruction must
+// have two successors.  The SuspendSuccessor() is the block containing the Suspend.
+class HTestSuspend : public HTemplateInstruction<0> {
+ public:
+  explicit HTestSuspend(uint32_t dex_pc = kNoDexPc)
+    : HTemplateInstruction<0>(SideEffects::None(), dex_pc) {}
+
+  bool IsControlFlow() const OVERRIDE { return true; }
+
+  HBasicBlock* NoSuspendSuccessor() const {
+    return GetBlock()->GetSuccessors()[0];
+  }
+
+  HBasicBlock* SuspendSuccessor() const {
+    return GetBlock()->GetSuccessors()[1];
+  }
+
+  DECLARE_INSTRUCTION(TestSuspend);
+
+ private:
+  DISALLOW_COPY_AND_ASSIGN(HTestSuspend);
+};
+
+// Call to runtime Suspend to allow for possible suspension.  Must be in a block
+// as the SuspendSuccessor() to a HTestSuspend.
+class HSuspend : public HTemplateInstruction<0> {
+ public:
+  explicit HSuspend(uint32_t dex_pc)
+    : HTemplateInstruction<0>(SideEffects::CanTriggerGC(), dex_pc) {}
+
+  HBasicBlock* GetSuccessor() const {
+    return GetBlock()->GetSuccessors()[0];
+  }
+
+  bool NeedsEnvironment() const OVERRIDE {
+    return true;
+  }
+
+  DECLARE_INSTRUCTION(Suspend);
+
+ private:
+  DISALLOW_COPY_AND_ASSIGN(HSuspend);
 };
 
 /**

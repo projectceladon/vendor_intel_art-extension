@@ -49,13 +49,31 @@ class HGraph_X86 : public HGraph {
 #endif
   }
 
+  /**
+   * @brief Return the graph's loop information.
+   * @return the outermost loop in the graph.
+   */
   HLoopInformation_X86* GetLoopInformation() const {
     return loop_information_;
   }
 
+  /**
+   * @brief Clear the loop information.
+   */
+  void ClearLoopInformation() {
+    loop_information_ = nullptr;
+  }
+
+  /**
+   * @brief Add a loop to the graph.
+   * @param information The loop information to be added.
+   */
   void AddLoopInformation(HLoopInformation_X86* information) {
     // Due to the way this method is being called,
     //   the first call is one of the outer loops.
+
+    // Ensure we are only adding a single loop in.
+    information->ResetLinks();
     if (loop_information_ == nullptr) {
       loop_information_ = information;
     } else {
@@ -82,6 +100,14 @@ class HGraph_X86 : public HGraph {
     return res;
   }
 #endif
+
+  /**
+   * @brief Called after an optimization pass in order to rebuild domination
+   * information and ordering.
+   * @details This also has effect of cleaning up graph and normalizing loops
+   * (depending on what Google overloaded it to do).
+   */
+  void RebuildDomination();
 
  protected:
 #ifndef NDEBUG
