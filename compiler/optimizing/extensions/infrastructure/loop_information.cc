@@ -603,4 +603,130 @@ HBasicBlock* HLoopInformation_X86::GetExitBlock() const {
   return exit_block;
 }
 
+void HLoopInformation_X86::InsertInstructionInSuspendBlock(HInstruction* instruction) {
+  // Have we already split the SuspendCheck into two pieces?
+  if (!HasTestSuspend()) {
+    SplitSuspendCheck();
+  }
+
+  DCHECK(HasTestSuspend());
+  DCHECK(HasSuspend());
+  HSuspend* suspend = GetSuspend();
+
+  // Insert the actual instruction before the HSuspend. That will ensure that
+  // successive calls insert in order.
+  suspend->GetBlock()->InsertInstructionBefore(instruction, suspend);
+}
+
+void HLoopInformation_X86::SplitSuspendCheck() {
+  // Have we already been split?
+  if (HasTestSuspend()) {
+    // We must have got here already.
+    DCHECK(!HasSuspendCheck());
+    return;
+  }
+
+  // We better have an HSuspendCheck to split!
+  DCHECK(HasSuspendCheck());
+
+  // Replace the SuspendCheck with a TestSuspend.
+  HSuspendCheck* check = GetSuspendCheck();
+
+  // The suspend check must be in the header.
+  HBasicBlock* header = GetHeader();
+  DCHECK(header == check->GetBlock());
+  DCHECK(header->GetLoopInformation() == this);
+  HGraph* graph = header->GetGraph();
+  ArenaAllocator* arena = graph->GetArena();
+
+  // Special case single block loops.
+  if (GetBackEdges()[0] == header) {
+    // Clear the back edges now, in order to prevent 2 edges after the split.
+    // It will be rebuilt later.
+    ClearBackEdges();
+  }
+
+  // Create a new block to hold the TestSuspend. This avoids a 'CriticalEdge' with
+  // multiple predecessors and successors.
+  HBasicBlock* test_suspend_block = new(arena) HBasicBlock(graph, header->GetDexPc());
+  graph->AddBlock(test_suspend_block);
+
+  // Add an HTestSuspend into this block.
+  HTestSuspend* test_suspend = new(arena) HTestSuspend;
+  test_suspend_block->AddInstruction(test_suspend);
+  SetTestSuspend(test_suspend);
+
+  // Create a dummy block just for the suspend to return to,
+  // in order to avoid creating a critical edge.
+  HBasicBlock* dummy_block = new(arena) HBasicBlock(graph, header->GetDexPc());
+  graph->AddBlock(dummy_block);
+  dummy_block->AddInstruction(new(arena) HGoto());
+
+  // We need a second dummy block to avoid another critical edge, to handle
+  // the non-suspend case.
+  HBasicBlock* dummy_block2 = new(arena) HBasicBlock(graph, header->GetDexPc());
+  graph->AddBlock(dummy_block2);
+  dummy_block2->AddInstruction(new(arena) HGoto());
+  dummy_block2->AddSuccessor(dummy_block);
+  test_suspend_block->AddSuccessor(dummy_block2);
+
+  // Create a new block to hold the code after the TestSuspend.
+  HBasicBlock* rest_of_header = header->SplitAfterForInlining(check);
+
+  // Function SplitAfter() divides a block into two halves but it
+  // doesn't add the bottom half into reverse_post_order_. And, this
+  // may cause a trouble. When HGraph::ClearDominanceInformation() is
+  // called, it doesn't clear dominated_blocks_ for the bottom half
+  // because the half is absent in the reverse_post_order_. Next,
+  // HGraph::ComputeDominanceInformation() adds blocks into
+  // dominated_blocks_ but it doesn't check for duplicate values. So,
+  // it may populate dominated_blocks_ with same blocks. This is not
+  // normal and violates DCHECK conditions.
+  HBasicBlock* dom = rest_of_header->GetDominator();
+  rest_of_header->ClearDominanceInformation();
+  rest_of_header->SetDominator(dom);
+
+  graph->AddBlock(rest_of_header);
+
+  // Now add a Goto to the end of the header block.
+  header->AddInstruction(new(arena) HGoto());
+  header->AddSuccessor(test_suspend_block);
+
+  // And link in the dummy block.
+  dummy_block->AddSuccessor(rest_of_header);
+
+  // Create a new block to hold the Suspend.
+  HBasicBlock* suspend_block = new(arena) HBasicBlock(graph, header->GetDexPc());
+  graph->AddBlock(suspend_block);
+
+  // Create the new suspend instruction with the original environment.
+  HSuspend* suspend = new(arena) HSuspend(check->GetDexPc());
+  SetSuspend(suspend);
+  suspend_block->AddInstruction(suspend);
+  suspend->CopyEnvironmentFrom(check->GetEnvironment());
+  suspend_block->AddInstruction(new(arena) HGoto());
+
+  // Remove the HSuspendCheck.
+  header->RemoveInstruction(check);
+  SetSuspendCheck(nullptr);
+
+  // Link the new block into the loop.
+  test_suspend_block->AddSuccessor(suspend_block);
+  suspend_block->AddSuccessor(dummy_block);
+
+  // Set loop information for new blocks.
+  AddToAll(suspend_block);
+  AddToAll(test_suspend_block);
+  AddToAll(dummy_block);
+  AddToAll(dummy_block2);
+  AddToAll(rest_of_header);
+}
+
+void HLoopInformation_X86::AddToAll(HBasicBlock* block) {
+  block->SetLoopInformation(this);
+  for (HLoopInformation_X86* current = this; current != nullptr; current = current->GetParent()) {
+    static_cast<HLoopInformation*>(current)->Add(block);
+  }
+}
+
 }  // namespace art

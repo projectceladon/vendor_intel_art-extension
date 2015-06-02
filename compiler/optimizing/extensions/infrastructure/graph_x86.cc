@@ -21,6 +21,7 @@
 
 #include "ext_utility.h"
 #include "graph_x86.h"
+#include "loop_iterators.h"
 #include "pretty_printer.h"
 
 namespace art {
@@ -75,6 +76,25 @@ void HGraph_X86::DeleteBlock(HBasicBlock* block) {
   if (linear_order_.size() > 0) {
     RemoveElement(linear_order_, block);
   }
+}
+
+void HGraph_X86::RebuildDomination() {
+  // The rebuilding assumes several structures are empty - so ensure that now.
+  for (HBasicBlock* block : GetBlocks()) {
+    if (block != nullptr) {
+      block->dominator_ = nullptr;
+      block->dominated_blocks_.clear();
+    }
+  }
+  reverse_post_order_.clear();
+
+  // Clear all the loop back edges.
+  for (HOutToInLoopIterator iter(loop_information_); !iter.Done(); iter.Advance()) {
+    iter.Current()->ClearBackEdges();
+  }
+
+  // Now actually call the builder.
+  BuildDominatorTree();
 }
 
 }  // namespace art

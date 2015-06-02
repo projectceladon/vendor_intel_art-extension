@@ -139,6 +139,9 @@ class SuspendCheckSlowPathX86_64 : public SlowPathCode {
   SuspendCheckSlowPathX86_64(HSuspendCheck* instruction, HBasicBlock* successor)
       : SlowPathCode(instruction), successor_(successor) {}
 
+  SuspendCheckSlowPathX86_64(HSuspend* instruction, HBasicBlock* successor)
+      : SlowPathCode(instruction), successor_(successor) {}
+
   void EmitNativeCode(CodeGenerator* codegen) OVERRIDE {
     LocationSummary* locations = instruction_->GetLocations();
     CodeGeneratorX86_64* x86_64_codegen = down_cast<CodeGeneratorX86_64*>(codegen);
@@ -5248,6 +5251,57 @@ void LocationsBuilderX86_64::VisitParallelMove(HParallelMove* instruction ATTRIB
 
 void InstructionCodeGeneratorX86_64::VisitParallelMove(HParallelMove* instruction) {
   codegen_->GetMoveResolver()->EmitNativeCode(instruction);
+}
+
+void LocationsBuilderX86_64::VisitTestSuspend(HTestSuspend* instruction) {
+  UNUSED(instruction);
+}
+
+void InstructionCodeGeneratorX86_64::VisitTestSuspend(HTestSuspend* test_suspend) {
+#if 0	//neeraj - resolve build error
+  __ gs()->cmpw(Address::Absolute(
+      Thread::ThreadFlagsOffset<kX86_64WordSize>().Int32Value(), true), Immediate(0));
+#else
+  __ gs()->cmpw(Address::Absolute(
+      Thread::ThreadFlagsOffset<kX86_64PointerSize>().Int32Value(), true), Immediate(0));
+#endif
+  HBasicBlock* suspend_block =
+    codegen_->FirstNonEmptyBlock(test_suspend->SuspendSuccessor());
+  HBasicBlock* no_suspend_block =
+    codegen_->FirstNonEmptyBlock(test_suspend->NoSuspendSuccessor());
+
+  // Generate the best jump we can.
+  if (codegen_->GoesToNextBlock(test_suspend->GetBlock(), no_suspend_block)) {
+    // We fall through to the no-suspend case.
+    __ j(kNotEqual, codegen_->GetLabelOf(suspend_block));
+  } else if (codegen_->GoesToNextBlock(test_suspend->GetBlock(), suspend_block)) {
+    __ j(kEqual, codegen_->GetLabelOf(no_suspend_block));
+  } else {
+    // neither is fall through.
+    __ j(kNotEqual, codegen_->GetLabelOf(suspend_block));
+    __ jmp(codegen_->GetLabelOf(no_suspend_block));
+  }
+}
+
+void LocationsBuilderX86_64::VisitSuspend(HSuspend* instruction) {
+  UNUSED(instruction);
+  new (GetGraph()->GetArena()) LocationSummary(instruction, LocationSummary::kCallOnSlowPath);
+}
+
+void InstructionCodeGeneratorX86_64::VisitSuspend(HSuspend* suspend) {
+  HBasicBlock* successor = suspend->GetSuccessor();
+  if (!suspend->GetNext()->IsGoto()) {
+    // Ensure that we execute any instructions after the Suspend.
+    successor = nullptr;
+  }
+  SuspendCheckSlowPathX86_64* slow_path =
+      new (GetGraph()->GetArena()) SuspendCheckSlowPathX86_64(suspend, successor);
+  codegen_->AddSlowPath(slow_path);
+  __ jmp(slow_path->GetEntryLabel());
+  if (successor == nullptr) {
+    // Come back here to execute the non-goto code.
+    __ Bind(slow_path->GetReturnLabel());
+  }
 }
 
 void LocationsBuilderX86_64::VisitSuspendCheck(HSuspendCheck* instruction) {
