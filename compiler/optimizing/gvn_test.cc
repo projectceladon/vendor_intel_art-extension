@@ -250,7 +250,7 @@ TEST_F(GVNTest, LoopFieldElimination) {
   // Kill inside the loop body to prevent field gets inside the loop header
   // and the body to be GVN'ed.
   loop_body->AddInstruction(new (&allocator) HInstanceFieldSet(parameter,
-                                                               parameter,
+                                                               graph->GetIntConstant(1),
                                                                Primitive::kPrimBoolean,
                                                                MemberOffset(42),
                                                                false,

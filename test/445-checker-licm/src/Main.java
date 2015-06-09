@@ -25,9 +25,13 @@ public class Main {
   /// CHECK-START: int Main.div() licm (after)
   /// CHECK-DAG: Div loop:none
 
+  public static boolean neverThrow = false;
+
   public static int div() {
     int result = 0;
     for (int i = 0; i < 10; ++i) {
+      if (neverThrow)
+        throw new Error();
       result += staticField / 42;
     }
     return result;
@@ -65,6 +69,9 @@ public class Main {
         // The operation has been hoisted out of the inner loop.
         // Note that we depend on the compiler's block numbering to
         // check if it has been moved.
+        if (neverThrow) {
+          throw new Error();
+        }
         result += staticField * i;
       }
     }
@@ -81,6 +88,9 @@ public class Main {
     int result = 0;
     while (b < 5) {
       // a might be null, so we can't hoist the operation.
+      if (neverThrow) {
+        throw new Error();
+      }
       result += staticField / a;
       b++;
     }
