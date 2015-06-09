@@ -25,6 +25,7 @@ ifeq ($(findstring graph_x86,$(LIBART_COMPILER_SRC_FILES)),)
 
   COMPILER_EXTENSION_SRC_FILES := \
     $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/cloning.cc \
+    $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/ext_alias.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/ext_utility.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/graph_x86.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/loop_information.cc \

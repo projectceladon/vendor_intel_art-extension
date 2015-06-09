@@ -90,6 +90,7 @@ art_cc_defaults {
         "optimizing/stack_map_stream.cc",
         // neeraj - added below intel sepcific "extensions" files
         "optimizing/extensions/infrastructure/cloning.cc",
+        "optimizing/extensions/infrastructure/ext_alias.cc",
         "optimizing/extensions/infrastructure/ext_utility.cc",
         "optimizing/extensions/infrastructure/graph_x86.cc",
         "optimizing/extensions/infrastructure/loop_information.cc",
