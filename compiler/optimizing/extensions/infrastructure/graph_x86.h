@@ -66,6 +66,10 @@ class HGraph_X86 : public HGraph {
     return loop_information_;
   }
 
+  void SetLoopInformation(HLoopInformation_X86* loop) {
+    loop_information_ = loop;
+  }
+
   /**
    * @brief Clear the loop information.
    */
@@ -93,7 +97,7 @@ class HGraph_X86 : public HGraph {
   /**
    * @brief Delete a block, cleaning up all the loose ends such as
    * successors, predecessors, etc.
-   * @param block Block to delete.
+   * @param block The HBasicBlock to delete from the graph.
    */
   void DeleteBlock(HBasicBlock* block);
 

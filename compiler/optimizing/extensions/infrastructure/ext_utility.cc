@@ -21,19 +21,17 @@
  */
 
 #include "ext_utility.h"
-
 #include "nodes.h"
 #include "optimization.h"
+#include <sstream>
+#include "utils.h"
 
 namespace art {
 
   std::string GetMethodName(const HGraph* graph) {
     DCHECK(graph != nullptr);
-#if 0	//neeraj - resolve build error
-    return PrettyMethod(graph->GetMethodIdx(), graph->GetDexFile());
-#else
+     //neeraj - resolve build error
      return graph->GetDexFile().PrettyMethod(graph->GetMethodIdx());
-#endif
   }
 
   void SplitStringIntoSet(const std::string& s, char delim, std::unordered_set<std::string>& tokens) {
@@ -44,25 +42,6 @@ namespace art {
         tokens.insert(item);
       }
     }
-  }
-
-  static char GetTypeId(Primitive::Type type) {
-    // Note that Primitive::Descriptor would not work for us
-    // because it does not handle reference types (that is kPrimNot).
-    switch (type) {
-      case Primitive::kPrimBoolean: return 'z';
-      case Primitive::kPrimByte: return 'b';
-      case Primitive::kPrimChar: return 'c';
-      case Primitive::kPrimShort: return 's';
-      case Primitive::kPrimInt: return 'i';
-      case Primitive::kPrimLong: return 'j';
-      case Primitive::kPrimFloat: return 'f';
-      case Primitive::kPrimDouble: return 'd';
-      case Primitive::kPrimNot: return 'l';
-      case Primitive::kPrimVoid: return 'v';
-    }
-    LOG(FATAL) << "Unreachable";
-    return 'v';
   }
 
   std::ostream& operator<<(std::ostream& os, HInstruction* instruction) {
@@ -299,4 +278,24 @@ namespace art {
       user->SetRawEnvAt(index, nullptr);
     }
   }
+
+  char GetTypeId(Primitive::Type type) {
+    // Note that Primitive::Descriptor would not work for us
+    // because it does not handle reference types (that is kPrimNot).
+    switch (type) {
+      case Primitive::kPrimBoolean: return 'z';
+      case Primitive::kPrimByte: return 'b';
+      case Primitive::kPrimChar: return 'c';
+      case Primitive::kPrimShort: return 's';
+      case Primitive::kPrimInt: return 'i';
+      case Primitive::kPrimLong: return 'j';
+      case Primitive::kPrimFloat: return 'f';
+      case Primitive::kPrimDouble: return 'd';
+      case Primitive::kPrimNot: return 'l';
+      case Primitive::kPrimVoid: return 'v';
+    }
+    LOG(FATAL) << "Unreachable";
+    return 'v';
+  }
+
 }  // namespace art

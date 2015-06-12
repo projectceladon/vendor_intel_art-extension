@@ -35,6 +35,7 @@
 //#include "scoped_thread_state_change.h"
 #include "scoped_thread_state_change-inl.h"	//neeraj -- added to resolve build error
 #include "thread.h"
+#include "trivial_loop_evaluator.h"
 
 
 namespace art {
@@ -58,15 +59,15 @@ struct HCustomPassPlacement {
 /**
  * @brief Static array holding information about custom placements.
  */
+/* neeraj - to check more - removed below optimizations (added in "ART-Extension: Support iteration peeling") to resolve incompatibility with O-Master
+   { "loop_peeling", "select_generator", kPassInsertBefore },
+   { "loop_formation_before_peeling", "loop_peeling", kPassInsertBefore },
+*/
 static HCustomPassPlacement kPassCustomPlacement[] = {
   { "loop_formation", "instruction_simplifier_after_bce", kPassInsertAfter },
   { "find_ivs", "loop_formation", kPassInsertAfter },
-  { "remove_unused_loops", "find_ivs", kPassInsertAfter }
-  /* ART_SILVER: Enable these passes later
-  ,
-  { "loop_peeling", "select_generator", kPassInsertBefore },
-  { "loop_formation_before_peeling", "loop_peeling", kPassInsertBefore }
-  */
+  { "remove_unused_loops", "find_ivs", kPassInsertAfter },
+  { "trivial_loop_evaluator", "find_ivs", kPassInsertAfter},
 };
 
 /**
@@ -363,6 +364,7 @@ void RunOptimizationsX86(HGraph* graph,
   HLoopFormation loop_formation(graph);
   HFindInductionVariables find_ivs(graph, stats);
   HRemoveUnusedLoops remove_unused_loops(graph, stats);
+  TrivialLoopEvaluator tle(graph, stats);
   HLoopFormation formation_before_peeling(graph, "loop_formation_before_peeling");
   HLoopPeeling peeling(graph, stats);
   /* neeraj - to check more - removed below optimizations (added in "ART-Extension: Support iteration peeling") to resolve incompatibility with O-Master
@@ -373,6 +375,7 @@ void RunOptimizationsX86(HGraph* graph,
     &loop_formation,
     &find_ivs,
     &remove_unused_loops,
+    &tle
   };
 
   // Create the array for the post-opts.

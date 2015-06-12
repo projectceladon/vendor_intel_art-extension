@@ -33,7 +33,8 @@ ifeq ($(findstring graph_x86,$(LIBART_COMPILER_SRC_FILES)),)
     $(VENDOR_EXTENSIONS_FOLDER)/passes/find_ivs.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/loop_formation.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/peeling.cc \
-    $(VENDOR_EXTENSIONS_FOLDER)/passes/remove_unused_loops.cc
+    $(VENDOR_EXTENSIONS_FOLDER)/passes/remove_unused_loops.cc \
+    $(VENDOR_EXTENSIONS_FOLDER)/passes/trivial_loop_evaluator.cc
 
   COMPILER_EXTENSION_ENUM_OPERATOR_OUT_HEADER_FILES = \
     base/stringprintf.h \
