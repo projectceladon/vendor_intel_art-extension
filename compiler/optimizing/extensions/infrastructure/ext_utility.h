@@ -152,5 +152,12 @@ class HInstruction;
    */
   void RemoveFromEnvironmentUsers(HInstruction* instruction);
 
+  /**
+   * @brief Get the character equivalent of the type for print or debug purposes.
+   * @param type The type we want to get the equivalent of.
+   * @return The resulting character equivalent.
+   */
+  char GetTypeId(Primitive::Type type);
+
 }  // namespace art
 #endif  // COMPILER_OPTIMIZING_EXTENSIONS_INFRASTRUCTURE_EXT_UTILITIES_H

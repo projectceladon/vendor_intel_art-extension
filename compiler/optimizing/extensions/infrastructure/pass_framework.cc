@@ -33,6 +33,7 @@
 #include "remove_unused_loops.h"
 #include "scoped_thread_state_change.h"
 #include "thread.h"
+#include "trivial_loop_evaluator.h"
 
 namespace art {
 
@@ -61,6 +62,7 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   { "remove_unused_loops", "find_ivs", kPassInsertAfter },
   { "loop_peeling", "select_generator", kPassInsertBefore },
   { "loop_formation_before_peeling", "loop_peeling", kPassInsertBefore },
+  { "trivial_loop_evaluator", "find_ivs", kPassInsertAfter},
 };
 
 /**
@@ -357,6 +359,7 @@ void RunOptimizationsX86(HGraph* graph,
   HLoopFormation loop_formation(graph);
   HFindInductionVariables find_ivs(graph, stats);
   HRemoveUnusedLoops remove_unused_loops(graph, stats);
+  TrivialLoopEvaluator tle(graph, stats);
   HLoopFormation formation_before_peeling(graph, "loop_formation_before_peeling");
   HLoopPeeling peeling(graph, stats);
   HOptimization_X86* opt_array[] = {
@@ -365,6 +368,7 @@ void RunOptimizationsX86(HGraph* graph,
     &remove_unused_loops,
     &peeling,
     &formation_before_peeling,
+    &tle
   };
 
   // Create the array for the post-opts.

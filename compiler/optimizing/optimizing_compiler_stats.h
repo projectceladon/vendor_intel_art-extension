@@ -68,6 +68,7 @@ enum MethodCompilationStat {
   kIntelBIVFound,
   kIntelRemoveUnusedLoops,
   kIntelLoopPeeled,
+  kIntelRemoveTrivialLoops,
   kLastStat
 };
 
@@ -149,6 +150,7 @@ class OptimizingCompilerStats {
       case kIntelBIVFound: return "kIntelBIVFound";
       case kIntelRemoveUnusedLoops: return "kIntelRemoveUnusedLoops";
       case kIntelLoopPeeled: return "kIntelLoopPeeled";
+      case kIntelRemoveTrivialLoops: return "kIntelRemoveTrivialLoops";
 
       case kLastStat:
         LOG(FATAL) << "invalid stat "

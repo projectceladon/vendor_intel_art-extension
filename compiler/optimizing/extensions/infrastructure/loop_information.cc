@@ -593,6 +593,7 @@ HBasicBlock* HLoopInformation_X86::GetExitBlock() const {
   HBasicBlock* exit_block = nullptr;
   for (HBlocksInLoopIterator it_loop(*this); !it_loop.Done(); it_loop.Advance()) {
     HBasicBlock* loop_block = it_loop.Current();
+    DCHECK(loop_block != nullptr);  // Paranoid.
     // Look for a successor that isn't in the loop.
     for (HBasicBlock* successor : loop_block->GetSuccessors()) {
       if (!Contains(*successor)) {
@@ -1155,6 +1156,87 @@ bool HLoopInformation_X86::PeelHelperHead() {
   // We would save on compile time if we did it incrementally, but doing this
   // way allows fewer mistakes to be made.
   graph->RebuildDomination();
+
+  return true;
+}
+
+bool HLoopInformation_X86::RemoveFromGraph() {
+  // The method currently supports innermost-level loops only.
+  if (!IsInner()) {
+    return false;
+  }
+
+  // First, we want to retrieve the loop pre-header and exit blocks.
+  HBasicBlock* pre_header = GetPreHeader();
+  HBasicBlock* exit_block = GetExitBlock();
+
+  // If we can't take either of these blocks, we can't go any further.
+  if (pre_header == nullptr || exit_block == nullptr) {
+    return false;
+  }
+
+  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+
+  // We want to temporarily hold the loop blocks in order to not upset the loop iterator.
+  ArenaVector<HBasicBlock*> blocks_in_loop(graph->GetArena()->Adapter());
+  for (HBlocksInLoopIterator it_loop(*this); !it_loop.Done(); it_loop.Advance()) {
+    HBasicBlock* loop_block = it_loop.Current();
+    DCHECK(loop_block->IsInLoop());  // Paranoid.
+    DCHECK(loop_block->GetLoopInformation() == this);  // Paranoid.
+    blocks_in_loop.push_back(loop_block);
+  }
+
+  // Change the successor to the preheader to the exit block.
+  DCHECK_EQ(pre_header->GetSuccessors().size(), 1u);
+
+  // Update the pre_header successor with the exit block.
+  HBasicBlock* loop_header = GetHeader();
+  DCHECK_EQ(loop_header, pre_header->GetSuccessors()[0]);
+  pre_header->ReplaceSuccessor(loop_header, exit_block);
+  pre_header->ReplaceDominatedBlock(loop_header, exit_block);
+
+  // Effective deletion of the loop blocks.
+  for (HBasicBlock* loop_block : blocks_in_loop) {
+    graph->DeleteBlock(loop_block);
+  }
+
+  // We want to remove the innermost loop from the parent (if any).
+  HLoopInformation_X86* parent = GetParent();
+  HLoopInformation_X86* prev_sibling = GetPrevSibling();
+  HLoopInformation_X86* next_sibling = GetNextSibling();
+
+  // Update the next sibling link.
+  if (next_sibling != nullptr) {
+    next_sibling->sibling_previous_ = prev_sibling;
+  }
+
+  // Update the previous sibling link.
+  if (prev_sibling != nullptr) {
+    prev_sibling->sibling_next_ = next_sibling;
+  }
+
+  // Update the parent link if this loop was the first of the parent's inner loops.
+  if (parent != nullptr && parent->inner_ == this) {
+    parent->inner_ = next_sibling;
+  }
+
+  // Update the graph's loop information if necessary, by either the next sibling or the parent.
+  if (graph->GetLoopInformation() == this) {
+    if (next_sibling == nullptr) {
+      graph->SetLoopInformation(parent);
+    } else {
+      graph->SetLoopInformation(next_sibling);
+    }
+  }
+
+  HLoopInformation_X86* tmp = this;
+  // Then for each nested level, we also want to remove all of the old loop's blocks.
+  while (tmp != nullptr) {
+    for (HBasicBlock* loop_block : blocks_in_loop) {
+      tmp->Remove(loop_block);
+    }
+    tmp = tmp->GetParent();
+  }
 
   return true;
 }

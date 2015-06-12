@@ -43,13 +43,13 @@ class HLoopInformation_X86 : public HLoopInformation {
   HLoopInformation_X86(HBasicBlock* block, HGraph* graph) :
       HLoopInformation(block, graph),
       depth_(0), count_up_(false),
-      graph_(graph),
       outer_(nullptr), sibling_previous_(nullptr),
       sibling_next_(nullptr), inner_(nullptr),
       test_suspend_(nullptr), suspend_(nullptr),
       iv_list_(graph->GetArena()->Adapter(kArenaAllocMisc)),
       inter_iteration_variables_(graph->GetArena()->Adapter(kArenaAllocMisc)),
-      peeled_blocks_(graph->GetArena()->Adapter(kArenaAllocMisc)) {
+      peeled_blocks_(graph->GetArena()->Adapter(kArenaAllocMisc)),
+      graph_(graph) {
 #ifndef NDEBUG
         down_cast_checker_ = LOOPINFO_MAGIC;
 #endif
@@ -414,6 +414,18 @@ class HLoopInformation_X86 : public HLoopInformation {
     return peeled_blocks_;
   }
 
+  /**
+   * @brief Removes the loop from the graph it belongs to.
+   * @details This method takes care of handling graph and loop internal structures as well, especially:
+   * - Delete the basic blocks inside of the loop.
+   * If the loop is nested:
+   * - Remove the inner loop from its first parent.
+   * - Remove the loop's BBs from every outer loop level.
+   * Currently, only innermost loops are supported by this method.
+   * @return Returns true if the loop has been successfully removed from the graph, or false otherwise.
+   */
+  bool RemoveFromGraph();
+
  protected:
   /**
    * @brief Find the constant entry SSA associated to the Phi instruction.
@@ -437,7 +449,6 @@ class HLoopInformation_X86 : public HLoopInformation {
   int depth_;
   bool count_up_;
 
-  HGraph* graph_;
   HLoopInformation_X86* outer_;
   HLoopInformation_X86* sibling_previous_;
   HLoopInformation_X86* sibling_next_;
@@ -468,6 +479,9 @@ class HLoopInformation_X86 : public HLoopInformation {
    * @details This is guaranteed to succeed if IsPeelable returns true.
    */
   bool PeelHelperHead();
+
+  /** @brief The HGraph the loop belongs to. */
+  HGraph* graph_;
 };
 
 #endif  // ART_OPT_INFRASTRUCTURE_LOOP_INFORMATION_INSIDE_H_
