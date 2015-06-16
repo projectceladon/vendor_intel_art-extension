@@ -31,6 +31,7 @@
 #include "optimization.h"
 #include "pass_framework.h"
 #include "peeling.h"
+#include "remove_suspend.h"
 #include "remove_unused_loops.h"
 //#include "scoped_thread_state_change.h"
 #include "scoped_thread_state_change-inl.h"	//neeraj -- added to resolve build error
@@ -66,7 +67,8 @@ struct HCustomPassPlacement {
 static HCustomPassPlacement kPassCustomPlacement[] = {
   { "loop_formation", "instruction_simplifier_after_bce", kPassInsertAfter },
   { "find_ivs", "loop_formation", kPassInsertAfter },
-  { "remove_unused_loops", "find_ivs", kPassInsertAfter },
+  { "remove_loop_suspend_checks", "find_ivs", kPassInsertAfter},
+  { "remove_unused_loops", "remove_loop_suspend_checks", kPassInsertAfter },
   { "trivial_loop_evaluator", "find_ivs", kPassInsertAfter},
 };
 
@@ -363,6 +365,7 @@ void RunOptimizationsX86(HGraph* graph,
   // Create the array for the opts.
   HLoopFormation loop_formation(graph);
   HFindInductionVariables find_ivs(graph, stats);
+  HRemoveLoopSuspendChecks remove_suspends(graph, stats);
   HRemoveUnusedLoops remove_unused_loops(graph, stats);
   TrivialLoopEvaluator tle(graph, stats);
   HLoopFormation formation_before_peeling(graph, "loop_formation_before_peeling");
@@ -374,6 +377,7 @@ void RunOptimizationsX86(HGraph* graph,
   HOptimization_X86* opt_array[] = {
     &loop_formation,
     &find_ivs,
+    &remove_suspends,
     &remove_unused_loops,
     &tle
   };

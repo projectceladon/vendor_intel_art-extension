@@ -694,7 +694,8 @@ static void CheckLoopEntriesCanBeUsedForOsr(const HGraph& graph,
   }
   ArenaVector<HSuspendCheck*> loop_headers(graph.GetArena()->Adapter(kArenaAllocMisc));
   for (HBasicBlock* block : graph.GetReversePostOrder()) {
-    if (block->IsLoopHeader()) {
+    //neeraj - resolve dex2oat crash by checking "SuspendCheck" in "LoopInformation"
+    if (block->IsLoopHeader() && block->GetLoopInformation()->HasSuspendCheck()) {
       HSuspendCheck* suspend_check = block->GetLoopInformation()->GetSuspendCheck();
       if (!suspend_check->GetEnvironment()->IsFromInlinedInvoke()) {
         loop_headers.push_back(suspend_check);
