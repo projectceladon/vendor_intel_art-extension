@@ -624,8 +624,51 @@ size_t HLoopInformation_X86::GetLoopExitCount() const {
       }
     }
   }
-
   return count;
+}
+
+bool HLoopInformation_X86::CanSideExit(bool ignore_suspends) const {
+  for (HBlocksInLoopIterator bb_it(*this); !bb_it.Done(); bb_it.Advance()) {
+    HBasicBlock* bb = bb_it.Current();
+    for (HInstructionIterator insn_it(bb->GetInstructions()); !insn_it.Done(); insn_it.Advance()) {
+      HInstruction* insn = insn_it.Current();
+      if (insn->HasEnvironment()) {
+        if (ignore_suspends && (insn->IsSuspendCheck() || insn->IsSuspend())) {
+          continue;
+        }
+        return true;
+      }
+    }
+  }
+
+  // Nothing has an environment.
+  return false;
+}
+
+bool HLoopInformation_X86::GetLoopCost(uint64_t* cost) const {
+  DCHECK(cost != nullptr);
+  uint64_t local_cost = 0;
+  for (HBlocksInLoopIterator bb_it(*this); !bb_it.Done(); bb_it.Advance()) {
+    HBasicBlock* bb = bb_it.Current();
+    for (HInstructionIterator insn_it(bb->GetInstructions()); !insn_it.Done(); insn_it.Advance()) {
+      HInstruction* insn = insn_it.Current();
+      switch (insn->GetKind()) {
+        case HInstruction::kDiv:
+        case HInstruction::kRem:
+          local_cost += 50;
+          break;
+        case HInstruction::kMul:
+          local_cost += 5;
+          break;
+        default:
+          local_cost += 1;
+          break;
+      }
+    }
+  }
+
+  *cost = local_cost;
+  return true;
 }
 
 void HLoopInformation_X86::InsertInstructionInSuspendBlock(HInstruction* instruction) {

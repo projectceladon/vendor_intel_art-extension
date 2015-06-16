@@ -29,12 +29,8 @@
 
 namespace art {
 
-static bool debug_pass = false;
-
 void HRemoveUnusedLoops::Run() {
-  if (debug_pass) {
-    LOG(INFO) << "HRemoveUnusedLoops: start";
-  }
+  PRINT_PASS_MESSAGE(this, "start");
 
   HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
   HLoopInformation_X86 *graph_loop_info = graph->GetLoopInformation();
@@ -45,19 +41,15 @@ void HRemoveUnusedLoops::Run() {
     HLoopInformation_X86* loop_info = it.Current();
     HBasicBlock* pre_header = loop_info->GetPreHeader();
 
-    if (debug_pass) {
-      LOG(INFO) << "Visit " << loop_info->GetHeader()->GetBlockId()
-                << ", preheader = " << pre_header->GetBlockId();
-    }
+    PRINT_PASS_OSTREAM_MESSAGE(this, "Visit " << loop_info->GetHeader()->GetBlockId()
+                                     << ", preheader = " << pre_header->GetBlockId());
 
     // The exit block from the loop.
     HBasicBlock* exit_block = loop_info->GetExitBlock();
 
     if (exit_block == nullptr) {
       // We need exactly 1 exit block from the loop.
-      if (debug_pass) {
-        LOG(INFO) << "Too many or too few exit blocks";
-      }
+      PRINT_PASS_MESSAGE(this, "Too many or too few exit blocks");
       continue;
     }
 
@@ -85,9 +77,7 @@ void HRemoveUnusedLoops::Run() {
       }
     }
 
-    if (debug_pass) {
-      LOG(INFO) << "Loop end: is_empty = " << (loop_is_empty ? "true" : "false");
-    }
+    PRINT_PASS_OSTREAM_MESSAGE(this, "Loop end: is_empty = " << (loop_is_empty ? "true" : "false"));
 
     if (loop_is_empty) {
       RemoveLoop(loop_info, pre_header, exit_block);
@@ -95,10 +85,7 @@ void HRemoveUnusedLoops::Run() {
       changed = true;
     }
   }
-  if (debug_pass) {
-    LOG(INFO) << "HRemoveUnusedLoops: end";
-  }
-
+  PRINT_PASS_MESSAGE(this, "end");
   if (changed) {
     // We have to rebuild our loops properly, now that we have removed loops.
     HLoopFormation form_loops(graph_);
@@ -115,13 +102,11 @@ bool HRemoveUnusedLoops::CheckInstructionsInBlock(HLoopInformation_X86* loop_inf
        !inst_it.Done();
        inst_it.Advance()) {
     HInstruction* instruction = inst_it.Current();
-    if (debug_pass) {
-      LOG(INFO) << "Look at: " << instruction
-                << (instruction->HasSideEffects() ? " <has side effects>" : "")
-                << (!instruction->CanBeMoved() ? " <can't be moved>" : "")
-                << (instruction->CanThrow() ? " <can throw>" : "")
-                << (instruction->IsControlFlow() ? " <is control flow>" : "");
-    }
+    PRINT_PASS_OSTREAM_MESSAGE(this, "Look at: " << instruction
+                    << (instruction->HasSideEffects() ? " <has side effects>" : "")
+                    << (!instruction->CanBeMoved() ? " <can't be moved>" : "")
+                    << (instruction->CanThrow() ? " <can throw>" : "")
+                    << (instruction->IsControlFlow() ? " <is control flow>" : ""));
 
     // Special case SuspendCheck.  We don't care about it.
     if (instruction->IsSuspendCheck()) {
@@ -137,9 +122,7 @@ bool HRemoveUnusedLoops::CheckInstructionsInBlock(HLoopInformation_X86* loop_inf
     if (instruction->HasSideEffects() || instruction->CanThrow() ||
         !instruction->CanBeMoved()) {
       // Not an empty loop.
-      if (debug_pass) {
-        LOG(INFO) << "need this instruction";
-      }
+      PRINT_PASS_MESSAGE(this, "need this instruction");
       return false;
     }
 
@@ -153,14 +136,10 @@ bool HRemoveUnusedLoops::CheckInstructionsInBlock(HLoopInformation_X86* loop_inf
       HInstruction* insn = it2.Current()->GetUser();
       HBasicBlock* insn_block = insn->GetBlock();
       HLoopInformation* li = insn_block->GetLoopInformation();
-      if (debug_pass) {
-        LOG(INFO) << "Result is used by: " << insn;
-      }
+      PRINT_PASS_OSTREAM_MESSAGE(this, "Result is used by: " << insn);
       if (li != loop_info) {
         // We are being used in a different loop.
-        if (debug_pass) {
-          LOG(INFO) << "Used in different loop";
-        }
+        PRINT_PASS_MESSAGE(this, "Used in different loop");
         return false;
       }
     }
@@ -178,22 +157,16 @@ bool HRemoveUnusedLoops::CheckPhisInBlock(HLoopInformation_X86* loop_info,
        !inst_it.Done();
        inst_it.Advance()) {
     HInstruction* instruction = inst_it.Current();
-    if (debug_pass) {
-      LOG(INFO) << "Look at: " << instruction;
-    }
+    PRINT_PASS_OSTREAM_MESSAGE(this, "Look at: " << instruction);
 
     for (HUseIterator<HInstruction*> it2(instruction->GetUses()); !it2.Done(); it2.Advance()) {
       HInstruction* insn = it2.Current()->GetUser();
       HBasicBlock* insn_block = insn->GetBlock();
       HLoopInformation* li = insn_block->GetLoopInformation();
-      if (debug_pass) {
-        LOG(INFO) << "Result is used by: " << insn;
-      }
+      PRINT_PASS_OSTREAM_MESSAGE(this, "Result is used by: " << insn);
       if (li != loop_info) {
         // We are being used in a different loop.
-        if (debug_pass) {
-          LOG(INFO) << "Used in different loop";
-        }
+        PRINT_PASS_MESSAGE(this, "Used in different loop");
         return false;
       }
     }
@@ -208,10 +181,9 @@ void HRemoveUnusedLoops::RemoveLoop(HLoopInformation_X86* loop_info,
                                    HBasicBlock* exit_block) {
   HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
   HBasicBlock* loop_header = loop_info->GetHeader();
-  if (debug_pass) {
-    LOG(INFO) << "Remove loop blocks: " << loop_header->GetBlockId()
-              << ", preheader = " << pre_header->GetBlockId();
-  }
+  PRINT_PASS_OSTREAM_MESSAGE(this, "Remove loop blocks: "
+                                   << loop_header->GetBlockId()
+                                   << ", preheader = " << pre_header->GetBlockId());
 
   // TODO: Use kind of arena specific for optimization.
   ArenaVector<HBasicBlock*> blocks_in_loop(
@@ -225,17 +197,13 @@ void HRemoveUnusedLoops::RemoveLoop(HLoopInformation_X86* loop_info,
 
   // Change the successor to the preheader to the exit block.
   DCHECK_EQ(pre_header->GetSuccessors().size(), 1u);
-  if (debug_pass) {
-    LOG(INFO) << "Set preheader to successor " << exit_block->GetBlockId();
-  }
+  PRINT_PASS_OSTREAM_MESSAGE(this, "Set preheader to successor " << exit_block->GetBlockId());
   pre_header->ReplaceSuccessor(loop_header, exit_block);
   pre_header->ReplaceDominatedBlock(loop_header, exit_block);
   exit_block->SetDominator(pre_header);
 
   for (HBasicBlock* loop_block : blocks_in_loop) {
-    if (debug_pass) {
-        LOG(INFO) << "Remove block " << loop_block->GetBlockId();
-    }
+    PRINT_PASS_OSTREAM_MESSAGE(this, "Remove block " << loop_block->GetBlockId());
     graph->DeleteBlock(loop_block);
   }
 
