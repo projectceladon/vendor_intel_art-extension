@@ -150,6 +150,123 @@ class HX86BoundsCheckMemory : public HExpression<2> {
   DISALLOW_COPY_AND_ASSIGN(HX86BoundsCheckMemory);
 };
 
+class HInstructionRHSMemory : public HTemplateInstruction<3> {
+ public:
+  size_t InputCount() const OVERRIDE { return input_count_; }
+
+  DECLARE_INSTRUCTION(InstructionRHSMemory);
+
+  size_t GetOffset() const { return offset_; }
+
+  Primitive::Type GetType() const OVERRIDE { return type_; }
+
+  bool CanDoImplicitNullCheckOn(HInstruction* obj) const OVERRIDE {
+    // We can do an implicit check if we don't have an index and the offset is small.
+    return obj == InputAt(1) && from_static_ == false &&
+           offset_ < kPageSize && input_count_ == 2;
+  }
+
+  void SetFromStatic() { from_static_ = true; }
+
+  virtual size_t GetBaseInputIndex() const { return 1; }
+
+  bool InstructionDataEquals(HInstruction* other) const OVERRIDE {
+    HInstructionRHSMemory* other_rhs = other->AsInstructionRHSMemory();
+    return GetOffset() == other_rhs->GetOffset()
+           && from_static_ == other_rhs->from_static_;
+  }
+
+  size_t ComputeHashCode() const OVERRIDE {
+    return (HInstruction::ComputeHashCode() << 7) | GetOffset();
+  }
+
+ protected:
+  HInstructionRHSMemory(Primitive::Type type,
+                        HInstruction* lhs,
+                        HInstruction* base,
+                        HInstruction* index,
+                        size_t offset,
+                        uint32_t dex_pc = kNoDexPc)
+    : HTemplateInstruction<3>(SideEffects::FieldReadOfType(type, false), dex_pc),
+      type_(type),
+      from_static_(false),
+      offset_(offset),
+      input_count_(index == nullptr ? 2 : 3) {
+      if (index != nullptr) {
+        SetRawInputAt(2, index);
+      }
+      SetRawInputAt(0, lhs);
+      SetRawInputAt(1, base);
+    }
+
+ private:
+  const Primitive::Type type_;
+  bool from_static_;
+  const size_t offset_;
+  uint32_t input_count_;
+
+  DISALLOW_COPY_AND_ASSIGN(HInstructionRHSMemory);
+};
+
+class HAddRHSMemory : public HInstructionRHSMemory {
+ public:
+  HAddRHSMemory(Primitive::Type type,
+                HInstruction* lhs,
+                HInstruction* base,
+                HInstruction* index,
+                size_t offset)
+      : HInstructionRHSMemory(type, lhs, base, index, offset) {}
+
+  DECLARE_INSTRUCTION(AddRHSMemory);
+
+ private:
+  DISALLOW_COPY_AND_ASSIGN(HAddRHSMemory);
+};
+
+class HSubRHSMemory : public HInstructionRHSMemory {
+ public:
+  HSubRHSMemory(Primitive::Type type,
+                HInstruction* lhs,
+                HInstruction* base,
+                HInstruction* index,
+                size_t offset)
+      : HInstructionRHSMemory(type, lhs, base, index, offset) {}
+
+  DECLARE_INSTRUCTION(SubRHSMemory);
+
+ private:
+  DISALLOW_COPY_AND_ASSIGN(HSubRHSMemory);
+};
+
+class HMulRHSMemory : public HInstructionRHSMemory {
+ public:
+  HMulRHSMemory(Primitive::Type type,
+                HInstruction* lhs,
+                HInstruction* base,
+                HInstruction* index,
+                size_t offset)
+      : HInstructionRHSMemory(type, lhs, base, index, offset) {}
+
+  DECLARE_INSTRUCTION(MulRHSMemory);
+
+ private:
+  DISALLOW_COPY_AND_ASSIGN(HMulRHSMemory);
+};
+
+class HDivRHSMemory : public HInstructionRHSMemory {
+ public:
+  HDivRHSMemory(Primitive::Type type,
+                HInstruction* lhs,
+                HInstruction* base,
+                HInstruction* index,
+                size_t offset)
+      : HInstructionRHSMemory(type, lhs, base, index, offset) {}
+
+  DECLARE_INSTRUCTION(DivRHSMemory);
+
+ private:
+  DISALLOW_COPY_AND_ASSIGN(HDivRHSMemory);
+};
 
 }  // namespace art
 

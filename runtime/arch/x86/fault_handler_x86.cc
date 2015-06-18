@@ -156,6 +156,11 @@ static uint32_t GetInstructionSize(const uint8_t* pc) {
     switch (opcode) {
       case 0x10:        // vmovsd/ss
       case 0x11:        // vmovsd/ss
+      case 0x58:        // addss/sd
+      case 0x59:        // mulss/sd
+      case 0x5c:        // subss/sd
+      case 0x5e:        // divss/sd
+      case 0xaf:        // imul
       case 0xb6:        // movzx
       case 0xb7:
       case 0xbe:        // movsx
@@ -169,6 +174,8 @@ static uint32_t GetInstructionSize(const uint8_t* pc) {
     }
   } else {
     switch (opcode) {
+      case 0x03:        // add with memory.
+      case 0x2b:        // sub with memory.
       case 0x88:        // mov byte
       case 0x89:        // mov
       case 0x8b:

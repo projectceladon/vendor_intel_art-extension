@@ -7340,6 +7340,294 @@ void InstructionCodeGeneratorX86::VisitX86LoadFromConstantTable(HX86LoadFromCons
   }
 }
 
+static void FillRHSMemoryLocation(LocationSummary* locations, HInstructionRHSMemory* insn) {
+  switch (insn->GetType()) {
+    case Primitive::kPrimInt:
+      // Allow constants for the LHS to reduce register pressure.
+      if (insn->InputAt(0)->IsIntConstant()) {
+        locations->SetInAt(0, Location::RegisterOrConstant(insn->InputAt(0)));
+        locations->SetOut(Location::RequiresRegister(), Location::kOutputOverlap);
+      } else {
+        locations->SetInAt(0, Location::RequiresRegister());
+        locations->SetOut(Location::SameAsFirstInput());
+      }
+      locations->SetInAt(1, Location::RequiresRegister());
+      if (insn->InputCount() == 3) {
+        // Index.
+        locations->SetInAt(2, Location::RequiresRegister());
+      }
+      break;
+
+    case Primitive::kPrimDouble:
+    case Primitive::kPrimFloat:
+      locations->SetInAt(0, Location::RequiresFpuRegister());
+      locations->SetInAt(1, Location::RequiresRegister());
+      if (insn->InputCount() == 3) {
+        // Index.
+        locations->SetInAt(2, Location::RequiresRegister());
+      }
+      locations->SetOut(Location::SameAsFirstInput());
+      break;
+
+    default:
+      LOG(FATAL) << "Unexpected insn type " << insn->GetType();
+  }
+}
+
+void LocationsBuilderX86::VisitAddRHSMemory(HAddRHSMemory* add) {
+  LocationSummary* locations =
+      new (GetGraph()->GetArena()) LocationSummary(add, LocationSummary::kNoCall);
+  FillRHSMemoryLocation(locations, add);
+}
+
+void InstructionCodeGeneratorX86::VisitAddRHSMemory(HAddRHSMemory* add) {
+  LocationSummary* locations = add->GetLocations();
+  Location out = locations->Out();
+  Location first = locations->InAt(0);
+  Location base = locations->InAt(1);
+  Location index;
+  if (add->InputCount() == 3) {
+    index = locations->InAt(2);
+  }
+  size_t offset = add->GetOffset();
+
+  if (add->InputAt(0)->IsIntConstant()) {
+    // We have to ensure that Out is set to the LHS constant value.
+    __ movl(out.AsRegister<Register>(), Immediate(add->InputAt(0)->AsIntConstant()->GetValue()));
+  } else {
+    DCHECK(first.Equals(out));
+  }
+
+  switch (add->GetType()) {
+    case Primitive::kPrimInt:
+      if (index.IsValid()) {
+        __ addl(out.AsRegister<Register>(),
+                Address(base.AsRegister<Register>(),
+                        index.AsRegister<Register>(),
+                        TIMES_4,
+                        offset));
+      } else {
+        __ addl(out.AsRegister<Register>(), Address(base.AsRegister<Register>(), offset));
+      }
+      break;
+
+    case Primitive::kPrimFloat:
+      if (index.IsValid()) {
+        __ addss(out.AsFpuRegister<XmmRegister>(),
+                 Address(base.AsRegister<Register>(),
+                         index.AsRegister<Register>(),
+                         TIMES_4,
+                         offset));
+      } else {
+        __ addss(out.AsFpuRegister<XmmRegister>(), Address(base.AsRegister<Register>(), offset));
+      }
+      break;
+
+    case Primitive::kPrimDouble:
+      if (index.IsValid()) {
+        __ addsd(out.AsFpuRegister<XmmRegister>(),
+                 Address(base.AsRegister<Register>(),
+                         index.AsRegister<Register>(),
+                         TIMES_8,
+                         offset));
+      } else {
+        __ addsd(out.AsFpuRegister<XmmRegister>(), Address(base.AsRegister<Register>(), offset));
+      }
+      break;
+
+    default:
+      LOG(FATAL) << "Unexpected add type " << add->GetType();
+      break;
+  }
+  codegen_->MaybeRecordImplicitNullCheck(add);
+}
+
+void LocationsBuilderX86::VisitSubRHSMemory(HSubRHSMemory* sub) {
+  LocationSummary* locations =
+      new (GetGraph()->GetArena()) LocationSummary(sub, LocationSummary::kNoCall);
+  FillRHSMemoryLocation(locations, sub);
+}
+
+void InstructionCodeGeneratorX86::VisitSubRHSMemory(HSubRHSMemory* sub) {
+  LocationSummary* locations = sub->GetLocations();
+  Location out = locations->Out();
+  Location first = locations->InAt(0);
+  Location base = locations->InAt(1);
+  Location index;
+  if (sub->InputCount() == 3) {
+    index = locations->InAt(2);
+  }
+  size_t offset = sub->GetOffset();
+
+  if (sub->InputAt(0)->IsIntConstant()) {
+    // We have to ensure that Out is set to the LHS constant value.
+    __ movl(out.AsRegister<Register>(), Immediate(sub->InputAt(0)->AsIntConstant()->GetValue()));
+  } else {
+    DCHECK(first.Equals(out));
+  }
+
+  switch (sub->GetType()) {
+    case Primitive::kPrimInt:
+      if (index.IsValid()) {
+        __ subl(out.AsRegister<Register>(),
+                Address(base.AsRegister<Register>(),
+                        index.AsRegister<Register>(),
+                        TIMES_4,
+                        offset));
+      } else {
+        __ subl(out.AsRegister<Register>(), Address(base.AsRegister<Register>(), offset));
+      }
+      break;
+
+    case Primitive::kPrimFloat:
+      if (index.IsValid()) {
+        __ subss(out.AsFpuRegister<XmmRegister>(),
+                 Address(base.AsRegister<Register>(),
+                         index.AsRegister<Register>(),
+                         TIMES_4,
+                         offset));
+      } else {
+        __ subss(out.AsFpuRegister<XmmRegister>(), Address(base.AsRegister<Register>(), offset));
+      }
+      break;
+
+    case Primitive::kPrimDouble:
+      if (index.IsValid()) {
+        __ subsd(out.AsFpuRegister<XmmRegister>(),
+                 Address(base.AsRegister<Register>(),
+                         index.AsRegister<Register>(),
+                         TIMES_8,
+                         offset));
+      } else {
+        __ subsd(out.AsFpuRegister<XmmRegister>(), Address(base.AsRegister<Register>(), offset));
+      }
+      break;
+
+    default:
+      LOG(FATAL) << "Unexpected sub type " << sub->GetType();
+      break;
+  }
+  codegen_->MaybeRecordImplicitNullCheck(sub);
+}
+
+void LocationsBuilderX86::VisitMulRHSMemory(HMulRHSMemory* mul) {
+  LocationSummary* locations =
+      new (GetGraph()->GetArena()) LocationSummary(mul, LocationSummary::kNoCall);
+  FillRHSMemoryLocation(locations, mul);
+}
+
+void InstructionCodeGeneratorX86::VisitMulRHSMemory(HMulRHSMemory* mul) {
+  LocationSummary* locations = mul->GetLocations();
+  Location out = locations->Out();
+  Location first = locations->InAt(0);
+  Location base = locations->InAt(1);
+  Location index;
+  if (mul->InputCount() == 3) {
+    index = locations->InAt(2);
+  }
+  size_t offset = mul->GetOffset();
+
+  if (mul->InputAt(0)->IsIntConstant()) {
+    // We have to ensure that Out is set to the LHS constant value.
+    __ movl(out.AsRegister<Register>(), Immediate(mul->InputAt(0)->AsIntConstant()->GetValue()));
+  } else {
+    DCHECK(first.Equals(out));
+  }
+
+  switch (mul->GetType()) {
+    case Primitive::kPrimInt:
+      if (index.IsValid()) {
+        __ imull(out.AsRegister<Register>(),
+                 Address(base.AsRegister<Register>(),
+                         index.AsRegister<Register>(),
+                         TIMES_4,
+                         offset));
+      } else {
+        __ imull(out.AsRegister<Register>(), Address(base.AsRegister<Register>(), offset));
+      }
+      break;
+
+    case Primitive::kPrimFloat:
+      if (index.IsValid()) {
+        __ mulss(out.AsFpuRegister<XmmRegister>(),
+                 Address(base.AsRegister<Register>(),
+                         index.AsRegister<Register>(),
+                         TIMES_4,
+                         offset));
+      } else {
+        __ mulss(out.AsFpuRegister<XmmRegister>(), Address(base.AsRegister<Register>(), offset));
+      }
+      break;
+
+    case Primitive::kPrimDouble:
+      if (index.IsValid()) {
+        __ mulsd(out.AsFpuRegister<XmmRegister>(),
+                 Address(base.AsRegister<Register>(),
+                         index.AsRegister<Register>(),
+                         TIMES_8,
+                         offset));
+      } else {
+        __ mulsd(out.AsFpuRegister<XmmRegister>(), Address(base.AsRegister<Register>(), offset));
+      }
+      break;
+
+    default:
+      LOG(FATAL) << "Unexpected mul type " << mul->GetType();
+      break;
+  }
+  codegen_->MaybeRecordImplicitNullCheck(mul);
+}
+
+void LocationsBuilderX86::VisitDivRHSMemory(HDivRHSMemory* div) {
+  LocationSummary* locations =
+      new (GetGraph()->GetArena()) LocationSummary(div, LocationSummary::kNoCall);
+  FillRHSMemoryLocation(locations, div);
+}
+
+void InstructionCodeGeneratorX86::VisitDivRHSMemory(HDivRHSMemory* div) {
+  LocationSummary* locations = div->GetLocations();
+  Location out = locations->Out();
+  Location first = locations->InAt(0);
+  DCHECK(first.Equals(out));
+  Location base = locations->InAt(1);
+  Location index;
+  if (div->InputCount() == 3) {
+    index = locations->InAt(2);
+  }
+  size_t offset = div->GetOffset();
+
+  switch (div->GetType()) {
+    case Primitive::kPrimFloat:
+      if (index.IsValid()) {
+        __ divss(out.AsFpuRegister<XmmRegister>(),
+                 Address(base.AsRegister<Register>(),
+                         index.AsRegister<Register>(),
+                         TIMES_4,
+                         offset));
+      } else {
+        __ divss(out.AsFpuRegister<XmmRegister>(), Address(base.AsRegister<Register>(), offset));
+      }
+      break;
+
+    case Primitive::kPrimDouble:
+      if (index.IsValid()) {
+        __ divsd(out.AsFpuRegister<XmmRegister>(),
+                 Address(base.AsRegister<Register>(),
+                         index.AsRegister<Register>(),
+                         TIMES_8,
+                         offset));
+      } else {
+        __ divsd(out.AsFpuRegister<XmmRegister>(), Address(base.AsRegister<Register>(), offset));
+      }
+      break;
+
+    default:
+      LOG(FATAL) << "Unexpected div type " << div->GetType();
+      break;
+  }
+  codegen_->MaybeRecordImplicitNullCheck(div);
+}
+
 /**
  * Class to handle late fixup of offsets into constant area.
  */

@@ -6766,6 +6766,364 @@ void CodeGeneratorX86_64::Store64BitValueToStack(Location dest, int64_t value) {
   }
 }
 
+static void FillRHSMemoryLocation(LocationSummary* locations, HInstructionRHSMemory* insn) {
+  switch (insn->GetType()) {
+    case Primitive::kPrimInt:
+    case Primitive::kPrimLong:
+      // Allow constants for the LHS to reduce register pressure.
+      if (insn->InputAt(0)->IsConstant()) {
+        locations->SetInAt(0, Location::RegisterOrConstant(insn->InputAt(0)));
+        locations->SetOut(Location::RequiresRegister(), Location::kOutputOverlap);
+      } else {
+        locations->SetInAt(0, Location::RequiresRegister());
+        locations->SetOut(Location::SameAsFirstInput());
+      }
+      locations->SetInAt(1, Location::RequiresRegister());
+      if (insn->InputCount() == 3) {
+        // Index.
+        locations->SetInAt(2, Location::RequiresRegister());
+      }
+      break;
+
+    case Primitive::kPrimDouble:
+    case Primitive::kPrimFloat:
+      locations->SetInAt(0, Location::RequiresFpuRegister());
+      locations->SetInAt(1, Location::RequiresRegister());
+      if (insn->InputCount() == 3) {
+        // Index.
+        locations->SetInAt(2, Location::RequiresRegister());
+      }
+      locations->SetOut(Location::SameAsFirstInput());
+      break;
+
+    default:
+      LOG(FATAL) << "Unexpected insn type " << insn->GetType();
+  }
+}
+
+void LocationsBuilderX86_64::VisitAddRHSMemory(HAddRHSMemory* add) {
+  LocationSummary* locations =
+      new (GetGraph()->GetArena()) LocationSummary(add, LocationSummary::kNoCall);
+  FillRHSMemoryLocation(locations, add);
+}
+
+void InstructionCodeGeneratorX86_64::VisitAddRHSMemory(HAddRHSMemory* add) {
+  LocationSummary* locations = add->GetLocations();
+  Location out = locations->Out();
+  Location first = locations->InAt(0);
+  Location base = locations->InAt(1);
+  Location index;
+  if (add->InputCount() == 3) {
+    index = locations->InAt(2);
+  }
+  size_t offset = add->GetOffset();
+
+  switch (add->GetType()) {
+    case Primitive::kPrimInt:
+      if (add->InputAt(0)->IsConstant()) {
+        // We have to ensure that Out is set to the LHS constant value.
+        codegen_->Load64BitValue(out.AsRegister<CpuRegister>(),
+                                 codegen_->GetInt64ValueOf(add->InputAt(0)->AsConstant()));
+      } else {
+        DCHECK(first.Equals(out));
+      }
+
+      if (index.IsValid()) {
+        __ addl(out.AsRegister<CpuRegister>(),
+                Address(base.AsRegister<CpuRegister>(),
+                        index.AsRegister<CpuRegister>(),
+                        TIMES_4,
+                        offset));
+      } else {
+        __ addl(out.AsRegister<CpuRegister>(), Address(base.AsRegister<CpuRegister>(), offset));
+      }
+      break;
+
+    case Primitive::kPrimLong:
+      if (add->InputAt(0)->IsConstant()) {
+        // We have to ensure that Out is set to the LHS constant value.
+        codegen_->Load64BitValue(out.AsRegister<CpuRegister>(),
+                                 codegen_->GetInt64ValueOf(add->InputAt(0)->AsConstant()));
+      } else {
+        DCHECK(first.Equals(out));
+      }
+
+      if (index.IsValid()) {
+        __ addq(out.AsRegister<CpuRegister>(),
+                Address(base.AsRegister<CpuRegister>(),
+                        index.AsRegister<CpuRegister>(),
+                        TIMES_8,
+                        offset));
+      } else {
+        __ addq(out.AsRegister<CpuRegister>(), Address(base.AsRegister<CpuRegister>(), offset));
+      }
+      break;
+
+    case Primitive::kPrimFloat:
+      DCHECK(first.Equals(out));
+      if (index.IsValid()) {
+        __ addss(out.AsFpuRegister<XmmRegister>(),
+                 Address(base.AsRegister<CpuRegister>(),
+                         index.AsRegister<CpuRegister>(),
+                         TIMES_4,
+                         offset));
+      } else {
+        __ addss(out.AsFpuRegister<XmmRegister>(), Address(base.AsRegister<CpuRegister>(), offset));
+      }
+      break;
+
+    case Primitive::kPrimDouble:
+      DCHECK(first.Equals(out));
+      if (index.IsValid()) {
+        __ addsd(first.AsFpuRegister<XmmRegister>(),
+                 Address(base.AsRegister<CpuRegister>(),
+                         index.AsRegister<CpuRegister>(),
+                         TIMES_8,
+                         offset));
+      } else {
+        __ addsd(out.AsFpuRegister<XmmRegister>(), Address(base.AsRegister<CpuRegister>(), offset));
+      }
+      break;
+
+    default:
+      LOG(FATAL) << "Unexpected add type " << add->GetType();
+      break;
+  }
+  codegen_->MaybeRecordImplicitNullCheck(add);
+}
+
+void LocationsBuilderX86_64::VisitSubRHSMemory(HSubRHSMemory* sub) {
+  LocationSummary* locations =
+      new (GetGraph()->GetArena()) LocationSummary(sub, LocationSummary::kNoCall);
+  FillRHSMemoryLocation(locations, sub);
+}
+
+void InstructionCodeGeneratorX86_64::VisitSubRHSMemory(HSubRHSMemory* sub) {
+  LocationSummary* locations = sub->GetLocations();
+  Location out = locations->Out();
+  Location first = locations->InAt(0);
+  Location base = locations->InAt(1);
+  Location index;
+  if (sub->InputCount() == 3) {
+    index = locations->InAt(2);
+  }
+  size_t offset = sub->GetOffset();
+
+  switch (sub->GetType()) {
+    case Primitive::kPrimInt:
+      if (sub->InputAt(0)->IsConstant()) {
+        // We have to ensure that Out is set to the LHS constant value.
+        codegen_->Load64BitValue(out.AsRegister<CpuRegister>(),
+                                 codegen_->GetInt64ValueOf(sub->InputAt(0)->AsConstant()));
+      } else {
+        DCHECK(first.Equals(out));
+      }
+
+      if (index.IsValid()) {
+        __ subl(out.AsRegister<CpuRegister>(),
+                Address(base.AsRegister<CpuRegister>(),
+                        index.AsRegister<CpuRegister>(),
+                        TIMES_4,
+                        offset));
+      } else {
+        __ subl(out.AsRegister<CpuRegister>(), Address(base.AsRegister<CpuRegister>(), offset));
+      }
+      break;
+
+    case Primitive::kPrimLong:
+      if (sub->InputAt(0)->IsConstant()) {
+        // We have to ensure that Out is set to the LHS constant value.
+        codegen_->Load64BitValue(out.AsRegister<CpuRegister>(),
+                                 codegen_->GetInt64ValueOf(sub->InputAt(0)->AsConstant()));
+      } else {
+        DCHECK(first.Equals(out));
+      }
+
+      if (index.IsValid()) {
+        __ subq(out.AsRegister<CpuRegister>(),
+                Address(base.AsRegister<CpuRegister>(),
+                        index.AsRegister<CpuRegister>(),
+                        TIMES_8,
+                        offset));
+      } else {
+        __ subq(out.AsRegister<CpuRegister>(), Address(base.AsRegister<CpuRegister>(), offset));
+      }
+      break;
+
+    case Primitive::kPrimFloat:
+      DCHECK(first.Equals(out));
+      if (index.IsValid()) {
+        __ subss(out.AsFpuRegister<XmmRegister>(),
+                 Address(base.AsRegister<CpuRegister>(),
+                         index.AsRegister<CpuRegister>(),
+                         TIMES_4,
+                         offset));
+      } else {
+        __ subss(out.AsFpuRegister<XmmRegister>(), Address(base.AsRegister<CpuRegister>(), offset));
+      }
+      break;
+
+    case Primitive::kPrimDouble:
+      DCHECK(first.Equals(out));
+      if (index.IsValid()) {
+        __ subsd(out.AsFpuRegister<XmmRegister>(),
+                 Address(base.AsRegister<CpuRegister>(),
+                         index.AsRegister<CpuRegister>(),
+                         TIMES_8,
+                         offset));
+      } else {
+        __ subsd(out.AsFpuRegister<XmmRegister>(), Address(base.AsRegister<CpuRegister>(), offset));
+      }
+      break;
+
+    default:
+      LOG(FATAL) << "Unexpected sub type " << sub->GetType();
+      break;
+  }
+  codegen_->MaybeRecordImplicitNullCheck(sub);
+}
+
+void LocationsBuilderX86_64::VisitMulRHSMemory(HMulRHSMemory* mul) {
+  LocationSummary* locations =
+      new (GetGraph()->GetArena()) LocationSummary(mul, LocationSummary::kNoCall);
+  FillRHSMemoryLocation(locations, mul);
+}
+
+void InstructionCodeGeneratorX86_64::VisitMulRHSMemory(HMulRHSMemory* mul) {
+  LocationSummary* locations = mul->GetLocations();
+  Location out = locations->Out();
+  Location first = locations->InAt(0);
+  Location base = locations->InAt(1);
+  Location index;
+  if (mul->InputCount() == 3) {
+    index = locations->InAt(2);
+  }
+  size_t offset = mul->GetOffset();
+
+  switch (mul->GetType()) {
+    case Primitive::kPrimInt:
+      if (mul->InputAt(0)->IsConstant()) {
+        // We have to ensure that Out is set to the LHS constant value.
+        codegen_->Load64BitValue(out.AsRegister<CpuRegister>(),
+                                 codegen_->GetInt64ValueOf(mul->InputAt(0)->AsConstant()));
+      } else {
+        DCHECK(first.Equals(out));
+      }
+
+      if (index.IsValid()) {
+        __ imull(out.AsRegister<CpuRegister>(),
+                 Address(base.AsRegister<CpuRegister>(),
+                         index.AsRegister<CpuRegister>(),
+                         TIMES_4,
+                         offset));
+      } else {
+        __ imull(out.AsRegister<CpuRegister>(), Address(base.AsRegister<CpuRegister>(), offset));
+      }
+      break;
+
+    case Primitive::kPrimLong:
+      if (mul->InputAt(0)->IsConstant()) {
+        // We have to ensure that Out is set to the LHS constant value.
+        codegen_->Load64BitValue(out.AsRegister<CpuRegister>(),
+                                 codegen_->GetInt64ValueOf(mul->InputAt(0)->AsConstant()));
+      } else {
+        DCHECK(first.Equals(out));
+      }
+
+      if (index.IsValid()) {
+        __ imulq(out.AsRegister<CpuRegister>(),
+                 Address(base.AsRegister<CpuRegister>(),
+                         index.AsRegister<CpuRegister>(),
+                         TIMES_8,
+                         offset));
+      } else {
+        __ imulq(out.AsRegister<CpuRegister>(), Address(base.AsRegister<CpuRegister>(), offset));
+      }
+      break;
+
+    case Primitive::kPrimFloat:
+      DCHECK(first.Equals(out));
+      if (index.IsValid()) {
+        __ mulss(out.AsFpuRegister<XmmRegister>(),
+                 Address(base.AsRegister<CpuRegister>(),
+                         index.AsRegister<CpuRegister>(),
+                         TIMES_4,
+                         offset));
+      } else {
+        __ mulss(out.AsFpuRegister<XmmRegister>(), Address(base.AsRegister<CpuRegister>(), offset));
+      }
+      break;
+
+    case Primitive::kPrimDouble:
+      DCHECK(first.Equals(out));
+      if (index.IsValid()) {
+        __ mulsd(out.AsFpuRegister<XmmRegister>(),
+                 Address(base.AsRegister<CpuRegister>(),
+                         index.AsRegister<CpuRegister>(),
+                         TIMES_8,
+                         offset));
+      } else {
+        __ mulsd(out.AsFpuRegister<XmmRegister>(), Address(base.AsRegister<CpuRegister>(), offset));
+      }
+      break;
+
+    default:
+      LOG(FATAL) << "Unexpected mul type " << mul->GetType();
+      break;
+  }
+  codegen_->MaybeRecordImplicitNullCheck(mul);
+}
+
+void LocationsBuilderX86_64::VisitDivRHSMemory(HDivRHSMemory* div) {
+  LocationSummary* locations =
+      new (GetGraph()->GetArena()) LocationSummary(div, LocationSummary::kNoCall);
+  FillRHSMemoryLocation(locations, div);
+}
+
+void InstructionCodeGeneratorX86_64::VisitDivRHSMemory(HDivRHSMemory* div) {
+  LocationSummary* locations = div->GetLocations();
+  Location out = locations->Out();
+  Location first = locations->InAt(0);
+  DCHECK(first.Equals(out));
+  Location base = locations->InAt(1);
+  Location index;
+  if (div->InputCount() == 3) {
+    index = locations->InAt(2);
+  }
+  size_t offset = div->GetOffset();
+
+  switch (div->GetType()) {
+    case Primitive::kPrimFloat:
+      if (index.IsValid()) {
+        __ divss(out.AsFpuRegister<XmmRegister>(),
+                 Address(base.AsRegister<CpuRegister>(),
+                         index.AsRegister<CpuRegister>(),
+                         TIMES_4,
+                         offset));
+      } else {
+        __ divss(out.AsFpuRegister<XmmRegister>(), Address(base.AsRegister<CpuRegister>(), offset));
+      }
+      break;
+
+    case Primitive::kPrimDouble:
+      if (index.IsValid()) {
+        __ divsd(out.AsFpuRegister<XmmRegister>(),
+                 Address(base.AsRegister<CpuRegister>(),
+                         index.AsRegister<CpuRegister>(),
+                         TIMES_8,
+                         offset));
+      } else {
+        __ divsd(out.AsFpuRegister<XmmRegister>(), Address(base.AsRegister<CpuRegister>(), offset));
+      }
+      break;
+
+    default:
+      LOG(FATAL) << "Unexpected div type " << div->GetType();
+      break;
+  }
+  codegen_->MaybeRecordImplicitNullCheck(div);
+}
+
 /**
  * Class to handle late fixup of offsets into constant area.
  */
