@@ -122,8 +122,11 @@ static bool CheckTypeConsistency(HInstruction* instruction) {
 
   HConstInputsRef inputs = instruction->GetInputs();
   for (size_t i = 0; i < inputs.size(); ++i) {
-    DCHECK(CheckType(inputs[i]->GetType(), locations->InAt(i)))
-      << inputs[i]->GetType() << " " << locations->InAt(i);
+    //neeraj - resolve dex2oat crash (checking current input)
+    if (inputs[i] != nullptr) {
+      DCHECK(CheckType(inputs[i]->GetType(), locations->InAt(i)))
+        << inputs[i]->GetType() << " " << locations->InAt(i);
+    }
   }
 
   HEnvironment* environment = instruction->GetEnvironment();

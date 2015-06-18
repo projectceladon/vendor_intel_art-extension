@@ -247,8 +247,19 @@ AliasCheck::AliasKind AliasCheck::Array_alias(HInstruction* x, HInstruction* y) 
   Primitive::Type x_type = x->IsArrayGet() ? x->GetType() : x->AsArraySet()->GetComponentType();
   Primitive::Type y_type = y->IsArrayGet() ? y->GetType() : y->AsArraySet()->GetComponentType();
   if (x_type != y_type) {
-    // The types don't match, so they have to be different.
-    return kNoAlias;
+    // Unfortunately dex format has aget and aput un-typed. It means that we cannot for sure
+    // say whether it is fp-type or not. So we must not say they are not alias.
+    // So we cannot say for sure for the pairs (int, float), (float, int), (long, double) and
+    // (double, long).
+    // TODO: we might be a bit more better here. Say if compiler proved that this is a real
+    // integer type then we can say that int and float differs.
+    if (Primitive::ComponentSize(x_type) != Primitive::ComponentSize(y_type) ||
+        x_type == Primitive::kPrimNot ||
+        y_type == Primitive::kPrimNot ||
+        (!Primitive::IsIntOrLongType(x_type) && !Primitive::IsIntOrLongType(y_type))) {
+      // The types don't match, so they have to be different.
+      return kNoAlias;
+    }
   }
 
   // TODO: Look at the instructions, and see if we can tell anything more.

@@ -338,6 +338,8 @@ void GraphChecker::VisitInstruction(HInstruction* instruction) {
 
   // Ensure the inputs of `instruction` are defined in a block of the graph.
   for (HInstruction* input : instruction->GetInputs()) {
+    //neeraj - resolve dex2oat crash (checking input)
+    if (input != nullptr) {
     const HInstructionList& list = input->IsPhi()
         ? input->GetBlock()->GetPhis()
         : input->GetBlock()->GetInstructions();
@@ -346,6 +348,7 @@ void GraphChecker::VisitInstruction(HInstruction* instruction) {
                             "in a basic block of the control-flow graph.",
                             input->GetId(),
                             instruction->GetId()));
+    }
     }
   }
 
@@ -392,10 +395,10 @@ void GraphChecker::VisitInstruction(HInstruction* instruction) {
   for (size_t i = 0; i < input_records.size(); ++i) {
     const HUserRecord<HInstruction*>& input_record = input_records[i];
     HInstruction* input = input_record.GetInstruction();
-    if ((input_record.GetBeforeUseNode() == input->GetUses().end()) ||
+    if ((input != nullptr) && ((input_record.GetBeforeUseNode() == input->GetUses().end()) ||
         (input_record.GetUseNode() == input->GetUses().end()) ||
         !input->GetUses().ContainsNode(*input_record.GetUseNode()) ||
-        (input_record.GetUseNode()->GetIndex() != i)) {
+        (input_record.GetUseNode()->GetIndex() != i))) {
       AddError(StringPrintf("Instruction %s:%d has an invalid iterator before use entry "
                             "at input %u (%s:%d).",
                             instruction->DebugName(),
