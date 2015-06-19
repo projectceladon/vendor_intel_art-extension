@@ -1366,6 +1366,8 @@ public class Main {
     // Three HDeoptimize will be added for the outer loop,
     // two for the index, and null check on matrix. Same
     // for the inner loop.
+    // Two HDeoptimize will be added for the inner loop
+    // start >= 0, end <= row.length.
     for (int i = start; i < end; i++) {
       int[] row = matrix[i];
       for (int j = start; j < end; j++) {

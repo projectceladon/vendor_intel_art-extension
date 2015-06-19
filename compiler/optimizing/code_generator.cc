@@ -542,8 +542,10 @@ void CodeGenerator::CreateLoadClassRuntimeCallLocationSummary(HLoadClass* cls,
                                                               Location runtime_return_location) {
   DCHECK_EQ(cls->GetLoadKind(), HLoadClass::LoadKind::kRuntimeCall);
   DCHECK_EQ(cls->InputCount(), 1u);
+
   LocationSummary* locations = new (cls->GetBlock()->GetGraph()->GetArena()) LocationSummary(
       cls, LocationSummary::kCallOnMainOnly);
+
   locations->SetInAt(0, Location::NoLocation());
   locations->AddTemp(runtime_type_index_location);
   locations->SetOut(runtime_return_location);

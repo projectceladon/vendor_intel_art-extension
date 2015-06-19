@@ -54,10 +54,13 @@ bool PrintPassesOnlyOnce(ArenaVector<HOptimization*>& opts,
                          CompilerDriver* driver);
 
 void RunOptimizationsX86(HGraph* graph,
+                         CodeGenerator* codegen,
                          CompilerDriver* driver,
                          OptimizingCompilerStats* stats,
                          ArenaVector<HOptimization*>& opt_list,
-                         PassObserver* pass_observer);
+                         const DexCompilationUnit& dex_compilation_unit,
+                         PassObserver* pass_observer,
+                         VariableSizedHandleScope* handles);
 
 class RunOptWithPassScope {
  public:

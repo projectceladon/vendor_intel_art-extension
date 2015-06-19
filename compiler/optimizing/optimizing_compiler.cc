@@ -609,7 +609,9 @@ void OptimizingCompiler::RunOptimizations(HOptimization* optimizations[],
                                           size_t length,
                                           PassObserver* pass_observer) const {
   for (size_t i = 0; i < length; ++i) {
-    PassScope scope(optimizations[i]->GetPassName(), pass_observer);
+    const char *name = optimizations[i]->GetPassName();
+    PassScope scope(name, pass_observer);
+    VLOG(compiler) << "Applying " << name;
     optimizations[i]->Run();
   }
 }
@@ -874,7 +876,14 @@ void OptimizingCompiler::RunOptimizations(HGraph* graph,
     for (size_t i = 0; i < arraysize(optimizations2); ++i) {
       opt_list.push_back(optimizations2[i]);
     }
-    RunOptimizationsX86(graph, driver, stats, opt_list, pass_observer);
+    RunOptimizationsX86(graph,
+                      codegen,
+                      driver,
+                      stats,
+                      opt_list,
+                      dex_compilation_unit,
+                      pass_observer,
+                      handles);
   }
 
   RunArchOptimizations(driver->GetInstructionSet(), graph, codegen, pass_observer);

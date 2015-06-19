@@ -840,6 +840,22 @@ bool HLoopInformation_X86::HasCatchHandler() const {
   return false;
 }
 
+bool HLoopInformation_X86::HasTryCatchHandler() const {
+  // Walk through the loop's blocks to find either try or catch boundaries.
+  for (HBlocksInLoopIterator it_loop(*this); !it_loop.Done(); it_loop.Advance()) {
+    HBasicBlock* block = it_loop.Current();
+    if (block->IsCatchBlock()) {
+      return true;
+    } else if (block->IsSingleTryBoundary()) {
+      return true;
+    }
+  }
+
+  // No try/catch handler found.
+  return false;
+}
+
+
 bool HLoopInformation_X86::IsPeelable(HOptimization_X86* optim) const {
   if (!IsInner()) {
     // Peeling an iteration of an outer loop, it means that in the peel we would have
@@ -958,13 +974,11 @@ static void AddExitPhisAfterPeel(const HGraph_X86* graph, const HLoopInformation
     reg_number = orig->AsPhi()->GetRegNumber();
   }
 
-  //neeraj - resolve build errors (using HUseList in place of HUseIterator)
-  const HUseList<HInstruction*>& uses = orig->GetUses();
-  for (auto use_it = uses.begin(), end2 = uses.end(); use_it != end2; ) {
-      HInstruction* user = use_it->GetUser();
+  for (HAllUseIterator use_it(orig); !use_it.Done(); use_it.Advance()) {
+    HInstruction* user = use_it.Current();
     // We do not want to add phi nodes for uses inside the loop.
     if (!loop->Contains(*(user->GetBlock()))) {
-      if (user->IsPhi() && user->GetBlock() == exit_bb) {
+      if (!use_it.IsEnv() && user->IsPhi() && user->GetBlock() == exit_bb) {
         // Be careful here, only add if not already a user.
         HPhi* existing_phi = user->AsPhi();
         bool found_input = false;
@@ -987,35 +1001,8 @@ static void AddExitPhisAfterPeel(const HGraph_X86* graph, const HLoopInformation
           new_phi->AddInput(orig);
           new_phi->AddInput(clone);
         }
-
-	// ReplaceInput modifies use_it, so do it now.
-        size_t input_index = use_it->GetIndex();
-	++use_it;
-        user->ReplaceInput(new_phi, input_index);
+        use_it.ReplaceInput(new_phi);
       }
-    }
-  }
-
-  const HUseList<HEnvironment*>& uses1 = orig->GetEnvUses();
-  for (auto use_it = uses1.begin(), end2 = uses1.end(); use_it != end2; ) {
-      HEnvironment* user = use_it->GetUser();
-    // We do not want to add phi nodes for uses inside the loop.
-    if (!loop->Contains(*(user->GetHolder()->GetBlock()))) {
-      if (new_phi == nullptr) {
-        new_phi = new (graph->GetArena()) HPhi(graph->GetArena(), reg_number,
-            0, HPhi::ToPhiType(orig->GetType()));
-        exit_bb->AddPhi(new_phi);
-        new_phi->AddInput(orig);
-        new_phi->AddInput(clone);
-      }
-
-      // Increment `use_it` now because `*use_it` may disappear thanks to user->RemoveAsUserOfInput().
-      size_t input_index = use_it->GetIndex();
-      use_it++;
-
-      user->RemoveAsUserOfInput(input_index);
-      user->SetRawEnvAt(input_index, new_phi);
-      new_phi->AddEnvUseAt(user, input_index);
     }
   }
 }

@@ -38,6 +38,18 @@ static constexpr size_t kAlignedBase = 16;
 // instruction removal, since there may be a cycle in the use structure.
 static void RemoveFromCycle(HInstruction* instruction) {
   instruction->RemoveAsUserOfAllInputs();
+
+  // neeraj - removing this instruction as user from all environment inputs
+  HEnvironment* environment = instruction->GetEnvironment();
+  if (environment != nullptr)
+  {
+    for (size_t i = 0, e = environment->Size(); i < e; ++i) {
+      if (environment->GetInstructionAt(i) != nullptr) {
+        environment->RemoveAsUserOfInput(i);
+      }
+    }
+  }
+
   instruction->RemoveEnvironmentUsers();
   instruction->GetBlock()->RemoveInstructionOrPhi(instruction, /*ensure_safety=*/ false);
 }
@@ -409,6 +421,7 @@ void HLoopOptimization::TraverseLoopsInnerToOuter(LoopNode* node) {
     if (current_induction_simplification_count != induction_simplication_count_) {
       induction_range_.ReVisit(node->loop_info);
     }
+
     // Repeat simplifications in the loop-body until no more changes occur.
     // Note that since each simplification consists of eliminating code (without
     // introducing new code), this process is always finite.
@@ -417,6 +430,7 @@ void HLoopOptimization::TraverseLoopsInnerToOuter(LoopNode* node) {
       SimplifyInduction(node);
       SimplifyBlocks(node);
     } while (simplified_);
+
     // Optimize inner loop.
     if (node->inner == nullptr) {
       OptimizeInnerLoop(node);
@@ -1759,6 +1773,7 @@ bool HLoopOptimization::TryAssignLastValue(HLoopInformation* loop_info,
 }
 
 void HLoopOptimization::RemoveDeadInstructions(const HInstructionList& list) {
+
   for (HBackwardInstructionIterator i(list); !i.Done(); i.Advance()) {
     HInstruction* instruction = i.Current();
     if (instruction->IsDeadAndRemovable()) {

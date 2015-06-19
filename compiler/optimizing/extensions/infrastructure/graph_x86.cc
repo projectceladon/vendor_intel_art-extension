@@ -101,4 +101,14 @@ void HGraph_X86::RebuildDomination() {
   ComputeDominanceInformation();
 }
 
+void HGraph_X86::MovePhi(HPhi* phi, HBasicBlock* to_block) {
+  DCHECK(phi != nullptr);
+  HBasicBlock* from_block = phi->GetBlock();
+  if (from_block != to_block) {
+    from_block->phis_.RemoveInstruction(phi);
+    to_block->phis_.AddInstruction(phi);
+    phi->SetBlock(to_block);
+  }
+}
+
 }  // namespace art

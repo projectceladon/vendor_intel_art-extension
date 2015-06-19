@@ -453,8 +453,8 @@ bool HLoopUnrolling::Gate(uint64_t max_unrolled_instructions) const {
 
   uint64_t num_iterations = loop_->GetNumIterations(loop_->GetHeader());
 
-  if ((num_iterations < 3u))
-  {
+  if ((loop_->IsBottomTested() && num_iterations < 2u) ||
+      (!loop_->IsBottomTested() && num_iterations < 3u)) {
     PRINT_PASS_OSTREAM_MESSAGE(optim_, "Loop has one or less iterations: "
       "loop unrolling is useless.");
     return false;

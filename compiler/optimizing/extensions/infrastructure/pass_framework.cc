@@ -26,6 +26,7 @@
 #include "ext_utility.h"
 #include "driver/compiler_driver.h"
 #include "driver/compiler_options.h"	//neeraj -- added to resolve build error
+#include "form_bottom_loops.h"
 #include "find_ivs.h"
 #include "graph_visualizer.h"
 #include "loop_formation.h"
@@ -76,8 +77,11 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   { "remove_loop_suspend_checks", "find_ivs", kPassInsertAfter},
   { "remove_unused_loops", "remove_loop_suspend_checks", kPassInsertAfter },
   { "constant_calculation_sinking", "find_ivs", kPassInsertAfter},
-  { "trivial_loop_evaluator", "find_ivs", kPassInsertAfter},
+  { "load_store_elimination", "loop_full_unrolling", kPassInsertAfter },
+  { "form_bottom_loops", "load_store_elimination", kPassInsertAfter },
+  { "loop_formation_before_bottom_loops", "form_bottom_loops", kPassInsertBefore },
   { "non_temporal_move", "trivial_loop_evaluator", kPassInsertAfter},
+  { "trivial_loop_evaluator", "find_ivs", kPassInsertAfter},
 };
 
 /**
@@ -362,10 +366,15 @@ void FillVerbose(HOptimization_X86* optimizations[],
 }
 
 void RunOptimizationsX86(HGraph* graph,
+                         CodeGenerator* codegen,
                          CompilerDriver* driver,
                          OptimizingCompilerStats* stats,
                          ArenaVector<HOptimization*>& opt_list,
-                         PassObserver* pass_observer) {
+                         const DexCompilationUnit& dex_compilation_unit,
+                         PassObserver* pass_observer,
+                         VariableSizedHandleScope* handles) {
+
+  UNUSED(codegen);
   // We want our own list of passes with our own vector.
   ArenaVector<HOptimization*> post_opt_list(graph->GetArena()->Adapter(kArenaAllocMisc));
   ArenaSet<const char*> post_opt_request(graph->GetArena()->Adapter(kArenaAllocMisc));
@@ -382,12 +391,17 @@ void RunOptimizationsX86(HGraph* graph,
 #endif
   HLoopFormation formation_before_peeling(graph, "loop_formation_before_peeling");
   HLoopPeeling peeling(graph, stats);
-  HLoopFullUnrolling loop_full_unrolling(graph, stats); 
+  HLoopFullUnrolling loop_full_unrolling(graph, stats);
+  HLoopFormation formation_before_bottom_loops(graph, "loop_formation_before_bottom_loops");
+  HFormBottomLoops form_bottom_loops(graph, dex_compilation_unit, handles, stats);
+
   /* neeraj - to check more - removed below optimizations (added in "ART-Extension: Support iteration peeling") to resolve incompatibility with O-Master
     &peeling,
     &formation_before_peeling,
   */
   HOptimization_X86* opt_array[] = {
+    &form_bottom_loops,
+    &formation_before_bottom_loops,
     &loop_formation,
     &find_ivs,
     &remove_suspends,

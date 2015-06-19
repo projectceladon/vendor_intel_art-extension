@@ -23,6 +23,7 @@
 #include "ext_utility.h"
 #include "nodes.h"
 #include "optimization.h"
+#include "optimization_x86.h"
 #include <sstream>
 #include "utils.h"
 
@@ -296,6 +297,76 @@ namespace art {
     }
     LOG(FATAL) << "Unreachable";
     return 'v';
+  }
+
+  bool CanExpressionBeRemoved(HInstruction* instruction) {
+    return !instruction->CanThrow()
+           && !instruction->IsParameterValue()
+           && !instruction->HasUses()
+           && (!instruction->IsInvoke()  // Can remove pure invokes only.
+               || instruction->CanBeMoved());
+  }
+
+  void TryKillUseTree(HOptimization_X86* pass,
+                      HInstruction* insn,
+                      std::unordered_set<HInstruction*>* all_removed) {
+    DCHECK(pass != nullptr);
+    DCHECK(insn != nullptr);
+
+    // If we cannot remove even the first instruction, we will not remove
+    // anything. So let's do the fast check to avoid unneeded overhead.
+    if (!CanExpressionBeRemoved(insn)) {
+      return;
+    }
+
+    // We will swap these two sets between iterations.
+    std::unordered_set<HInstruction*> set_1;
+    std::unordered_set<HInstruction*> set_2;
+
+    // Start from current iteration.
+    set_1.insert(insn);
+
+    for (auto current_step = &set_1, next_step = &set_2;
+         !current_step->empty();
+         current_step->clear(), std::swap(current_step, next_step)) {
+      DCHECK(next_step->empty());
+
+      for (auto instruction : *current_step) {
+        HBasicBlock* block = instruction->GetBlock();
+        if (block == nullptr) {
+          // We have already removed this instruction.
+          continue;
+        }
+
+        // We removed this instruction as input. Now consider it for complete removal.
+        if (CanExpressionBeRemoved(instruction)) {
+          PRINT_PASS_OSTREAM_MESSAGE(pass, "Removing " << instruction << " because it is no"
+                                                       << " longer used by any other"
+                                                       << " instruction or environment.");
+
+          // After we eliminate this instruction, its inputs can become unused.
+          for (size_t i = 0; i < instruction->InputCount(); ++i) {
+            next_step->insert(instruction->InputAt(i));
+          }
+
+          for (HEnvironment* environment = instruction->GetEnvironment();
+              environment != nullptr;
+              environment = environment->GetParent()) {
+            for (size_t i = 0, e = environment->Size(); i < e; ++i) {
+              HInstruction* in_env = environment->GetInstructionAt(i);
+              if (in_env != nullptr) {
+                next_step->insert(in_env);
+              }
+            }
+          }
+
+          block->RemoveInstructionOrPhi(instruction);
+          if (all_removed != nullptr) {
+            all_removed->insert(instruction);
+          }
+        }
+      }
+    }
   }
 
 }  // namespace art

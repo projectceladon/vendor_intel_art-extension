@@ -4393,6 +4393,16 @@ class HInvokeStaticOrDirect FINAL : public HInvoke {
     DCHECK(!IsStaticWithExplicitClinitCheck());
   }
 
+  // This is a helper method called by cloner to synchronize number of inputs.
+  void TrimInputCapacity(uint32_t new_input_count) {
+    DCHECK_GE(inputs_.size(), new_input_count);
+    uint32_t num_to_trim = inputs_.size() - new_input_count;
+    while (num_to_trim > 0) {
+      inputs_.pop_back();
+      num_to_trim--;
+    }
+  }
+
   // Is this a call to a static method whose declaring class has an
   // explicit initialization check in the graph?
   bool IsStaticWithExplicitClinitCheck() const {
@@ -5334,6 +5344,7 @@ class HPhi FINAL : public HVariableInputSizeInstruction {
   void SetCanBeNull(bool can_be_null) { SetPackedFlag<kFlagCanBeNull>(can_be_null); }
 
   uint32_t GetRegNumber() const { return reg_number_; }
+  bool IsSynthetic() const { return reg_number_ == kNoRegNumber; }
 
   void SetDead() { SetPackedFlag<kFlagIsLive>(false); }
   void SetLive() { SetPackedFlag<kFlagIsLive>(true); }
@@ -5959,6 +5970,8 @@ class HLoadClass FINAL : public HInstruction {
   }
 
   void SetLoadKind(LoadKind load_kind);
+
+  void CopyLoadKind(LoadKind lod_kind);
 
   LoadKind GetLoadKind() const {
     return GetPackedField<LoadKindField>();
