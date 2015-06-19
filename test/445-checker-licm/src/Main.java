@@ -98,8 +98,8 @@ public class Main {
   }
 
   /// CHECK-START: int Main.arrayLength(int[]) licm (before)
-  /// CHECK-DAG: <<NullCheck:l\d+>> NullCheck loop:{{B\d+}}
-  /// CHECK-DAG:                    ArrayLength [<<NullCheck>>] loop:{{B\d+}}
+  /// CHECK-DAG: [[NullCheck:l\d+]] NullCheck ( loop_header:null )
+  /// CHECK-DAG:                    ArrayLength [ [[NullCheck]] ] ( loop_header:null )
 
   /// CHECK-START: int Main.arrayLength(int[]) licm (after)
   /// CHECK-NOT:                    NullCheck loop:{{B\d+}}

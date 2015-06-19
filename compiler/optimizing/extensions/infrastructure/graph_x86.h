@@ -131,6 +131,13 @@ class HGraph_X86 : public HGraph {
    */
   void RebuildDomination();
 
+  /*
+   * @brief Move a Phi from one block to another block.
+   * @param phi Phi to move.
+   * @param to_block Block to which to move the Phi.
+   */
+  void MovePhi(HPhi* phi, HBasicBlock* to_block);
+
  protected:
 #ifndef NDEBUG
   uint32_t down_cast_checker_;

@@ -410,7 +410,9 @@ static void RunOptimizations(HOptimization* optimizations[],
                              size_t length,
                              PassObserver* pass_observer) {
   for (size_t i = 0; i < length; ++i) {
-    PassScope scope(optimizations[i]->GetPassName(), pass_observer);
+    const char *name = optimizations[i]->GetPassName();
+    PassScope scope(name, pass_observer);
+    VLOG(compiler) << "Applying " << name;
     optimizations[i]->Run();
   }
 }

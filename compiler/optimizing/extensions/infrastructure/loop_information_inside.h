@@ -43,7 +43,7 @@ class HLoopInformation_X86 : public HLoopInformation {
   HLoopInformation_X86(HBasicBlock* block, HGraph* graph) :
       HLoopInformation(block, graph),
       depth_(0), count_up_(false),
-      suppress_suspend_check_(false),
+      suppress_suspend_check_(false), bottom_tested_(false),
       outer_(nullptr), sibling_previous_(nullptr),
       sibling_next_(nullptr), inner_(nullptr),
       test_suspend_(nullptr), suspend_(nullptr),
@@ -206,6 +206,22 @@ class HLoopInformation_X86 : public HLoopInformation {
    */
   bool IsCountUp() const {
     return count_up_;
+  }
+
+  /**
+   * @brief  Set the bottom tested loop boolean.
+   * @param b 'true' if the loop should be reported as bottom tested.
+   */
+  void SetBottomTested(bool b) {
+    bottom_tested_ = b;
+  }
+
+  /**
+   * @brief Is the loop bottom tested?
+   * @return 'true' if the test for continuing the loop is at the bottom of the loop.
+   */
+  bool IsBottomTested() const {
+    return bottom_tested_;
   }
 
   /**
@@ -471,6 +487,7 @@ class HLoopInformation_X86 : public HLoopInformation {
   int depth_;
   bool count_up_;
   bool suppress_suspend_check_;
+  bool bottom_tested_;
 
   HLoopInformation_X86* outer_;
   HLoopInformation_X86* sibling_previous_;

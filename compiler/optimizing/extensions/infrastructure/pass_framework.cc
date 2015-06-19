@@ -25,8 +25,10 @@
 #include "constant_calculation_sinking.h"
 #include "ext_utility.h"
 #include "driver/compiler_driver.h"
+#include "form_bottom_loops.h"
 #include "find_ivs.h"
 #include "graph_visualizer.h"
+#include "gvn_after_fbl.h"
 #include "loop_formation.h"
 #ifndef SOFIA
 #include "non_temporal_move.h"
@@ -62,15 +64,19 @@ struct HCustomPassPlacement {
  * @brief Static array holding information about custom placements.
  */
 static HCustomPassPlacement kPassCustomPlacement[] = {
-  { "loop_formation", "instruction_simplifier_after_bce", kPassInsertAfter },
+  { "loop_formation", "GVN_after_form_bottom_loops", kPassInsertAfter },
   { "find_ivs", "loop_formation", kPassInsertAfter },
   { "remove_loop_suspend_checks", "find_ivs", kPassInsertAfter},
   { "remove_unused_loops", "remove_loop_suspend_checks", kPassInsertAfter },
   { "loop_peeling", "select_generator", kPassInsertBefore },
   { "loop_formation_before_peeling", "loop_peeling", kPassInsertBefore },
   { "constant_calculation_sinking", "find_ivs", kPassInsertAfter},
-  { "trivial_loop_evaluator", "find_ivs", kPassInsertAfter},
+  { "load_store_elimination", "instruction_simplifier_after_bce", kPassInsertAfter },
+  { "form_bottom_loops", "load_store_elimination", kPassInsertAfter },
+  { "GVN_after_form_bottom_loops", "form_bottom_loops", kPassInsertAfter },
+  { "loop_formation_before_bottom_loops", "form_bottom_loops", kPassInsertBefore },
   { "non_temporal_move", "trivial_loop_evaluator", kPassInsertAfter},
+  { "trivial_loop_evaluator", "find_ivs", kPassInsertAfter},
 };
 
 /**
@@ -375,7 +381,14 @@ void RunOptimizationsX86(HGraph* graph,
 #endif
   HLoopFormation formation_before_peeling(graph, "loop_formation_before_peeling");
   HLoopPeeling peeling(graph, stats);
+  HLoopFormation formation_before_bottom_loops(graph, "loop_formation_before_bottom_loops");
+  HFormBottomLoops form_bottom_loops(graph, stats);
+  GVNAfterFormBottomLoops gvn_after_fbl(graph);
+
   HOptimization_X86* opt_array[] = {
+    &form_bottom_loops,
+    &gvn_after_fbl,
+    &formation_before_bottom_loops,
     &loop_formation,
     &find_ivs,
     &remove_suspends,
