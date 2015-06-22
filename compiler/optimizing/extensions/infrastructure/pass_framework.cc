@@ -22,6 +22,7 @@
 #include "base/dumpable.h"
 #include "base/timing_logger.h"
 #include "code_generator.h"
+#include "constant_calculation_sinking.h"
 #include "ext_utility.h"
 #include "driver/compiler_driver.h"
 #include "driver/compiler_options.h"	//neeraj -- added to resolve build error
@@ -69,6 +70,7 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   { "find_ivs", "loop_formation", kPassInsertAfter },
   { "remove_loop_suspend_checks", "find_ivs", kPassInsertAfter},
   { "remove_unused_loops", "remove_loop_suspend_checks", kPassInsertAfter },
+  { "constant_calculation_sinking", "find_ivs", kPassInsertAfter},
   { "trivial_loop_evaluator", "find_ivs", kPassInsertAfter},
 };
 
@@ -368,6 +370,7 @@ void RunOptimizationsX86(HGraph* graph,
   HRemoveLoopSuspendChecks remove_suspends(graph, stats);
   HRemoveUnusedLoops remove_unused_loops(graph, stats);
   TrivialLoopEvaluator tle(graph, stats);
+  HConstantCalculationSinking ccs(graph, stats);
   HLoopFormation formation_before_peeling(graph, "loop_formation_before_peeling");
   HLoopPeeling peeling(graph, stats);
   /* neeraj - to check more - removed below optimizations (added in "ART-Extension: Support iteration peeling") to resolve incompatibility with O-Master
@@ -378,6 +381,7 @@ void RunOptimizationsX86(HGraph* graph,
     &loop_formation,
     &find_ivs,
     &remove_suspends,
+    &ccs,
     &remove_unused_loops,
     &tle
   };
