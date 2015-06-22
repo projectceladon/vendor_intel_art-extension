@@ -61,7 +61,7 @@ class HInductionVariable {
    * @details For basic IVs, it provides same ssa register as GetBasicSsaReg.
    * @return Returns the ssa register that is define of linear operation.
    */
-  int GetSsaReg() const {
+  int GetSsaId() const {
     return ssa_reg_;
   }
 

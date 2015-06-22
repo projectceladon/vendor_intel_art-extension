@@ -30,6 +30,7 @@ ifeq ($(findstring graph_x86,$(LIBART_COMPILER_SRC_FILES)),)
     $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/graph_x86.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/loop_information.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/pass_framework.cc \
+    $(VENDOR_EXTENSIONS_FOLDER)/passes/constant_calculation_sinking.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/find_ivs.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/loop_formation.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/peeling.cc \

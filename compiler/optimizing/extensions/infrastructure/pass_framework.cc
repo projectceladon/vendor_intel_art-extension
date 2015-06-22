@@ -22,6 +22,7 @@
 #include "base/dumpable.h"
 #include "base/timing_logger.h"
 #include "code_generator.h"
+#include "constant_calculation_sinking.h"
 #include "ext_utility.h"
 #include "driver/compiler_driver.h"
 #include "find_ivs.h"
@@ -64,6 +65,7 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   { "remove_unused_loops", "remove_loop_suspend_checks", kPassInsertAfter },
   { "loop_peeling", "select_generator", kPassInsertBefore },
   { "loop_formation_before_peeling", "loop_peeling", kPassInsertBefore },
+  { "constant_calculation_sinking", "find_ivs", kPassInsertAfter},
   { "trivial_loop_evaluator", "find_ivs", kPassInsertAfter},
 };
 
@@ -363,12 +365,14 @@ void RunOptimizationsX86(HGraph* graph,
   HRemoveLoopSuspendChecks remove_suspends(graph, stats);
   HRemoveUnusedLoops remove_unused_loops(graph, stats);
   TrivialLoopEvaluator tle(graph, stats);
+  HConstantCalculationSinking ccs(graph, stats);
   HLoopFormation formation_before_peeling(graph, "loop_formation_before_peeling");
   HLoopPeeling peeling(graph, stats);
   HOptimization_X86* opt_array[] = {
     &loop_formation,
     &find_ivs,
     &remove_suspends,
+    &ccs,
     &remove_unused_loops,
     &peeling,
     &formation_before_peeling,
