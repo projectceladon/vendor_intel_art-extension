@@ -151,6 +151,11 @@ LIBART_COMPILER_SRC_FILES_x86_64 := \
 
 LIBART_COMPILER_CFLAGS :=
 
+ifneq (,$(findstring sofia,$(TARGET_BOARD_PLATFORM)))
+  # Mark this as a build for a SoFIA system.
+  LIBART_COMPILER_CFLAGS += -DSOFIA
+endif
+
 LIBART_COMPILER_ENUM_OPERATOR_OUT_HEADER_FILES := \
   compiled_method.h \
   dex/compiler_enums.h \

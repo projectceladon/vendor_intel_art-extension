@@ -98,6 +98,7 @@ art_cc_defaults {
         "optimizing/extensions/passes/constant_calculation_sinking.cc",
         "optimizing/extensions/passes/find_ivs.cc",
         "optimizing/extensions/passes/loop_formation.cc",
+        "optimizing/extensions/passes/non_temporal_move.cc",
         "optimizing/extensions/passes/peeling.cc",
         "optimizing/extensions/passes/remove_unused_loops.cc",
         "optimizing/extensions/passes/remove_suspend.cc",
