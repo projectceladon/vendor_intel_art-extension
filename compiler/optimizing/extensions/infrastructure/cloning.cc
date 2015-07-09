@@ -229,6 +229,9 @@ void HInstructionCloner::VisitArraySet(HArraySet* instr) {
     HArraySet* clone = new (arena_) HArraySet(array, index, value,
         instr->GetComponentType(), instr->GetDexPc());
     orig_to_clone_.Put(instr, clone);
+    if (instr->GetUseNonTemporalMove()) {
+      clone->SetUseNonTemporalMove();
+    }
 
     // Also clone the environment appropriately.
     CloneEnvironment(instr, clone);

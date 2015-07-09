@@ -5209,7 +5209,8 @@ class HArraySet : public HTemplateInstruction<3> {
             SideEffects::ArrayWriteOfType(expected_component_type).Union(
                 SideEffectsForArchRuntimeCalls(value->GetType())).Union(
                     additional_side_effects),
-            dex_pc) {
+            dex_pc),
+        use_non_temporal_move_(false) {
     SetPackedField<ExpectedComponentTypeField>(expected_component_type);
     SetPackedFlag<kFlagNeedsTypeCheck>(value->GetType() == Primitive::kPrimNot);
     SetPackedFlag<kFlagValueCanBeNull>(true);
@@ -5273,6 +5274,10 @@ class HArraySet : public HTemplateInstruction<3> {
     return (value_type == Primitive::kPrimNot) ? SideEffects::CanTriggerGC() : SideEffects::None();
   }
 
+  bool GetUseNonTemporalMove() const { return use_non_temporal_move_; }
+
+  void SetUseNonTemporalMove() { use_non_temporal_move_ = true; }
+
   DECLARE_INSTRUCTION(ArraySet);
 
  private:
@@ -5290,6 +5295,7 @@ class HArraySet : public HTemplateInstruction<3> {
   static_assert(kNumberOfArraySetPackedBits <= kMaxNumberOfPackedBits, "Too many packed fields.");
   using ExpectedComponentTypeField =
       BitField<Primitive::Type, kFieldExpectedComponentType, kFieldExpectedComponentTypeSize>;
+  bool use_non_temporal_move_;
 
   DISALLOW_COPY_AND_ASSIGN(HArraySet);
 };

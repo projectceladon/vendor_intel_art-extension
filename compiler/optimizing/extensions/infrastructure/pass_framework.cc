@@ -28,6 +28,9 @@
 #include "find_ivs.h"
 #include "graph_visualizer.h"
 #include "loop_formation.h"
+#ifndef SOFIA
+#include "non_temporal_move.h"
+#endif
 #include "optimization.h"
 #include "pass_framework.h"
 #include "peeling.h"
@@ -67,6 +70,7 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   { "loop_formation_before_peeling", "loop_peeling", kPassInsertBefore },
   { "constant_calculation_sinking", "find_ivs", kPassInsertAfter},
   { "trivial_loop_evaluator", "find_ivs", kPassInsertAfter},
+  { "non_temporal_move", "trivial_loop_evaluator", kPassInsertAfter},
 };
 
 /**
@@ -366,6 +370,9 @@ void RunOptimizationsX86(HGraph* graph,
   HRemoveUnusedLoops remove_unused_loops(graph, stats);
   TrivialLoopEvaluator tle(graph, stats);
   HConstantCalculationSinking ccs(graph, stats);
+#ifndef SOFIA
+  HNonTemporalMove non_temporal_move(graph, stats);
+#endif
   HLoopFormation formation_before_peeling(graph, "loop_formation_before_peeling");
   HLoopPeeling peeling(graph, stats);
   HOptimization_X86* opt_array[] = {
@@ -376,7 +383,10 @@ void RunOptimizationsX86(HGraph* graph,
     &remove_unused_loops,
     &peeling,
     &formation_before_peeling,
-    &tle
+    &tle,
+#ifndef SOFIA
+    &non_temporal_move,
+#endif
   };
 
   // Create the array for the post-opts.

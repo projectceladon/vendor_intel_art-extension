@@ -671,10 +671,12 @@ bool HLoopInformation_X86::GetLoopCost(uint64_t* cost) const {
   return true;
 }
 
-void HLoopInformation_X86::InsertInstructionInSuspendBlock(HInstruction* instruction) {
+bool HLoopInformation_X86::InsertInstructionInSuspendBlock(HInstruction* instruction) {
   // Have we already split the SuspendCheck into two pieces?
+  bool added_split_block = false;
   if (!HasTestSuspend()) {
     SplitSuspendCheck();
+    added_split_block = true;
   }
 
   DCHECK(HasTestSuspend());
@@ -684,6 +686,8 @@ void HLoopInformation_X86::InsertInstructionInSuspendBlock(HInstruction* instruc
   // Insert the actual instruction before the HSuspend. That will ensure that
   // successive calls insert in order.
   suspend->GetBlock()->InsertInstructionBefore(instruction, suspend);
+
+  return added_split_block;
 }
 
 void HLoopInformation_X86::SplitSuspendCheck() {

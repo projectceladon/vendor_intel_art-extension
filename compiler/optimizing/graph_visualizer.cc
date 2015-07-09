@@ -399,6 +399,9 @@ class HGraphVisualizerPrinter : public HGraphDelegateVisitor {
         << array_set->GetValueCanBeNull() << std::noboolalpha;
     StartAttributeStream("needs_type_check") << std::boolalpha
         << array_set->NeedsTypeCheck() << std::noboolalpha;
+    if (array_set->GetUseNonTemporalMove()) {
+      output_ << " Non_Temporal";
+    }
   }
 
   void VisitCompare(HCompare* compare) OVERRIDE {

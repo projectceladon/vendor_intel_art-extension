@@ -5268,6 +5268,12 @@ void LocationsBuilderX86::VisitArraySet(HArraySet* instruction) {
     locations->SetInAt(2, Location::ByteRegisterOrConstant(EAX, instruction->InputAt(2)));
   } else if (Primitive::IsFloatingPointType(value_type)) {
     locations->SetInAt(2, Location::FpuRegisterOrConstant(instruction->InputAt(2)));
+  } else if (instruction->GetUseNonTemporalMove() &&
+             (value_type == Primitive::kPrimInt ||
+              value_type == Primitive::kPrimNot ||
+              value_type == Primitive::kPrimLong)) {
+      // Non-temporal move needs a register src.
+      locations->SetInAt(2, Location::RequiresRegister());
   } else {
     locations->SetInAt(2, Location::RegisterOrConstant(instruction->InputAt(2)));
   }
@@ -5292,6 +5298,7 @@ void InstructionCodeGeneratorX86::VisitArraySet(HArraySet* instruction) {
   bool may_need_runtime_call_for_type_check = instruction->NeedsTypeCheck();
   bool needs_write_barrier =
       CodeGenerator::StoreNeedsWriteBarrier(value_type, instruction->GetValue());
+  bool use_non_temporal = instruction->GetUseNonTemporalMove();
 
   switch (value_type) {
     case Primitive::kPrimBoolean:
@@ -5446,7 +5453,12 @@ void InstructionCodeGeneratorX86::VisitArraySet(HArraySet* instruction) {
           ? Address(array, (index.GetConstant()->AsIntConstant()->GetValue() << TIMES_4) + offset)
           : Address(array, index.AsRegister<Register>(), TIMES_4, offset);
       if (value.IsRegister()) {
-        __ movl(address, value.AsRegister<Register>());
+        if (use_non_temporal) {
+          // Generate the non-temporal move instead.
+          __ movntl(address, value.AsRegister<Register>());
+        } else {
+          __ movl(address, value.AsRegister<Register>());
+        }
       } else {
         DCHECK(value.IsConstant()) << value;
         int32_t v = CodeGenerator::GetInt32ValueOf(value.GetConstant());
@@ -5461,9 +5473,16 @@ void InstructionCodeGeneratorX86::VisitArraySet(HArraySet* instruction) {
       if (index.IsConstant()) {
         size_t offset = (index.GetConstant()->AsIntConstant()->GetValue() << TIMES_8) + data_offset;
         if (value.IsRegisterPair()) {
-          __ movl(Address(array, offset), value.AsRegisterPairLow<Register>());
-          codegen_->MaybeRecordImplicitNullCheck(instruction);
-          __ movl(Address(array, offset + kX86WordSize), value.AsRegisterPairHigh<Register>());
+          if (use_non_temporal) {
+            // Generate the non-temporal move instead.
+            __ movntl(Address(array, offset), value.AsRegisterPairLow<Register>());
+            codegen_->MaybeRecordImplicitNullCheck(instruction);
+            __ movntl(Address(array, offset + kX86WordSize), value.AsRegisterPairHigh<Register>());
+          } else {
+            __ movl(Address(array, offset), value.AsRegisterPairLow<Register>());
+            codegen_->MaybeRecordImplicitNullCheck(instruction);
+            __ movl(Address(array, offset + kX86WordSize), value.AsRegisterPairHigh<Register>());
+          }
         } else {
           DCHECK(value.IsConstant());
           int64_t val = value.GetConstant()->AsLongConstant()->GetValue();

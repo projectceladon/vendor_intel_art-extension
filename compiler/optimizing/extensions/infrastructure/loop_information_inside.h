@@ -266,10 +266,11 @@ class HLoopInformation_X86 : public HLoopInformation {
    * @brief Insert an HInstruction before the call to Suspend.  Will
    * call SplitSuspendCheck if there isn't already a split suspend.
    * @param instruction HInstruction to insert just before call to Suspend.
+   * @returns 'true' if the suspend block was created.
    * @note RebuildDominators() must be called before an optimization that uses
-   * this method is returns.
+   * this method is returns 'true'.
    */
-  void InsertInstructionInSuspendBlock(HInstruction* instruction);
+  bool InsertInstructionInSuspendBlock(HInstruction* instruction);
 
   /**
    * @brief Add a block to all nested loops, and set the loop_information
