@@ -73,6 +73,8 @@ enum MethodCompilationStat {
   kIntelCCS,
   kIntelNonTemporalMove,
   kIntelFormBottomLoop,
+  kIntelLHSS,
+  kIntelStoreSink,
   kLastStat
 };
 
@@ -159,6 +161,8 @@ class OptimizingCompilerStats {
       case kIntelCCS: return "kIntelCCS";
       case kIntelNonTemporalMove: return "kIntelNonTemporalMove";
       case kIntelFormBottomLoop: return "kIntelFormBottomLoop";
+      case kIntelLHSS: return "kIntelLHSS";
+      case kIntelStoreSink: return "kIntelStoreSink";
 
       case kLastStat:
         LOG(FATAL) << "invalid stat "

@@ -34,6 +34,7 @@ ifeq ($(findstring graph_x86,$(LIBART_COMPILER_SRC_FILES)),)
     $(VENDOR_EXTENSIONS_FOLDER)/passes/find_ivs.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/form_bottom_loops.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/gvn_after_fbl.cc \
+    $(VENDOR_EXTENSIONS_FOLDER)/passes/loadhoist_storesink.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/loop_formation.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/non_temporal_move.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/peeling.cc \

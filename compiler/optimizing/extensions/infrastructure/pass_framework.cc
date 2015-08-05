@@ -29,6 +29,7 @@
 #include "find_ivs.h"
 #include "graph_visualizer.h"
 #include "gvn_after_fbl.h"
+#include "loadhoist_storesink.h"
 #include "loop_formation.h"
 #ifndef SOFIA
 #include "non_temporal_move.h"
@@ -67,6 +68,7 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   { "loop_formation", "GVN_after_form_bottom_loops", kPassInsertAfter },
   { "find_ivs", "loop_formation", kPassInsertAfter },
   { "remove_loop_suspend_checks", "find_ivs", kPassInsertAfter},
+  { "loadhoist_storesink", "remove_loop_suspend_checks", kPassInsertAfter},
   { "remove_unused_loops", "remove_loop_suspend_checks", kPassInsertAfter },
   { "loop_peeling", "select_generator", kPassInsertBefore },
   { "loop_formation_before_peeling", "loop_peeling", kPassInsertBefore },
@@ -379,6 +381,7 @@ void RunOptimizationsX86(HGraph* graph,
 #ifndef SOFIA
   HNonTemporalMove non_temporal_move(graph, stats);
 #endif
+  LoadHoistStoreSink lhss(graph, stats);
   HLoopFormation formation_before_peeling(graph, "loop_formation_before_peeling");
   HLoopPeeling peeling(graph, stats);
   HLoopFormation formation_before_bottom_loops(graph, "loop_formation_before_bottom_loops");
@@ -393,6 +396,7 @@ void RunOptimizationsX86(HGraph* graph,
     &find_ivs,
     &remove_suspends,
     &ccs,
+    &lhss,
     &remove_unused_loops,
     &peeling,
     &formation_before_peeling,

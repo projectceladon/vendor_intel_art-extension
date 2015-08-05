@@ -464,6 +464,12 @@ class HLoopInformation_X86 : public HLoopInformation {
    */
   bool RemoveFromGraph();
 
+  /**
+   * @brief Determines whether the loop contains instructions that can throw exceptions.
+   * @return Whether the loop contains instructions that can throw exceptions.
+   */
+  bool CanThrow() const;
+
  protected:
   /**
    * @brief Find the constant entry SSA associated to the Phi instruction.
