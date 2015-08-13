@@ -132,14 +132,16 @@ class PassObserver : public ValueObject {
       : graph_(graph),
         cached_method_name_(),
         timing_logger_enabled_(compiler_driver->GetDumpPasses()),
+        timing_logger_per_method_enabled_(true),
         timing_logger_(timing_logger_enabled_ ? GetMethodName() : "", true, true),
+        compiler_driver_(compiler_driver),
         disasm_info_(graph->GetArena()),
         visualizer_enabled_(!compiler_driver->GetCompilerOptions().GetDumpCfgFileName().empty()),
         visualizer_(visualizer_output, graph, *codegen),
         graph_in_bad_state_(false) {
     if (timing_logger_enabled_ || visualizer_enabled_) {
       if (!IsVerboseMethod(compiler_driver, GetMethodName())) {
-        timing_logger_enabled_ = visualizer_enabled_ = false;
+        timing_logger_per_method_enabled_ = visualizer_enabled_ = false;
       }
       if (visualizer_enabled_) {
         visualizer_.PrintHeader(GetMethodName());
@@ -150,8 +152,11 @@ class PassObserver : public ValueObject {
 
   ~PassObserver() {
     if (timing_logger_enabled_) {
-      LOG(INFO) << "TIMINGS " << GetMethodName();
-      LOG(INFO) << Dumpable<TimingLogger>(timing_logger_);
+      compiler_driver_->GetTimingsLogger()->AddLogger(timing_logger_);
+      if (timing_logger_per_method_enabled_) {
+        LOG(INFO) << "TIMINGS " << GetMethodName();
+        LOG(INFO) << Dumpable<TimingLogger>(timing_logger_);
+      }
     }
   }
 
@@ -225,7 +230,9 @@ class PassObserver : public ValueObject {
   std::string cached_method_name_;
 
   bool timing_logger_enabled_;
+  bool timing_logger_per_method_enabled_;
   TimingLogger timing_logger_;
+  CompilerDriver* compiler_driver_;
 
   DisassemblyInformation disasm_info_;
 
