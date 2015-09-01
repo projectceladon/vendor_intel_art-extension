@@ -122,6 +122,7 @@ AliasCheck::AliasKind AliasCheck::Alias(HInstanceFieldSet* x_set, HInstruction* 
       return kMayAlias;
     case HInstruction::kArrayGet:
     case HInstruction::kArraySet:
+      return kNoAlias;
     default:
       if (HasSideEffects(y)) {
         return kMayAlias;

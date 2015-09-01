@@ -76,6 +76,7 @@ enum MethodCompilationStat {
   kIntelLHSS,
   kIntelStoreSink,
   kIntelSelect,
+  kIntelValuePropagationThroughHeap,
   kLastStat
 };
 
@@ -165,11 +166,8 @@ class OptimizingCompilerStats {
       case kIntelLHSS: return "kIntelLHSS";
       case kIntelStoreSink: return "kIntelStoreSink";
       case kIntelSelect: return "kIntelSelect";
-
-      case kLastStat:
-        LOG(FATAL) << "invalid stat "
-            << static_cast<std::underlying_type<MethodCompilationStat>::type>(stat);
-        UNREACHABLE();
+      case kIntelValuePropagationThroughHeap: return "kIntelValuePropagationThroughHeap";
+      default: LOG(FATAL) << "invalid stat";
     }
     return "OptStat#" + name;
   }

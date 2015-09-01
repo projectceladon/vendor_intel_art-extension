@@ -43,6 +43,7 @@
 #include "scoped_thread_state_change.h"
 #include "thread.h"
 #include "trivial_loop_evaluator.h"
+#include "value_propagation_through_heap.h"
 
 namespace art {
 
@@ -69,8 +70,8 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   { "loop_formation", "GVN_after_form_bottom_loops", kPassInsertAfter },
   { "find_ivs", "loop_formation", kPassInsertAfter },
   { "remove_loop_suspend_checks", "find_ivs", kPassInsertAfter},
-  { "loadhoist_storesink", "remove_loop_suspend_checks", kPassInsertAfter},
   { "remove_unused_loops", "remove_loop_suspend_checks", kPassInsertAfter },
+  { "loadhoist_storesink", "remove_unused_loops", kPassInsertBefore},
   { "loop_peeling", "select_generator", kPassInsertBefore },
   { "loop_formation_before_peeling", "loop_peeling", kPassInsertBefore },
   { "constant_calculation_sinking", "find_ivs", kPassInsertAfter},
@@ -81,6 +82,10 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   // optimization, called "select_generator".
   // { "generate_selects", "boolean_simplifier", kPassInsertAfter },
   { "GVN_after_form_bottom_loops", "form_bottom_loops", kPassInsertAfter },
+  // TODO: Google has implemented load/store elimination optimization.
+  // We should evaluate that optimization and decide, whether we need
+  // value_propagation_through_heap or not.
+  // { "value_propagation_through_heap", "GVN_after_form_bottom_loops", kPassInsertAfter },
   { "loop_formation_before_bottom_loops", "form_bottom_loops", kPassInsertBefore },
   { "non_temporal_move", "trivial_loop_evaluator", kPassInsertAfter},
   { "trivial_loop_evaluator", "find_ivs", kPassInsertAfter},
@@ -387,6 +392,7 @@ void RunOptimizationsX86(HGraph* graph,
   HNonTemporalMove non_temporal_move(graph, stats);
 #endif
   LoadHoistStoreSink lhss(graph, stats);
+  // HValuePropagationThroughHeap value_propagation_through_heap(graph, stats);
   HLoopFormation formation_before_peeling(graph, "loop_formation_before_peeling");
   HLoopPeeling peeling(graph, stats);
   HLoopFormation formation_before_bottom_loops(graph, "loop_formation_before_bottom_loops");
@@ -402,8 +408,8 @@ void RunOptimizationsX86(HGraph* graph,
     &find_ivs,
     &remove_suspends,
     &ccs,
-    &lhss,
     &remove_unused_loops,
+    &lhss,
     &peeling,
     &formation_before_peeling,
     &tle,
@@ -411,6 +417,7 @@ void RunOptimizationsX86(HGraph* graph,
     &non_temporal_move,
 #endif
     // &generate_selects
+    // &value_propagation_through_heapvalue_propagation_through_heap,
   };
 
   // Create the array for the post-opts.
