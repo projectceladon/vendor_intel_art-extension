@@ -32,4 +32,38 @@ VENDOR_COMPILER_INCLUDES := \
 # simply add all vendor compiler includes in the general includes.
 ART_C_INCLUDES += $(VENDOR_COMPILER_INCLUDES)
 
+TIP_ID = $(shell cd vendor/intel/art-extension && git log | grep '^\s\+Change-Id:' \
+  | head -1 | sed -r 's/^\s+Change-Id:\s*//' | head -c 6)
+
+# To understand what weekly build is base for current build, we get all
+# unique weekly build ids and number of their entries which corresponds to
+# actual number of patches from weekly.
+WWs = $(shell cd vendor/intel/art-extension && git log | grep 'Extension-Weekly:' \
+  | sed -r 's/^\s+Extension-Weekly:\s*//' | sort -r | uniq -c | sed -r 's/^\s*//' \
+  | sed -r 's/\s/-/')
+
+# Here we compare the actual number of patches from weekly builds current
+# build contains with total number of patches in weekly. If these
+# numbers are equal we know which weekly build is the base for current build.
+WW=$(shell for val in ${WWs}; \
+  do real_ww_patches="`sed -r 's/^([[:digit:]]+).*/\1/' <<< $$val`"; \
+  supposed_ww_patches="`sed -r 's/[^.]*\.([[:digit:]]+)/\1/' <<< $$val`"; \
+  get_week="`sed -r 's/[^-]*-([[:digit:]]+[a-z]*)\..*/\1/' <<< $$val`"; \
+  if [[ $$real_ww_patches = $$supposed_ww_patches ]]; then echo $$get_week; break; fi done)
+
+# Handle unexpected case.
+ifeq (${WW},)
+ART_EXTENSION_VERSION = UNKNOWN.${TIP_ID}
+else
+# Calculate number of patches were added to weekly build with number WW.
+NUMBER_OF_PATCHES_ABOVE_WEEKLY = $(shell cd vendor/intel/art-extension && git log \
+  | sed -r '/^\s+Extension-Weekly:\s*${WW}/q' | grep '^\s\+Change-Id:' | head -n -1 | wc -l)
+
+ART_EXTENSION_VERSION = \
+  ${WW}.${NUMBER_OF_PATCHES_ABOVE_WEEKLY}.${TIP_ID}
+endif
+
+ART_HOST_CFLAGS += -DART_EXTENSION_VERSION=$(ART_EXTENSION_VERSION)
+ART_TARGET_CFLAGS += -DART_EXTENSION_VERSION=$(ART_EXTENSION_VERSION)
+
 endif
