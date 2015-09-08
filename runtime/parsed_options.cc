@@ -476,10 +476,9 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
     Usage(nullptr);
     return false;
   } else if (args.Exists(M::ShowVersion)) {
-    UsageMessage(stdout,
-                 "ART version %s %s\n",
-                 Runtime::GetVersion(),
+    UsageMessage(stdout,"ART version %s %s\n",Runtime::GetVersion(),
                  GetInstructionSetString(kRuntimeISA));
+    UsageMessage(stdout, "Extension version %s\n", Runtime::GetArtExtensionVersion());
     Exit(0);
   } else if (args.Exists(M::BootClassPath)) {
     LOG(INFO) << "setting boot class path to " << *args.Get(M::BootClassPath);

@@ -170,6 +170,7 @@ static constexpr double kLowMemoryMinLoadFactor = 0.5;
 static constexpr double kLowMemoryMaxLoadFactor = 0.8;
 static constexpr double kNormalMinLoadFactor = 0.4;
 static constexpr double kNormalMaxLoadFactor = 0.7;
+const char* Runtime::art_extension_version = STRINGIFY(ART_EXTENSION_VERSION);
 Runtime* Runtime::instance_ = nullptr;
 
 struct TraceConfig {

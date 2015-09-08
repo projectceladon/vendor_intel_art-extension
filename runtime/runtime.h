@@ -317,6 +317,10 @@ class Runtime {
   // access is reenabled.
   void BroadcastForNewSystemWeaks(bool broadcast_for_checkpoint = false);
 
+  static const char* GetArtExtensionVersion() {
+    return art_extension_version;
+  }
+
   // Visit all the roots. If only_dirty is true then non-dirty roots won't be visited. If
   // clean_dirty is true then dirty roots will be marked as non-dirty after visiting.
   void VisitRoots(RootVisitor* visitor, VisitRootFlags flags = kVisitRootFlagAllRoots)
@@ -927,6 +931,8 @@ class Runtime {
 
   // Whether the dalvik cache was pruned when initializing the runtime.
   bool pruned_dalvik_cache_;
+  // Version of ART Extension
+  static const char* art_extension_version;
 
   // Whether or not we currently care about pause times.
   ProcessState process_state_;
