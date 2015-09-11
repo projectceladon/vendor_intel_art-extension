@@ -111,4 +111,23 @@ void HGraph_X86::MovePhi(HPhi* phi, HBasicBlock* to_block) {
   }
 }
 
+void HGraph_X86::MoveInstructionBefore(HInstruction* instr, HInstruction* cursor) {
+  DCHECK(instr != nullptr);
+  HBasicBlock* from_block = instr->GetBlock();
+  DCHECK(cursor != nullptr);
+  DCHECK(!cursor->IsPhi());
+  HBasicBlock* to_block = cursor->GetBlock();
+  DCHECK(from_block != to_block);
+
+  // Disconnect from the old block.
+  from_block->RemoveInstruction(instr, false);
+
+  // Connect up to the new block.
+  DCHECK_NE(instr->GetId(), -1);
+  DCHECK_NE(cursor->GetId(), -1);
+  DCHECK(!instr->IsControlFlow());
+  instr->SetBlock(to_block);
+  to_block->instructions_.InsertInstructionBefore(instr, cursor);
+}
+
 }  // namespace art

@@ -1333,6 +1333,7 @@ class HLoopInformationOutwardIterator : public ValueObject {
   M(X86BoundsCheckMemory, Instruction)                                  \
   M(Suspend, Instruction)                                               \
   M(TestSuspend, Instruction)                                           \
+  M(X86SelectValue, Instruction)                                        \
   M(AddRHSMemory, InstructionRHSMemory)                                 \
   M(DivRHSMemory, InstructionRHSMemory)                                 \
   M(MulRHSMemory, InstructionRHSMemory)                                 \
@@ -6302,6 +6303,51 @@ class HSelect : public HExpression<3> {
 
  private:
   DISALLOW_COPY_AND_ASSIGN(HSelect);
+};
+
+// Select between two values based on a condition.  Use CMOV on x86.
+class HX86SelectValue : public HExpression<4> {
+ public:
+  HX86SelectValue(Primitive::Type type,
+                  IfCondition cond,
+                  IfCondition opposite_cond,
+                  HInstruction* left,
+                  HInstruction* right,
+                  HInstruction* cond_left,
+                  HInstruction* cond_right,
+                  uint32_t dex_pc = kNoDexPc)
+      : HExpression(type, SideEffects::None(), dex_pc),
+                    condition_(cond),
+                    opposite_condition_(opposite_cond) {
+    DCHECK_EQ(HPhi::ToPhiType(left->GetType()), HPhi::ToPhiType(right->GetType()));
+    DCHECK(!Primitive::IsFloatingPointType(left->GetType()));
+    SetRawInputAt(0, left);
+    SetRawInputAt(1, right);
+    SetRawInputAt(2, cond_left);
+    SetRawInputAt(3, cond_right);
+  }
+
+  HInstruction* GetLeft() const { return InputAt(0); }
+  HInstruction* GetRight() const { return InputAt(1); }
+  HInstruction* GetCompareLeft() const { return InputAt(2); }
+  HInstruction* GetCompareRight() const { return InputAt(3); }
+  Primitive::Type GetResultType() const { return GetType(); }
+  IfCondition GetCondition() const { return condition_; }
+  IfCondition GetOppositeCondition() const { return opposite_condition_; }
+
+  bool CanBeMoved() const OVERRIDE { return true; }
+  bool CanBeNull() const OVERRIDE { return GetLeft()->CanBeNull() || GetRight()->CanBeNull(); }
+  bool InstructionDataEquals(HInstruction* other) const OVERRIDE {
+    return condition_ == other->AsX86SelectValue()->GetCondition();
+  }
+
+  DECLARE_INSTRUCTION(X86SelectValue);
+
+ private:
+  IfCondition condition_;
+  IfCondition opposite_condition_;
+
+  DISALLOW_COPY_AND_ASSIGN(HX86SelectValue);
 };
 
 class MoveOperands : public ArenaObject<kArenaAllocMoveOperands> {

@@ -138,6 +138,14 @@ class HGraph_X86 : public HGraph {
    */
   void MovePhi(HPhi* phi, HBasicBlock* to_block);
 
+  /*
+   * @brief Move an from one block to another block.
+   * @param instr Instruction to move.
+   * @param cursor The target instruction.
+   * @note The instruction to move must be in a different block from the cursor.
+   */
+  void MoveInstructionBefore(HInstruction* instr, HInstruction* cursor);
+
  protected:
 #ifndef NDEBUG
   uint32_t down_cast_checker_;

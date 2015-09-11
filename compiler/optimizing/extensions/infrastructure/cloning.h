@@ -165,6 +165,7 @@ class HInstructionCloner : public HGraphVisitor {
   void VisitUnresolvedStaticFieldSet(HUnresolvedStaticFieldSet* instr) OVERRIDE { VisitInstruction(instr); };
   void VisitXor(HXor* instr) OVERRIDE;
   void VisitConstant(HConstant* instr) OVERRIDE { VisitInstruction(instr); }
+  void VisitX86SelectValue(HX86SelectValue* instr) OVERRIDE;
 
   // TODO: remaining instructions
   // FakeString
@@ -178,6 +179,11 @@ class HInstructionCloner : public HGraphVisitor {
                            HInstruction** input0_ptr,
                            HInstruction** input1_ptr,
                            HInstruction** input2_ptr) const;
+  void GetInputsForQuaternary(HInstruction* instr,
+                              HInstruction** input0_ptr,
+                              HInstruction** input1_ptr,
+                              HInstruction** input2_ptr,
+                              HInstruction** input3_ptr) const;
   void CloneEnvironment(HInstruction* instr, HInstruction* clone);
 
   const bool cloning_enabled_;

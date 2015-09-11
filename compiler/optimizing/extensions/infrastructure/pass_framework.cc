@@ -27,6 +27,7 @@
 #include "driver/compiler_driver.h"
 #include "form_bottom_loops.h"
 #include "find_ivs.h"
+#include "generate_selects.h"
 #include "graph_visualizer.h"
 #include "gvn_after_fbl.h"
 #include "loadhoist_storesink.h"
@@ -75,6 +76,10 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   { "constant_calculation_sinking", "find_ivs", kPassInsertAfter},
   { "load_store_elimination", "instruction_simplifier_after_bce", kPassInsertAfter },
   { "form_bottom_loops", "load_store_elimination", kPassInsertAfter },
+  // FIXME: this pass is disabled and should be eliminated
+  // completely because Google has implemented a similar
+  // optimization, called "select_generator".
+  // { "generate_selects", "boolean_simplifier", kPassInsertAfter },
   { "GVN_after_form_bottom_loops", "form_bottom_loops", kPassInsertAfter },
   { "loop_formation_before_bottom_loops", "form_bottom_loops", kPassInsertBefore },
   { "non_temporal_move", "trivial_loop_evaluator", kPassInsertAfter},
@@ -387,6 +392,7 @@ void RunOptimizationsX86(HGraph* graph,
   HLoopFormation formation_before_bottom_loops(graph, "loop_formation_before_bottom_loops");
   HFormBottomLoops form_bottom_loops(graph, stats);
   GVNAfterFormBottomLoops gvn_after_fbl(graph);
+  // HGenerateSelects generate_selects(graph, stats);
 
   HOptimization_X86* opt_array[] = {
     &form_bottom_loops,
@@ -404,6 +410,7 @@ void RunOptimizationsX86(HGraph* graph,
 #ifndef SOFIA
     &non_temporal_move,
 #endif
+    // &generate_selects
   };
 
   // Create the array for the post-opts.

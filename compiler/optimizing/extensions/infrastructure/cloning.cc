@@ -108,6 +108,45 @@ void HInstructionCloner::GetInputsForTernary(HInstruction* instr,
   }
 }
 
+void HInstructionCloner::GetInputsForQuaternary(HInstruction* instr,
+                                                HInstruction** input0_ptr,
+                                                HInstruction** input1_ptr,
+                                                HInstruction** input2_ptr,
+                                                HInstruction** input3_ptr) const {
+  DCHECK(input0_ptr != nullptr);
+  DCHECK(input1_ptr != nullptr);
+  DCHECK(input2_ptr != nullptr);
+  DCHECK(input3_ptr != nullptr);
+  DCHECK_EQ(instr->InputCount(), 4u);
+
+  *input0_ptr = instr->InputAt(0);
+  *input1_ptr = instr->InputAt(1);
+  *input2_ptr = instr->InputAt(2);
+  *input3_ptr = instr->InputAt(3);
+
+  if (use_cloned_inputs_) {
+    // Look to see if this input has a clone.
+    auto i0_it = orig_to_clone_.find(*input0_ptr);
+    auto i1_it = orig_to_clone_.find(*input1_ptr);
+    auto i2_it = orig_to_clone_.find(*input2_ptr);
+    auto i3_it = orig_to_clone_.find(*input3_ptr);
+
+    // If there is a clone, make it so the new inputs are from clone.
+    if (i0_it != orig_to_clone_.end()) {
+      *input0_ptr = i0_it->second;
+    }
+    if (i1_it != orig_to_clone_.end()) {
+      *input1_ptr = i1_it->second;
+    }
+    if (i2_it != orig_to_clone_.end()) {
+      *input2_ptr = i2_it->second;
+    }
+    if (i3_it != orig_to_clone_.end()) {
+      *input3_ptr = i3_it->second;
+    }
+  }
+}
+
 HEnvironment* HInstructionCloner::CloneEnvironment(HEnvironment* env, HInstruction* clone) {
   DCHECK_EQ(cloning_enabled_, true);
 
@@ -697,6 +736,19 @@ void HInstructionCloner::VisitXor(HXor* instr) {
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HXor* clone = new (arena_) HXor(instr->GetResultType(), lhs, rhs);
+    orig_to_clone_.Put(instr, clone);
+  }
+}
+
+void HInstructionCloner::VisitX86SelectValue(HX86SelectValue* instr) {
+  if (cloning_enabled_) {
+    HInstruction* input_0, *input_1, *input_2, *input_3;
+    GetInputsForQuaternary(instr, &input_0, &input_1, &input_2, &input_3);
+    HX86SelectValue* clone =
+      new (arena_) HX86SelectValue(instr->GetType(),
+                                   instr->GetCondition(),
+                                   instr->GetOppositeCondition(),
+                                   input_0, input_1, input_2, input_3);
     orig_to_clone_.Put(instr, clone);
   }
 }
