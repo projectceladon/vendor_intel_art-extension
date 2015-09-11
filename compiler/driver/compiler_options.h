@@ -63,6 +63,9 @@ class CompilerOptions FINAL {
                   size_t inline_depth_limit,
                   size_t inline_max_code_units,
                   const std::vector<const DexFile*>* no_inline_from,
+                  size_t stop_compiling_after,
+                  size_t stop_optimizing_after,
+                  bool cond_compilation,
                   bool include_patch_information,
                   double top_k_profile_threshold,
                   bool debuggable,
@@ -160,6 +163,18 @@ class CompilerOptions FINAL {
     inline_max_code_units_ = units;
   }
 
+  size_t GetStopCompilingAfter() const {
+    return stop_compiling_after_;
+  }
+
+  size_t GetStopOptimizingAfter() const {
+    return stop_optimizing_after_;
+  }
+
+  bool IsConditionalCompilation() const {
+    return cond_compilation_;
+  }
+
   double GetTopKProfileThreshold() const {
     return top_k_profile_threshold_;
   }
@@ -251,6 +266,9 @@ class CompilerOptions FINAL {
   }
 
  private:
+  void ParseStopCompilingAfter(const StringPiece& option, UsageFn Usage);
+  void ParseStopOptimizingAfter(const StringPiece& option, UsageFn Usage);
+  void ParseDisableOptMask(const StringPiece& option, UsageFn Usage);
   void ParseDumpInitFailures(const StringPiece& option, UsageFn Usage);
   void ParsePassOptions(const StringPiece& option, UsageFn Usage);
   void ParseDumpCfgPasses(const StringPiece& option, UsageFn Usage);
@@ -278,6 +296,10 @@ class CompilerOptions FINAL {
   // prefer vector<> over a lookup-oriented container, such as set<>.
   const std::vector<const DexFile*>* no_inline_from_;
 
+  // Conditional compilation used for debug in run-time.
+  size_t stop_compiling_after_;
+  size_t stop_optimizing_after_;
+  bool cond_compilation_;
   bool include_patch_information_;
   // When using a profile file only the top K% of the profiled samples will be compiled.
   double top_k_profile_threshold_;

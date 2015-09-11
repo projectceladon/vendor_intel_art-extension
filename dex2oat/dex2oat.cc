@@ -381,6 +381,20 @@ NO_RETURN static void Usage(const char* fmt, ...) {
   UsageError("  --force-determinism: force the compiler to emit a deterministic output.");
   UsageError("      This option is incompatible with read barriers (e.g., if dex2oat has been");
   UsageError("      built with the environment variable `ART_USE_READ_BARRIER` set to `true`).");
+  UsageError("  --stop-compiling-after=<method-idx>:  stops compilation after a specified method.");
+  UsageError("      <method-idx> can be either hex or decimal value.");
+  UsageError("      Example: --stop-compiling-after=17 compiles first 17 methods");
+  UsageError("      Example: --stop-compiling-after=0x%x compiles none of methods",
+             std::numeric_limits<uint32_t>::max());
+  UsageError("      Default: 0x%x", std::numeric_limits<uint32_t>::max() - 1);
+  UsageError("");
+  UsageError("  --stop-optimizing-after=<phase-id>:  stops optimization after a specified phase "
+             "id (Optimizing backend).");
+  UsageError("      <phase-idx> can be either hex or decimal value.");
+  UsageError("      Example: --stop-optimizing-after=2 applies first 2 optimizations");
+  UsageError("      Example: --stop-optimizing-after=0x%x don't apply any optimization",
+             std::numeric_limits<uint32_t>::max());
+  UsageError("      Default: 0x%x", std::numeric_limits<uint32_t>::max() - 1);
   UsageError("");
   std::cerr << "See log for usage error information\n";
   exit(EXIT_FAILURE);

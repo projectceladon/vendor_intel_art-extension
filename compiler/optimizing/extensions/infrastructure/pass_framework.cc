@@ -479,12 +479,23 @@ void RunOptimizationsX86(HGraph* graph,
   FillUserPassOptions(opt_list, driver);
 
   // Now execute the optimizations.
+  size_t phase_id = 0;
   for (auto optimization : opt_list) {
     if (optimization != nullptr) {
       const char* name = optimization->GetPassName();
-      VLOG(compiler) << "Applying " << name;
+      // if debug option --stop-optimizing-after is passed
+      // then check whether we need to stop optimization.
+      if (driver->GetCompilerOptions().IsConditionalCompilation()) {
+        if (driver->GetCompilerOptions().GetStopOptimizingAfter() < phase_id ||
+            driver->GetCompilerOptions().GetStopOptimizingAfter() ==
+            std::numeric_limits<uint32_t>::max()) {
+          break;
+        }
+        VLOG(compiler) << "Applying " << name << ", phase_id = " << phase_id;
+      }
       RunOptWithPassScope scope(optimization, pass_observer);
       scope.Run();
+      phase_id++;
     }
   }
 }
