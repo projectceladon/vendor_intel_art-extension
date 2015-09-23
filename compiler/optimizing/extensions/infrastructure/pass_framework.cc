@@ -25,6 +25,7 @@
 #include "base/timing_logger.h"
 #include "code_generator.h"
 #include "constant_calculation_sinking.h"
+#include "constant_folding_x86.h"
 #include "devirtualization.h"
 #include "ext_utility.h"
 #include "driver/compiler_driver.h"
@@ -97,6 +98,7 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   // sharpening after inlining.
   { "pure_invokes_analysis", "loop_peeling", kPassInsertBefore },
   { "loop_formation_before_peeling", "pure_invokes_analysis", kPassInsertBefore },
+  { "value_propagation_through_heap", "pure_invokes_analysis", kPassInsertBefore },
   // FIXME: this pass is disabled and should be eliminated
   // completely because Google has implemented a similar
   // optimization, called "select_generator".
@@ -105,8 +107,8 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   { "loop_formation_before_bottom_loops", "form_bottom_loops", kPassInsertBefore },
   { "GVN_after_form_bottom_loops", "form_bottom_loops", kPassInsertAfter },
   { "phi_cleanup", "GVN_after_form_bottom_loops", kPassInsertAfter },
-  { "value_propagation_through_heap", "loop_formation_before_peeling", kPassInsertAfter },
-  { "loop_formation", "phi_cleanup", kPassInsertAfter },
+  { "constant_folding_after_phi_cleanup", "phi_cleanup", kPassInsertAfter },
+  { "loop_formation", "constant_folding_after_phi_cleanup", kPassInsertAfter },
   { "find_ivs", "loop_formation", kPassInsertAfter },
   { "trivial_loop_evaluator", "find_ivs", kPassInsertAfter },
   { "non_temporal_move", "trivial_loop_evaluator", kPassInsertAfter },
@@ -377,6 +379,8 @@ void RunOptimizationsX86(HGraph* graph,
       new (arena) HFormBottomLoops(graph, dex_compilation_unit, handles, stats);
   GVNAfterFormBottomLoops* gvn_after_fbl = new (arena) GVNAfterFormBottomLoops(graph);
   // HGenerateSelects* generate_selects = new (arena) HGenerateSelects(graph, stats);
+  HConstantFolding_X86* constant_folding =
+      new (arena) HConstantFolding_X86(graph, stats, "constant_folding_after_phi_cleanup");
   HLoopFullUnrolling* loop_full_unrolling = new (arena) HLoopFullUnrolling(graph, driver, stats);
   HAggressiveUseRemoverPass* aur = new (arena) HAggressiveUseRemoverPass(graph, driver, stats);
   HPhiCleanup* phi_cleanup = new (arena) HPhiCleanup(graph, "phi_cleanup", stats);
@@ -414,6 +418,7 @@ void RunOptimizationsX86(HGraph* graph,
     gvn_after_fbl,
     phi_cleanup,
     value_propagation_through_heap,
+    constant_folding,
     loop_formation,
     find_ivs,
     tle,

@@ -34,6 +34,7 @@ ifeq ($(findstring graph_x86,$(LIBART_COMPILER_SRC_FILES)),)
     $(VENDOR_EXTENSIONS_FOLDER)/passes/abi_transition_helper.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/aur.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/constant_calculation_sinking.cc \
+    $(VENDOR_EXTENSIONS_FOLDER)/passes/constant_folding_x86.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/devirtualization.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/devirtualization_helper.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/find_ivs.cc \
