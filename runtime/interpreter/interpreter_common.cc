@@ -32,6 +32,8 @@
 #include "reflection.h"
 #include "reflection-inl.h"
 #include "stack.h"
+#include "jit/jit.h"
+#include "jit/jit_code_cache.h"
 #include "well_known_classes.h"
 
 namespace art {
@@ -1077,7 +1079,7 @@ static inline bool DoCallCommon(ArtMethod* called_method,
     self->EndAssertNoThreadSuspension(old_cause);
   }
 
-  PerformCall(self, code_item, shadow_frame.GetMethod(), first_dest_reg, new_shadow_frame, result);
+  PerformCall(self, code_item, shadow_frame.GetMethod(), first_dest_reg, new_shadow_frame, result, called_method);
 
   if (string_init && !self->IsExceptionPending()) {
     SetStringInitValueToAllAliases(&shadow_frame, string_init_vreg_this, *result);
