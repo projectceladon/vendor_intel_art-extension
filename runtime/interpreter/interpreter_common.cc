@@ -25,6 +25,8 @@
 #include "stack.h"
 #include "unstarted_runtime.h"
 #include "verifier/method_verifier.h"
+#include "jit/jit.h"
+#include "jit/jit_code_cache.h"
 
 namespace art {
 namespace interpreter {
@@ -749,6 +751,21 @@ static inline bool DoCallCommon(ArtMethod* called_method,
 
   // Do the call now.
   if (LIKELY(Runtime::Current()->IsStarted())) {
+
+    // Check if it is not yet compiled.
+    if (Runtime::Current()->IsJitBlockMode() == true) {
+      jit::Jit* const jit = Runtime::Current()->GetJit();
+      if (jit != nullptr) {
+        if (jit->GetCodeCache()->ContainsMethod(called_method) == false) {
+          VLOG(jit) << "Blocking mode enabled, compiling method " <<
+            PrettyMethod(called_method).c_str();
+
+          Runtime::Current()->GetJit()->CompileMethod(
+              called_method->GetInterfaceMethodIfProxy(sizeof(void*)), self, /* osr */ false);
+        }
+      }
+    }
+
     ArtMethod* target = new_shadow_frame->GetMethod();
     if (ClassLinker::ShouldUseInterpreterEntrypoint(
         target,

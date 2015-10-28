@@ -41,8 +41,7 @@ static constexpr int16_t kJitHotnessDisabled = -2;
 
 class Jit {
  public:
-  static constexpr bool kStressMode = kIsDebugBuild;
-  static constexpr size_t kDefaultCompileThreshold = kStressMode ? 2 : 10000;
+  static constexpr size_t kDefaultCompileThreshold = 10000;
   static constexpr size_t kDefaultPriorityThreadWeightRatio = 1000;
   static constexpr size_t kDefaultInvokeTransitionWeightRatio = 500;
 

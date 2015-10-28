@@ -539,6 +539,10 @@ class Runtime {
     return allow_dex_file_fallback_;
   }
 
+  bool IsJitBlockMode() const {
+    return jit_block_mode_;
+  }
+
   const std::vector<std::string>& GetCpuAbilist() const {
     return cpu_abilist_;
   }
@@ -817,6 +821,9 @@ class Runtime {
   // If true, the runtime may use dex files directly with the interpreter if an oat file is not
   // available/usable.
   bool allow_dex_file_fallback_;
+
+  // Do we want the JIT be in blocking mode.
+  bool jit_block_mode_;
 
   // List of supported cpu abis.
   std::vector<std::string> cpu_abilist_;
