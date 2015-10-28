@@ -115,22 +115,19 @@ bool HNonTemporalMove::Gate(HLoopInformation_X86* loop_info, ArraySets& array_se
   PRINT_PASS_OSTREAM_MESSAGE(this, "IV is " << iv_variable);
 
   // Walk through the blocks in the loop.
-  // - There must be no loads in the loop.
+  // - There must be no array gets in the loop.
   // - No side exits from the loop.
-  SideEffects depends_on_something = SideEffects::AllReads();
   for (HBlocksInLoopIterator it_loop(*loop_info); !it_loop.Done(); it_loop.Advance()) {
     HBasicBlock* loop_block = it_loop.Current();
     for (HInstructionIterator inst_it(loop_block->GetInstructions());
          !inst_it.Done();
          inst_it.Advance()) {
       HInstruction* instruction = inst_it.Current();
-      PRINT_PASS_OSTREAM_MESSAGE(this, "Look at: " << instruction
-                << (instruction->GetSideEffects().MayDependOn(
-                          SideEffects::AllReads())
-                            ? " <depends on something>" : ""));
-      // - There must be no loads in the loop.
-      if (instruction->GetSideEffects().MayDependOn(depends_on_something)) {
-        PRINT_PASS_OSTREAM_MESSAGE(this, "Loop contains a load");
+      PRINT_PASS_OSTREAM_MESSAGE(this, "Look at: " << instruction);
+
+      // - There must be no array gets in the loop.
+      if (instruction->IsArrayGet()) {
+        PRINT_PASS_OSTREAM_MESSAGE(this, "Loop contains an array get");
         return false;
       }
 
