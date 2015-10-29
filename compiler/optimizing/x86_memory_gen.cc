@@ -27,8 +27,7 @@ namespace x86 {
 class MemoryOperandVisitor : public HGraphVisitor {
  public:
   MemoryOperandVisitor(HGraph* graph, bool do_implicit_null_checks)
-      : HGraphVisitor(graph),
-        do_implicit_null_checks_(do_implicit_null_checks) {}
+      : HGraphVisitor(graph), do_implicit_null_checks_(do_implicit_null_checks) {}
 
  private:
   void VisitBoundsCheck(HBoundsCheck* check) OVERRIDE {
@@ -58,11 +57,16 @@ class MemoryOperandVisitor : public HGraphVisitor {
       }
     }
 
-    // Can we suppress the ArrayLength and generate at BoundCheck?
+    // Can we remove the ArrayLength?
     if (array_len->HasOnlyOneNonEnvironmentUse()) {
-      array_len->MarkEmittedAtUseSite();
-      // We need the ArrayLength just before the BoundsCheck.
-      array_len->MoveBefore(check);
+      HX86BoundsCheckMemory* new_check =
+        new (GetGraph()->GetArena()) HX86BoundsCheckMemory(check->InputAt(0), array, check->GetDexPc());
+      check->GetBlock()->InsertInstructionBefore(new_check, check);
+      check->ReplaceWith(new_check);
+      DCHECK(check->GetEnvironment() != nullptr);
+      new_check->CopyEnvironmentFrom(check->GetEnvironment());
+      check->GetBlock()->RemoveInstruction(check);
+      array_len->GetBlock()->RemoveInstruction(array_len);
     }
   }
 
