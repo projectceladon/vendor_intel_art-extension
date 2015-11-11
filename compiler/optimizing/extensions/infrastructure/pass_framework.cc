@@ -36,6 +36,7 @@
 #include "non_temporal_move.h"
 #endif
 #include "optimization.h"
+#include "option_content.h"
 #include "pass_framework.h"
 #include "peeling.h"
 #include "remove_suspend.h"
@@ -177,28 +178,11 @@ static void FillOptimizationList(HGraph* graph,
 }
 
 /**
- * @brief Apply the post optimization passes.
- * @param post_opt_list post-optimization list.
- * @param pass_observer the PassObserver.
- */
-static void ApplyPostOpts(const ArenaVector<HOptimization*>& post_opt_list,
-                          PassObserver* pass_observer) {
-  for (auto post_opt : post_opt_list) {
-    if (post_opt != nullptr) {
-      RunOptWithPassScope scope(post_opt, pass_observer);
-      scope.Run();
-    }
-  }
-}
-
-/**
- * @brief Remove the passes in the optimization and post-optimization lists.
+ * @brief Remove the passes in the optimization list.
  * @param opts the optimization vector.
- * @param post_opts the post-optimization vector.
  * @param driver the compilation driver.
  */
 static void RemoveOptimizations(ArenaVector<HOptimization*>& opts,
-                                ArenaVector<HOptimization*>& post_opts,
                                 CompilerDriver* driver) {
   std::unordered_set<std::string> disabled_passes;
 
@@ -221,7 +205,7 @@ static void RemoveOptimizations(ArenaVector<HOptimization*>& opts,
 
   size_t opts_len = opts.size();
 
-  // We replace the opts, post_opts with nullptr if we find a match.
+  // We replace the opts with nullptr if we find a match.
   //   This is cheaper than rearranging the vectors.
   for (size_t opts_idx = 0; opts_idx < opts_len; opts_idx++) {
     HOptimization* opt = opts[opts_idx];
@@ -229,23 +213,12 @@ static void RemoveOptimizations(ArenaVector<HOptimization*>& opts,
       opts[opts_idx] = nullptr;
     }
   }
-
-  size_t post_opts_len = post_opts.size();
-
-  for (size_t post_opts_idx = 0; post_opts_idx < post_opts_len; post_opts_idx++) {
-    HOptimization* post_opt = post_opts[post_opts_idx];
-    if (disabled_passes.find(post_opt->GetPassName()) != disabled_passes.end()) {
-      post_opts[post_opts_idx] = nullptr;
-    }
-  }
 }
 
-void PrintPasses(ArenaVector<HOptimization*>& opts,
-                 ArenaVector<HOptimization*>& post_opts) {
+void PrintPasses(ArenaVector<HOptimization*>& opts) {
   size_t opts_len = opts.size();
-  size_t post_opts_len = post_opts.size();
 
-  // We replace the opts, post_opts with nullptr if we find a match.
+  // We replace the opts with nullptr if we find a match.
   //   This is cheaper than rearranging the vectors.
   LOG(INFO) << "Pass List:";
   if (opts_len == 0) {
@@ -258,22 +231,117 @@ void PrintPasses(ArenaVector<HOptimization*>& opts,
       LOG(INFO) << "\t- " << opt->GetPassName();
     }
   }
+}
 
-  LOG(INFO) << "Post-Opt List:";
-  if (post_opts_len == 0) {
-    LOG(INFO) << "\t<Empty>";
+void FillUserPassOptions(ArenaVector<HOptimization*>& opts,
+                         CompilerDriver* driver) {
+  const PassManagerOptions* pass_options = driver->GetCompilerOptions().GetPassManagerOptions();
+  const std::string& options = pass_options->GetOverriddenPassOptions();
+  const size_t options_len = options.size();
+
+  // Before anything, check if we care about anything right now.
+  if (options_len == 0) {
+    return;
   }
 
-  for (size_t post_opts_idx = 0; post_opts_idx < post_opts_len; post_opts_idx++) {
-    HOptimization* post_opt = post_opts[post_opts_idx];
-    if (post_opt != nullptr) {
-      LOG(INFO) << "\t- " << post_opt->GetPassName();
+  for (auto optimization : opts) {
+    if (optimization == nullptr) {
+      continue;
     }
+
+    const char* pass_name = optimization->GetPassName();
+    const size_t pass_name_len = strlen(pass_name);
+    const size_t min_option_size = 4;  // 2 delimiters, 1 option name, 1 option.
+    size_t search_pos = 0;
+
+    // If there is no room for pass options, exit early.
+    if (options_len < pass_name_len + min_option_size) {
+      continue;
+    }
+
+    do {
+      search_pos = options.find(pass_name, search_pos);
+
+      // Check if we found this pass name in rest of string.
+      if (search_pos == std::string::npos) {
+        // No more options for this pass.
+        break;
+      }
+
+      // The string contains the pass name. Now check that there is
+      // room for the options: at least one char for option name,
+      // two chars for two delimiter, and at least one char for option.
+      if (search_pos + pass_name_len + min_option_size >= options_len) {
+        // No more options for this pass.
+        break;
+      }
+
+      // Update the current search position to not include the pass name.
+      search_pos += pass_name_len;
+
+      // The format must be "PassName:SettingName:#" where # is the option.
+      // Thus look for the first ":" which must exist.
+      if (options[search_pos] != ':') {
+        // Missing delimiter right after pass name.
+        continue;
+      } else {
+        search_pos += 1;
+      }
+
+      // Now look for the actual option by finding the next ":" delimiter.
+      const size_t option_name_pos = search_pos;
+      size_t option_pos = options.find(':', option_name_pos);
+
+      if (option_pos == std::string::npos) {
+        // Missing a delimiter that would capture where option starts.
+        continue;
+      } else if (option_pos == option_name_pos) {
+        // Missing option thus did not move from option name.
+        continue;
+      } else {
+        // Skip the delimiter.
+        option_pos += 1;
+      }
+
+      // Look for the terminating delimiter which must be a comma.
+      size_t next_configuration_separator = options.find(',', option_pos);
+      if (next_configuration_separator == std::string::npos) {
+        next_configuration_separator = options_len;
+      }
+
+      // Prevent end of string errors.
+      if (next_configuration_separator == option_pos) {
+          continue;
+      }
+
+      // Get the actual option itself.
+      std::string option_string =
+          options.substr(option_pos, next_configuration_separator - option_pos);
+
+      std::string option_name =
+          options.substr(option_name_pos, option_pos - option_name_pos - 1);
+
+      // We attempt to convert the option value to integer. Strtoll is being used to
+      // convert because it is exception safe.
+      char* end_ptr = nullptr;
+      const char* option_ptr = option_string.c_str();
+      DCHECK(option_ptr != nullptr);  // Paranoid: option_ptr must be a valid pointer.
+      int64_t int_value = strtoll(option_ptr, &end_ptr, 0);
+      DCHECK(end_ptr != nullptr);  // Paranoid: end_ptr must be set by the strtoll call.
+
+      // If strtoll call succeeded, the option is now considered as integer.
+      if (*option_ptr != '\0' && end_ptr != option_ptr && *end_ptr == '\0') {
+        optimization->DefineOption(option_name, OptionContent(int_value));
+      } else {
+        // Otherwise, it is considered as a string.
+        optimization->DefineOption(option_name, OptionContent(option_string.c_str()));
+      }
+      search_pos = next_configuration_separator;
+    } while (true);
   }
 }
 
 bool PrintPassesOnlyOnce(ArenaVector<HOptimization*>& opts,
-                         ArenaVector<HOptimization*>& post_opts,
                          CompilerDriver* driver) {
   bool need_print = driver->GetCompilerOptions().
                             GetPassManagerOptions()->GetPrintPassNames();
@@ -302,38 +370,18 @@ bool PrintPassesOnlyOnce(ArenaVector<HOptimization*>& opts,
     return false;
   }
 
-  PrintPasses(opts, post_opts);
+  PrintPasses(opts);
   return true;
-}
-
-/**
- * @brief Fill the vector from an array.
- * @param array the array of HOptimization.
- * @param len the length of the array.
- * @param vector the ArenaVector to fill.
- */
-static void FillPassList(HOptimization_X86** array, size_t len, ArenaVector<HOptimization*>& vector) {
-  for (size_t i = 0; i < len; i++) {
-    HOptimization_X86* pass = array[i];
-
-    if (pass != nullptr) {
-      vector.push_back(pass);
-    }
-  }
 }
 
 /**
  * @brief Sets verbosity for passes.
  * @param optimizations the optimization array.
  * @param opts_len the length of optimizations array.
- * @param post_optimizations the post-optimization array.
- * @param post_opts_len the length of post-optimizations array.
  * @param driver the compilation driver.
  */
 void FillVerbose(HOptimization_X86* optimizations[],
                  size_t opts_len,
-                 HOptimization_X86* post_optimizations[],
-                 size_t post_opts_len,
                  CompilerDriver* driver) {
   std::unordered_set<std::string> print_passes;
   const bool print_all_passes = driver->GetCompilerOptions().
@@ -360,16 +408,6 @@ void FillVerbose(HOptimization_X86* optimizations[],
       }
     }
   }
-
-  for (size_t post_opts_idx = 0; post_opts_idx < post_opts_len; post_opts_idx++) {
-    HOptimization* post_opt = post_optimizations[post_opts_idx];
-    if (post_opt != nullptr) {
-      if (print_all_passes ||
-          print_passes.find(post_opt->GetPassName()) != print_passes.end()) {
-        post_optimizations[post_opts_idx]->SetVerbose(true);
-      }
-    }
-  }
 }
 
 void RunOptimizationsX86(HGraph* graph,
@@ -377,84 +415,70 @@ void RunOptimizationsX86(HGraph* graph,
                          OptimizingCompilerStats* stats,
                          ArenaVector<HOptimization*>& opt_list,
                          PassObserver* pass_observer) {
-  // We want our own list of passes with our own vector.
-  ArenaVector<HOptimization*> post_opt_list(graph->GetArena()->Adapter(kArenaAllocMisc));
-  ArenaSet<const char*> post_opt_request(graph->GetArena()->Adapter(kArenaAllocMisc));
-
   // Create the array for the opts.
-  HLoopFormation loop_formation(graph);
-  HFindInductionVariables find_ivs(graph, stats);
-  HRemoveLoopSuspendChecks remove_suspends(graph, stats);
-  HRemoveUnusedLoops remove_unused_loops(graph, stats);
-  TrivialLoopEvaluator tle(graph, stats);
-  HConstantCalculationSinking ccs(graph, stats);
+  ArenaAllocator* arena = graph->GetArena();
+  HLoopFormation* loop_formation = new (arena) HLoopFormation(graph);
+  HFindInductionVariables* find_ivs = new (arena) HFindInductionVariables(graph, stats);
+  HRemoveLoopSuspendChecks* remove_suspends = new (arena) HRemoveLoopSuspendChecks(graph, stats);
+  HRemoveUnusedLoops* remove_unused_loops = new (arena) HRemoveUnusedLoops(graph, stats);
+  TrivialLoopEvaluator* tle = new (arena) TrivialLoopEvaluator(graph, stats);
+  HConstantCalculationSinking* ccs = new (arena) HConstantCalculationSinking(graph, stats);
 #ifndef SOFIA
-  HNonTemporalMove non_temporal_move(graph, stats);
+  HNonTemporalMove* non_temporal_move = new (arena) HNonTemporalMove(graph, stats);
 #endif
-  LoadHoistStoreSink lhss(graph, stats);
+  LoadHoistStoreSink* lhss = new (arena) LoadHoistStoreSink(graph, stats);
   // HValuePropagationThroughHeap value_propagation_through_heap(graph, stats);
-  HLoopFormation formation_before_peeling(graph, "loop_formation_before_peeling");
-  HLoopPeeling peeling(graph, stats);
-  HLoopFormation formation_before_bottom_loops(graph, "loop_formation_before_bottom_loops");
-  HFormBottomLoops form_bottom_loops(graph, stats);
-  GVNAfterFormBottomLoops gvn_after_fbl(graph);
-  // HGenerateSelects generate_selects(graph, stats);
+  HLoopFormation* formation_before_peeling =
+      new (arena) HLoopFormation(graph, "loop_formation_before_peeling");
+  HLoopPeeling* peeling = new (arena) HLoopPeeling(graph, stats);
+  HLoopFormation* formation_before_bottom_loops =
+      new (arena) HLoopFormation(graph, "loop_formation_before_bottom_loops");
+  HFormBottomLoops* form_bottom_loops = new (arena) HFormBottomLoops(graph, stats);
+  GVNAfterFormBottomLoops* gvn_after_fbl = new (arena) GVNAfterFormBottomLoops(graph);
+  // HGenerateSelects* generate_selects = new (arena) HGenerateSelects(graph, stats);
 
   HOptimization_X86* opt_array[] = {
-    &form_bottom_loops,
-    &gvn_after_fbl,
-    &formation_before_bottom_loops,
-    &loop_formation,
-    &find_ivs,
-    &remove_suspends,
-    &ccs,
-    &remove_unused_loops,
-    &lhss,
-    &peeling,
-    &formation_before_peeling,
-    &tle,
+    form_bottom_loops,
+    gvn_after_fbl,
+    formation_before_bottom_loops,
+    loop_formation,
+    find_ivs,
+    remove_suspends,
+    ccs,
+    remove_unused_loops,
+    lhss,
+    peeling,
+    formation_before_peeling,
+    tle,
 #ifndef SOFIA
-    &non_temporal_move,
+    non_temporal_move,
 #endif
     // &generate_selects
     // &value_propagation_through_heapvalue_propagation_through_heap,
   };
 
-  // Create the array for the post-opts.
-  HOptimization_X86* post_opt_array[] = {
-    nullptr,
-  };
-
   // Fill verbose flags where we need it.
   FillVerbose(opt_array, arraysize(opt_array),
-              post_opt_array, arraysize(post_opt_array),
               driver);
 
   // Create the vector for the optimizations.
   FillOptimizationList(graph, opt_list, opt_array, arraysize(opt_array));
 
-  // Create the vector for the post opts.
-  FillPassList(post_opt_array, arraysize(post_opt_array), post_opt_list);
-
   // Finish by removing the ones we do not want.
-  RemoveOptimizations(opt_list, post_opt_list, driver);
+  RemoveOptimizations(opt_list, driver);
 
   // Print the pass list, if needed.
-  PrintPassesOnlyOnce(opt_list, post_opt_list, driver);
+  PrintPassesOnlyOnce(opt_list, driver);
+
+  FillUserPassOptions(opt_list, driver);
 
   // Now execute the optimizations.
   for (auto optimization : opt_list) {
     if (optimization != nullptr) {
-      {
-        const char* name = optimization->GetPassName();
-        VLOG(compiler) << "Applying " << name;
-        RunOptWithPassScope scope(optimization, pass_observer);
-        scope.Run();
-      }
-
-      // Apply post opts: for optimizing compiler, we assume the post-opts
-      //   know when to run or not to limit compile time.
-      ApplyPostOpts(post_opt_list, pass_observer);
+      const char* name = optimization->GetPassName();
+      VLOG(compiler) << "Applying " << name;
+      RunOptWithPassScope scope(optimization, pass_observer);
+      scope.Run();
     }
   }
 }
