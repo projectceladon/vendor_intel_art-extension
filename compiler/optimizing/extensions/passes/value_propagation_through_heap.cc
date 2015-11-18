@@ -29,17 +29,17 @@
 namespace art {
 
 static bool IsNotSafeForVPThroughHeap(HInstruction* insn) {
-  if (HStaticFieldSet* sfs = insn->AsStaticFieldSet()) {
-    return sfs->IsVolatile();
-  } else if (HStaticFieldGet* sfg = insn->AsStaticFieldGet()) {
-    return sfg->IsVolatile();
-  } else if (HInstanceFieldSet* ifs = insn->AsInstanceFieldSet()) {
-    return ifs->IsVolatile();
+  if (insn->IsInvoke()) {
+    return true;
   } else if (HInstanceFieldGet* ifg = insn->AsInstanceFieldGet()) {
     return ifg->IsVolatile();
+  } else if (HInstanceFieldSet* ifs = insn->AsInstanceFieldSet()) {
+    return ifs->IsVolatile();
+  } else if (HStaticFieldGet* sfg = insn->AsStaticFieldGet()) {
+    return sfg->IsVolatile();
+  } else if (HStaticFieldSet* sfs = insn->AsStaticFieldSet()) {
+    return sfs->IsVolatile();
   } else if (insn->IsMonitorOperation()) {
-    return true;
-  } else if (insn->IsInvoke()) {
     return true;
   } else {
     return false;
@@ -161,6 +161,10 @@ void HValuePropagationThroughHeap::PropagateValueToGetters(HLoopInformation_X86*
 bool HValuePropagationThroughHeap::Gate(HLoopInformation_X86* loop) const {
   DCHECK(loop->GetPreHeader() != nullptr);
 
+  // To save the compilation time, limit the loop basic blocks.
+  if (loop->NumberOfBlocks() > kMaximumBasicBlockNumbers) {
+    return false;
+  }
   // For the safety of memory operations, do not allow invokes, volatile or monitor
   // instructions in the loop.
   for (HBlocksInLoopIterator it(*loop); !it.Done(); it.Advance()) {

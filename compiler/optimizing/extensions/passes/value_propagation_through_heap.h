@@ -65,6 +65,10 @@ class HValuePropagationThroughHeap : public HOptimization_X86 {
 
   AliasCheck alias_;
 
+  // The maximum basic block numbers in the loop for this optimization to apply
+  // to save compilation time.
+  static constexpr int64_t kMaximumBasicBlockNumbers = 11;
+
   DISALLOW_COPY_AND_ASSIGN(HValuePropagationThroughHeap);
 };
 
