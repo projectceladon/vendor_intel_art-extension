@@ -52,28 +52,35 @@ bool HValuePropagationThroughHeap::GetCandidateSetters(HLoopInformation_X86* loo
 
   HBasicBlock* preheader = loop->GetPreHeader();
   DCHECK(preheader != nullptr);
-  bool found_setter = false;
 
-  // Go through each instruction in the preheader.
-  for (HInstructionIterator it(preheader->GetInstructions()); !it.Done(); it.Advance()) {
+  // Go through each instruction in the preheader in reverse order to simplify the checks.
+  for (HBackwardInstructionIterator it(preheader->GetInstructions()); !it.Done(); it.Advance()) {
     HInstruction* inst = it.Current();
-    HInstruction::InstructionKind inst_type = inst->GetKind();
+
+    if (IsNotSafeForVPThroughHeap(inst)) {
+      PRINT_PASS_OSTREAM_MESSAGE(this, "Found not safe instruction " << inst <<
+                                 " and stop setter search");
+      break;
+    }
 
     // If instruction is setter.
+    HInstruction::InstructionKind inst_type = inst->GetKind();
     if (inst_type == HInstruction::kInstanceFieldSet ||
         inst_type == HInstruction::kStaticFieldSet) {
-      setters_set.insert(inst);
-      found_setter = true;
       PRINT_PASS_OSTREAM_MESSAGE(this, "Found candidate setter " << inst);
-    }
-    // If setter is found and current instruction is not safe,
-    // clear the setters_set.
-    if (found_setter) {
-      if (IsNotSafeForVPThroughHeap(inst)) {
-        setters_set.clear();
-        found_setter = false;
-        PRINT_PASS_OSTREAM_MESSAGE(this, "Clear setters_set due to " << inst <<
-                                   " is not safe for this optimization");
+      // We must ensure that there is no already found setter to the same location.
+      bool is_good = true;
+      for (auto setter : setters_set) {
+        AliasCheck::AliasKind alias_kind = alias_.Alias(setter, inst);
+        if (alias_kind != AliasCheck::kNoAlias) {
+          PRINT_PASS_OSTREAM_MESSAGE(this, "Found the similar setter " << setter
+                                     << " after us");
+          is_good = false;
+          break;
+        }
+      }
+      if (is_good) {
+        setters_set.insert(inst);
       }
     }
   }
