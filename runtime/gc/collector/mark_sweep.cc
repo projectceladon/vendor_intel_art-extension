@@ -867,19 +867,10 @@ class MarkSweep::CardScanTask : public MarkStackTask<false> {
   }
 };
 
-size_t MarkSweep::GetThreadCount(bool paused) const {
-  // Use less threads if we are in a background state (non jank perceptible) since we want to leave
-  // more CPU time for the foreground apps.
-  if (heap_->GetThreadPool() == nullptr || !Runtime::Current()->InJankPerceptibleProcessState()) {
-    return 1;
-  }
-  return (paused ? heap_->GetParallelGCThreadCount() : heap_->GetConcGCThreadCount()) + 1;
-}
-
 void MarkSweep::ScanGrayObjects(bool paused, uint8_t minimum_age) {
   accounting::CardTable* card_table = GetHeap()->GetCardTable();
   ThreadPool* thread_pool = GetHeap()->GetThreadPool();
-  size_t thread_count = GetThreadCount(paused);
+  size_t thread_count = GetHeap()->GetThreadCount(paused);
   // The parallel version with only one thread is faster for card scanning, TODO: fix.
   if (kParallelCardScan && thread_count > 1) {
     Thread* self = Thread::Current();
@@ -1031,7 +1022,7 @@ void MarkSweep::RecursiveMark() {
     ScanObjectVisitor scan_visitor(this);
     auto* self = Thread::Current();
     ThreadPool* thread_pool = heap_->GetThreadPool();
-    size_t thread_count = GetThreadCount(false);
+    size_t thread_count = heap_->GetThreadCount(false);
     const bool parallel = kParallelRecursiveMark && thread_count > 1;
     mark_stack_->Reset();
     for (const auto& space : GetHeap()->GetContinuousSpaces()) {
@@ -1418,7 +1409,7 @@ void MarkSweep::ProcessMarkStackParallel(size_t thread_count) {
 // Scan anything that's on the mark stack.
 void MarkSweep::ProcessMarkStack(bool paused) {
   TimingLogger::ScopedTiming t(paused ? "(Paused)ProcessMarkStack" : __FUNCTION__, GetTimings());
-  size_t thread_count = GetThreadCount(paused);
+  size_t thread_count = GetHeap()->GetThreadCount(paused);
   if (kParallelProcessMarkStack && thread_count > 1 &&
       mark_stack_->Size() >= kMinimumParallelMarkStackSize) {
     ProcessMarkStackParallel(thread_count);

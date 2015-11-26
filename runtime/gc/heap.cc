@@ -4326,5 +4326,13 @@ bool Heap::GCProfileRunning() {
   GcProfiler *gc_profiler = GcProfiler::GetInstance();
   return gc_profiler->IsRunning();
 }
+
+size_t Heap::GetThreadCount(bool paused) const {
+  if (GetThreadPool() == nullptr || !CareAboutPauseTimes()) {
+    return 1;
+  }
+  return (paused ? GetParallelGCThreadCount() : GetConcGCThreadCount()) + 1;
+}
+
 }  // namespace gc
 }  // namespace art
