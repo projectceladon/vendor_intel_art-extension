@@ -218,6 +218,11 @@ ART_C_INCLUDES := \
   external/vixl/src \
   external/zlib \
 
+CAPSTONE_EXT_LIBRARY := $(strip $(wildcard $(ANDROID_BUILD_TOP)/vendor/intel/external/capstone/Android.mk))
+ifneq ($$(CAPSTONE_EXT_LIBRARY),)
+  ART_C_INCLUDES += vendor/intel/external/capstone/include
+endif
+
 # We optimize Thread::Current() with a direct TLS access. This requires access to a private
 # Bionic header.
 # Note: technically we only need this on device, but this avoids the duplication of the includes.

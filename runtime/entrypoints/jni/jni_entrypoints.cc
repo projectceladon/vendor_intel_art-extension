@@ -25,29 +25,39 @@ namespace art {
 
 // Used by the JNI dlsym stub to find the native method to invoke if none is registered.
 #if defined(__arm__) || defined(__aarch64__)
-extern "C" void* artFindNativeMethod() {
+extern "C" void* artFindNativeMethod() NO_THREAD_SAFETY_ANALYSIS {
   Thread* self = Thread::Current();
 #else
-extern "C" void* artFindNativeMethod(Thread* self) {
+extern "C" void* artFindNativeMethod(Thread* self) NO_THREAD_SAFETY_ANALYSIS {
   DCHECK_EQ(self, Thread::Current());
 #endif
-  Locks::mutator_lock_->AssertNotHeld(self);  // We come here as Native.
-  ScopedObjectAccess soa(self);
+  bool was_slow = false;
+  bool is_fast = false;
+  void* return_val = nullptr;
+  {
+    Locks::mutator_lock_->AssertNotHeld(self);  // We come here as Native.
+    ScopedObjectAccess soa(self);
 
-  ArtMethod* method = self->GetCurrentMethod(nullptr);
-  DCHECK(method != nullptr);
+    ArtMethod* method = self->GetCurrentMethod(nullptr);
+    DCHECK(method != nullptr);
 
-  // Lookup symbol address for method, on failure we'll return null with an exception set,
-  // otherwise we return the address of the method we found.
-  void* native_code = soa.Vm()->FindCodeForNativeMethod(method);
-  if (native_code == nullptr) {
-    DCHECK(self->IsExceptionPending());
-    return nullptr;
-  } else {
-    // Register so that future calls don't come here
-    method->RegisterNative(native_code, false);
-    return native_code;
+    // Lookup symbol address for method, on failure we'll return null with an exception set,
+    // otherwise we return the address of the method we found.
+    void* native_code = soa.Vm()->FindCodeForNativeMethod(method);
+    if (native_code == nullptr) {
+      DCHECK(self->IsExceptionPending());
+    } else {
+      // Register so that future calls don't come here
+      was_slow = !method->IsFastNative();
+      method->RegisterNative(native_code, false);
+      is_fast = method->IsFastNative();
+      return_val = native_code;
+    }
   }
+  if (was_slow && is_fast) {
+    self->TransitionFromSuspendedToRunnable();
+  }
+  return return_val;
 }
 
 }  // namespace art

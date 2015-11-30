@@ -20,6 +20,9 @@
 #include "art_field-inl.h"
 #include "art_method-inl.h"
 #include "base/stringpiece.h"
+#ifdef CAPSTONE
+#include "binary_analyzer/binary_analyzer.h"
+#endif
 #include "class_linker-inl.h"
 #include "debugger.h"
 #include "dex_file-inl.h"
@@ -314,8 +317,15 @@ void ArtMethod::Invoke(Thread* self, uint32_t* args, uint32_t args_size, JValue*
 
 void ArtMethod::RegisterNative(const void* native_method, bool is_fast) {
   CHECK(IsNative()) << PrettyMethod(this);
-  CHECK(!IsFastNative()) << PrettyMethod(this);
   CHECK(native_method != nullptr) << PrettyMethod(this);
+#ifdef CAPSTONE
+  if (!is_fast && Runtime::Current()->IsAutoFastDetect()) {
+    is_fast = IsFastJNI(GetDexMethodIndex(), *GetDexFile(), native_method);
+    if (is_fast)  {
+      VLOG(autofast_jni) << PrettyMethod(this) << " is a fast JNI Method";
+    }
+  }
+#endif
   if (is_fast) {
     SetAccessFlags(GetAccessFlags() | kAccFastNative);
   }
@@ -323,7 +333,7 @@ void ArtMethod::RegisterNative(const void* native_method, bool is_fast) {
 }
 
 void ArtMethod::UnregisterNative() {
-  CHECK(IsNative() && !IsFastNative()) << PrettyMethod(this);
+  CHECK(IsNative()) << PrettyMethod(this);
   // restore stub to lookup native pointer via dlsym
   RegisterNative(GetJniDlsymLookupStub(), false);
 }

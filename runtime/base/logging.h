@@ -58,6 +58,7 @@ struct LogVerbosity {
   bool image;
   bool systrace_lock_logging;  // Enabled with "-verbose:sys-locks".
   bool exact_profiler;  // Enabled with "-verbose:exact".
+  bool autofast_jni;
 };
 
 // Global log verbosity setting, initialized by InitLogging.

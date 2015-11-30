@@ -689,6 +689,18 @@ class Runtime {
     return dex_profiles_;
   }
 
+#ifdef CAPSTONE
+  // Should Auto fast Detection be done.
+  bool IsAutoFastDetect() const {
+    return auto_fast_detect_;
+  }
+
+  // Set Auto Fast Detection.
+  void SetAutoFastDetect(bool value) {
+    auto_fast_detect_ = value;
+  }
+#endif
+
  private:
   ProfilersMap& GetProfilersUnlocked() {
     return profiles_;
@@ -955,6 +967,11 @@ class Runtime {
 
   // Map from DexFile* to pair<ExactProfileFile*, index>
   DexProfilersMap dex_profiles_ GUARDED_BY(Locks::mutator_lock_);
+
+#ifdef CAPSTONE
+  // Auto Fast JNI detection gate.
+  bool auto_fast_detect_;
+#endif
 
   DISALLOW_COPY_AND_ASSIGN(Runtime);
 };

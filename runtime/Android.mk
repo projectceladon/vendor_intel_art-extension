@@ -237,6 +237,10 @@ ifeq ($(LIBART_VTUNE), true)
     vtune_support.cc
 endif
 
+LIBART_BINARY_ANALYZER_FILES := \
+  binary_analyzer/binary_analyzer_x86.cc \
+  binary_analyzer/disassembler.cc
+
 LIBART_TARGET_LDFLAGS :=
 LIBART_HOST_LDFLAGS :=
 
@@ -461,13 +465,23 @@ define build-runtime-library
     LOCAL_MODULE_CLASS := SHARED_LIBRARIES
   endif
 
+  CAPSTONE_EXT_LIBRARY := $(strip $(wildcard $(ANDROID_BUILD_TOP)/vendor/intel/external/capstone/Android.mk))
+
   ifeq ($(4),libart)
     ifeq ($$(art_target_or_host),target)
       LOCAL_SRC_FILES := $$(LIBART_TARGET_SRC_FILES)
+      ifneq ($$(CAPSTONE_EXT_LIBRARY),)
+        LOCAL_CFLAGS += -DCAPSTONE
+        LOCAL_SRC_FILES += $$(LIBART_BINARY_ANALYZER_FILES)
+      endif
       $$(foreach arch,$$(ART_TARGET_SUPPORTED_ARCH), \
         $$(eval LOCAL_SRC_FILES_$$(arch) := $$$$(LIBART_TARGET_SRC_FILES_$$(arch))))
     else # host
       LOCAL_SRC_FILES := $$(LIBART_HOST_SRC_FILES)
+      ifneq ($$(CAPSTONE_EXT_LIBRARY),)
+        LOCAL_CFLAGS += -DCAPSTONE
+        LOCAL_SRC_FILES += $$(LIBART_BINARY_ANALYZER_FILES)
+      endif
       LOCAL_SRC_FILES_32 := $$(LIBART_HOST_SRC_FILES_32)
       LOCAL_SRC_FILES_64 := $$(LIBART_HOST_SRC_FILES_64)
       LOCAL_IS_HOST_MODULE := true
@@ -493,6 +507,9 @@ $$(ENUM_OPERATOR_OUT_GEN): $$(GENERATED_SRC_DIR)/%_operator_out.cc : $(LOCAL_PAT
 endif
 
   LOCAL_CFLAGS := $$(LIBART_CFLAGS)
+  ifneq ($$(CAPSTONE_EXT_LIBRARY),)
+    LOCAL_CFLAGS += -DCAPSTONE
+  endif
   LOCAL_LDFLAGS := $$(LIBART_LDFLAGS)
   ifeq ($$(art_target_or_host),target)
     LOCAL_CFLAGS += $$(LIBART_TARGET_CFLAGS)
@@ -545,6 +562,9 @@ endif
     LOCAL_STATIC_LIBRARIES += libsigchain_dummy
     LOCAL_STATIC_LIBRARIES += libbacktrace
     LOCAL_STATIC_LIBRARIES += liblz4
+    ifneq ($$(CAPSTONE_EXT_LIBRARY),)
+      LOCAL_STATIC_LIBRARIES += libcapstone
+    endif
   else
     LOCAL_SHARED_LIBRARIES := libnativehelper
     LOCAL_SHARED_LIBRARIES += libnativebridge
@@ -552,6 +572,9 @@ endif
     LOCAL_SHARED_LIBRARIES += libsigchain
     LOCAL_SHARED_LIBRARIES += libbacktrace
     LOCAL_SHARED_LIBRARIES += liblz4
+    ifneq ($$(CAPSTONE_EXT_LIBRARY),)
+      LOCAL_SHARED_LIBRARIES += libcapstone
+    endif
   endif
 
   ifeq ($$(art_target_or_host),target)
@@ -562,15 +585,27 @@ endif
     LOCAL_SHARED_LIBRARIES += libutils
     # For liblog, atrace, properties, ashmem, set_sched_policy and socket_peer_is_trusted.
     LOCAL_SHARED_LIBRARIES += libcutils
+    # For Auto Fast JNI
+    ifneq ($$(CAPSTONE_EXT_LIBRARY),)
+      LOCAL_SHARED_LIBRARIES += libcapstone
+    endif
   else # host
     ifeq ($$(art_static_or_shared),static)
       LOCAL_STATIC_LIBRARIES += libziparchive-host libz
       # For ashmem_create_region.
       LOCAL_STATIC_LIBRARIES += libcutils
+      # For Auto Fast JNI
+      ifneq ($$(CAPSTONE_EXT_LIBRARY),)
+        LOCAL_STATIC_LIBRARIES += libcapstone
+      endif
     else
       LOCAL_SHARED_LIBRARIES += libziparchive-host libz-host
       # For ashmem_create_region.
       LOCAL_SHARED_LIBRARIES += libcutils
+      # For Auto Fast JNI
+      ifneq ($$(CAPSTONE_EXT_LIBRARY),)
+        LOCAL_SHARED_LIBRARIES += libcapstone
+      endif
     endif
   endif
 
@@ -668,6 +703,7 @@ LIBART_TARGET_SRC_FILES_mips64 :=
 LIBART_HOST_SRC_FILES :=
 LIBART_HOST_SRC_FILES_32 :=
 LIBART_HOST_SRC_FILES_64 :=
+LIBART_BINARY_ANALYZER_FILES :=
 LIBART_ENUM_OPERATOR_OUT_HEADER_FILES :=
 LIBART_CFLAGS :=
 LIBART_TARGET_CFLAGS :=
