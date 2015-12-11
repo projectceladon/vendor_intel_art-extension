@@ -35,12 +35,9 @@ namespace art {
  */
 class HInstructionCloner : public HGraphVisitor {
  public:
-
   /**
    * Create an instruction cloner.
    * @param graph Graph containing the instructions to clone.
-   * @param env_to_instr Optional mapping of environments->instructions that
-   * will be updated for cloned instructions.  Pass 'nullptr' if not needed.
    * @param enable_cloning 'false' to see if cloning is possible, 'true' to clone.
    * @param use_cloned_inputs 'true' if cloned instructions should use already
    * cloned inputs.
@@ -167,8 +164,7 @@ class HInstructionCloner : public HGraphVisitor {
   void VisitConstant(HConstant* instr) OVERRIDE { VisitInstruction(instr); }
   void VisitX86SelectValue(HX86SelectValue* instr) OVERRIDE;
 
-  // TODO: remaining instructions
-  // FakeString
+  // TODO: fix FakeString.
 
  private:
   void GetInputsForUnary(HInstruction* instr, HInstruction** input_ptr) const;

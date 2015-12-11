@@ -999,7 +999,7 @@ static void FixLoopPhis(const HBasicBlock* header, const HInstructionCloner& clo
   std::map<HPhi*, std::vector<HPhi*>> replacement;
   for (HInstructionIterator it(header->GetPhis()); !it.Done(); it.Advance()) {
     HInstruction* phi = it.Current();
-    DCHECK (phi->IsLoopHeaderPhi());
+    DCHECK(phi->IsLoopHeaderPhi());
     DCHECK_EQ(phi->InputCount(), 2u);
     HInstruction* loop_input = phi->InputAt(1);
 
@@ -1092,7 +1092,6 @@ static void AddClonedInstructions(const HGraph_X86* graph,
 /**
  * @brief Used to clone instruction from main loop to use for peel.
  * @details Suspend checks and loop phis are treated specially.
- * @param graph The graph that contains loop being peeled.
  * @param loop The loop being peeled.
  * @param cloner The instance of instruction cloner.
  */
