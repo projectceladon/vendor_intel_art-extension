@@ -56,7 +56,7 @@ class TLEVisitor : public HGraphVisitor {
 
 #define NOTHING_IF_ERROR if (is_error_) return
 #define SWITCH_FOR_TYPES(instr, condition, int_case, long_case, float_case, double_case) \
-        do { switch(condition) { \
+        do { switch (condition) { \
           case Primitive::kPrimInt: int_case; break; \
           case Primitive::kPrimLong: long_case; break; \
           case Primitive::kPrimFloat: float_case; break; \
@@ -112,30 +112,26 @@ class TLEVisitor : public HGraphVisitor {
         values_.Overwrite(instr, Value(static_cast<int32_t>(in_value.i))),
         values_.Overwrite(instr, Value(static_cast<int64_t>(in_value.i))),
         values_.Overwrite(instr, Value(static_cast<float>(in_value.i))),
-        values_.Overwrite(instr, Value(static_cast<double>(in_value.i)))
-      ),
+        values_.Overwrite(instr, Value(static_cast<double>(in_value.i)))),
       // long case.
       SWITCH_FOR_TYPES(instr, out_type,
         values_.Overwrite(instr, Value(static_cast<int32_t>(in_value.l))),
         values_.Overwrite(instr, Value(static_cast<int64_t>(in_value.l))),
         values_.Overwrite(instr, Value(static_cast<float>(in_value.l))),
-        values_.Overwrite(instr, Value(static_cast<double>(in_value.l)))
-      ),
+        values_.Overwrite(instr, Value(static_cast<double>(in_value.l)))),
       // float case.
       SWITCH_FOR_TYPES(instr, out_type,
         values_.Overwrite(instr, Value(INTEGRAL_TO_FP_CONV(kPrimIntMax, kPrimIntMin, int32_t, in_value.f))),
         values_.Overwrite(instr, Value(INTEGRAL_TO_FP_CONV(kPrimLongMax, kPrimLongMin, int64_t, in_value.f))),
         values_.Overwrite(instr, Value(static_cast<float>(in_value.f))),
-        values_.Overwrite(instr, Value(static_cast<double>(in_value.f)))
-      ),
+        values_.Overwrite(instr, Value(static_cast<double>(in_value.f)))),
       // double case.
       SWITCH_FOR_TYPES(instr, out_type,
         values_.Overwrite(instr, Value(INTEGRAL_TO_FP_CONV(kPrimIntMax, kPrimIntMin, int32_t, in_value.d))),
         values_.Overwrite(instr, Value(INTEGRAL_TO_FP_CONV(kPrimLongMax, kPrimLongMin, int64_t, in_value.d))),
         values_.Overwrite(instr, Value(static_cast<float>(in_value.d))),
         values_.Overwrite(instr, Value(static_cast<double>(in_value.d)))
-      )
-    );
+      ));
 
     switch (orig_out_type) {
       case Primitive::kPrimByte:
@@ -178,8 +174,7 @@ class TLEVisitor : public HGraphVisitor {
       res = (isnan(left_value.f) || isnan(right_value.f)) ? (is_gt_bias ? 1 : -1)
             : FpEqual(left_value.f, right_value.f) ? 0 : (left_value.f > right_value.f ? 1 : -1),
       res = (isnan(left_value.d) || isnan(right_value.d)) ? (is_gt_bias ? 1 : -1)
-            : (FpEqual(left_value.d, right_value.d) ? 0 : (left_value.d > right_value.d ? 1 : -1))
-    );
+            : (FpEqual(left_value.d, right_value.d) ? 0 : (left_value.d > right_value.d ? 1 : -1)));
     return res;
   }
 
@@ -235,8 +230,7 @@ class TLEVisitor : public HGraphVisitor {
       res = comparator(static_cast<uint32_t>(left_value.i), static_cast<uint32_t>(right_value.i)),
       res = comparator(static_cast<uint64_t>(left_value.l), static_cast<uint64_t>(right_value.l)),
       SetError(instr),
-      SetError(instr)
-    );
+      SetError(instr));
     values_.Overwrite(instr, Value(res ? 1 : 0));
   }
 
@@ -266,8 +260,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr, Value(-val.i)),
       values_.Overwrite(instr, Value(-val.l)),
       values_.Overwrite(instr, Value(-val.f)),
-      values_.Overwrite(instr, Value(-val.d))
-    );
+      values_.Overwrite(instr, Value(-val.d)));
   }
 
   void VisitAdd(HAdd* instr) OVERRIDE {
@@ -284,8 +277,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr, Value(left_value.i + right_value.i)),
       values_.Overwrite(instr, Value(left_value.l + right_value.l)),
       values_.Overwrite(instr, Value(left_value.f + right_value.f)),
-      values_.Overwrite(instr, Value(left_value.d + right_value.d))
-    );
+      values_.Overwrite(instr, Value(left_value.d + right_value.d)));
   }
 
   void VisitSub(HSub* instr) OVERRIDE {
@@ -302,8 +294,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr, Value(left_value.i - right_value.i)),
       values_.Overwrite(instr, Value(left_value.l - right_value.l)),
       values_.Overwrite(instr, Value(left_value.f - right_value.f)),
-      values_.Overwrite(instr, Value(left_value.d - right_value.d))
-    );
+      values_.Overwrite(instr, Value(left_value.d - right_value.d)));
   }
 
   void VisitMul(HMul* instr) OVERRIDE {
@@ -320,8 +311,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr, Value(left_value.i * right_value.i)),
       values_.Overwrite(instr, Value(left_value.l * right_value.l)),
       values_.Overwrite(instr, Value(left_value.f * right_value.f)),
-      values_.Overwrite(instr, Value(left_value.d * right_value.d))
-    );
+      values_.Overwrite(instr, Value(left_value.d * right_value.d)));
   }
 
   void VisitDiv(HDiv* instr) OVERRIDE {
@@ -338,8 +328,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr, Value(left_value.i / right_value.i)),
       values_.Overwrite(instr, Value(left_value.l / right_value.l)),
       values_.Overwrite(instr, Value(left_value.f / right_value.f)),
-      values_.Overwrite(instr, Value(left_value.d / right_value.d))
-    );
+      values_.Overwrite(instr, Value(left_value.d / right_value.d)));
   }
 
   template <typename T, typename F> T FpRem(T x, T y, F f) {
@@ -375,8 +364,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr,
         Value(FpRem(left_value.f, right_value.f, [] (float x, float y) -> float { return std::fmodf(x, y); }))),
       values_.Overwrite(instr,
-        Value(FpRem(left_value.d, right_value.d, [] (double x, double y) -> double { return std::fmod(x, y); })))
-    );
+        Value(FpRem(left_value.d, right_value.d, [] (double x, double y) -> double { return std::fmod(x, y); }))));
   }
 
   int32_t ComputeShiftCount(HInstruction* instr) {
@@ -405,8 +393,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr, Value(left_value.i << shift_count)),
       values_.Overwrite(instr, Value(left_value.l << shift_count)),
       SetError(instr),
-      SetError(instr)
-    );
+      SetError(instr));
   }
 
   void VisitShr(HShr* instr) OVERRIDE {
@@ -422,8 +409,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr, Value(left_value.i >> shift_count)),
       values_.Overwrite(instr, Value(left_value.l >> shift_count)),
       SetError(instr),
-      SetError(instr)
-    );
+      SetError(instr));
   }
 
   void VisitUShr(HUShr* instr) OVERRIDE {
@@ -441,8 +427,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr,
         Value(static_cast<int64_t>(static_cast<uint64_t>(left_value.l) >> shift_count))),
       SetError(instr),
-      SetError(instr)
-    );
+      SetError(instr));
   }
 
   void VisitAnd(HAnd* instr) OVERRIDE {
@@ -453,8 +438,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr,
         Value(GetValueAsLong(instr->GetLeft()) & GetValueAsLong(instr->GetRight()))),
       SetError(instr),
-      SetError(instr)
-    );
+      SetError(instr));
   }
 
   void VisitOr(HOr* instr) OVERRIDE {
@@ -465,8 +449,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr,
         Value(GetValueAsLong(instr->GetLeft()) | GetValueAsLong(instr->GetRight()))),
       SetError(instr),
-      SetError(instr)
-    );
+      SetError(instr));
   }
 
   void VisitXor(HXor* instr) OVERRIDE {
@@ -477,8 +460,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr,
         Value(GetValueAsLong(instr->GetLeft()) ^ GetValueAsLong(instr->GetRight()))),
       SetError(instr),
-      SetError(instr)
-    );
+      SetError(instr));
   }
 
   void VisitNot(HNot* instr) OVERRIDE {
@@ -487,8 +469,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr, Value(~GetValue(instr->GetInput()).i)),
       values_.Overwrite(instr, Value(~GetValue(instr->GetInput()).l)),
       SetError(instr),
-      SetError(instr)
-    );
+      SetError(instr));
   }
 
   void VisitBooleanNot(HBooleanNot* instr) OVERRIDE {
@@ -497,8 +478,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr, Value(GetValue(instr->GetInput()).i == 1 ? 0 : 1)),
       SetError(instr),
       SetError(instr),
-      SetError(instr)
-    );
+      SetError(instr));
   }
 
   HBasicBlock* GetNextBasicBlock() { return next_bb_; }
@@ -515,8 +495,7 @@ class TLEVisitor : public HGraphVisitor {
       return static_cast<int64_t>(v.i),
       return static_cast<int64_t>(v.l),
       return static_cast<int64_t>(v.f),
-      return static_cast<int64_t>(v.d)
-    );
+      return static_cast<int64_t>(v.d));
     return 0;
   }
 
@@ -546,22 +525,21 @@ class TLEVisitor : public HGraphVisitor {
       return graph->GetIntConstant(v.i),
       return graph->GetLongConstant(v.l),
       return graph->GetFloatConstant(v.f),
-      return graph->GetDoubleConstant(v.d)
-    );
+      return graph->GetDoubleConstant(v.d));
     return nullptr;
   }
 
 #undef NOTHING_IF_ERROR
 #undef SWITCH_FOR_TYPES
 
- void SetError(HInstruction* instr) {
-   is_error_ = true;
-   PRINT_PASS_OSTREAM_MESSAGE(opt_, "TLE could not handle " << instr);
- }
+  void SetError(HInstruction* instr) {
+    is_error_ = true;
+    PRINT_PASS_OSTREAM_MESSAGE(opt_, "TLE could not handle " << instr);
+  }
 
- ArenaSafeMap<HInstruction*, Value> GetConstants() const {
-   return values_;
- }
+  ArenaSafeMap<HInstruction*, Value> GetConstants() const {
+    return values_;
+  }
 
  private:
   int pred_index_;
