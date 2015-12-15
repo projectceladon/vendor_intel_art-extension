@@ -80,6 +80,7 @@ void HRemoveUnusedLoops::Run() {
     PRINT_PASS_OSTREAM_MESSAGE(this, "Loop end: is_empty = " << (loop_is_empty ? "true" : "false"));
 
     if (loop_is_empty) {
+      UpdateExternalPhis();
       RemoveLoop(loop_info, pre_header, exit_block);
       MaybeRecordStat(MethodCompilationStat::kIntelRemoveUnusedLoops);
       changed = true;
@@ -138,9 +139,16 @@ bool HRemoveUnusedLoops::CheckInstructionsInBlock(HLoopInformation_X86* loop_inf
       HLoopInformation* li = insn_block->GetLoopInformation();
       PRINT_PASS_OSTREAM_MESSAGE(this, "Result is used by: " << insn);
       if (li != loop_info) {
-        // We are being used in a different loop.
-        PRINT_PASS_MESSAGE(this, "Used in different loop");
-        return false;
+        // We are being used in a different loop.  Is it REALLY used?
+        // Only special case Phis for this check.
+        HPhi* insn_as_phi = insn->AsPhi();
+        if (insn_as_phi != nullptr && !insn->HasUses()) {
+          PRINT_PASS_MESSAGE(this, "Used by Phi in different loop -- has no uses (removing)");
+          insn_as_phi->GetBlock()->RemovePhi(insn_as_phi);
+        } else {
+          PRINT_PASS_MESSAGE(this, "Used in different loop");
+          return false;
+        }
       }
     }
   }
@@ -149,23 +157,51 @@ bool HRemoveUnusedLoops::CheckInstructionsInBlock(HLoopInformation_X86* loop_inf
   return true;
 }
 
+static bool BothInputsAreFromOutsideInnerLoop(HPhi* phi,
+                                              HLoopInformation_X86* loop_info) {
+  // Only handle 2 input Phis.
+  if (phi->InputCount() != 2) {
+    return false;
+  }
+
+  // Check that the inputs are not within the loop.  Since we only handle
+  // inner loops, any input which has a different loop information is outside.
+  HLoopInformation* li = phi->InputAt(0)->GetBlock()->GetLoopInformation();
+  if (li == loop_info) {
+    return false;
+  }
+  li = phi->InputAt(1)->GetBlock()->GetLoopInformation();
+  return li != loop_info;
+}
+
 bool HRemoveUnusedLoops::CheckPhisInBlock(HLoopInformation_X86* loop_info,
                                          HBasicBlock* loop_block) {
+  // We are only looking at inner loops.
+  DCHECK(loop_info->IsInner());
+
   // Walk through the Phis in the loop, and see if the result
   // is used outside the loop.
   for (HInstructionIterator inst_it(loop_block->GetPhis());
        !inst_it.Done();
        inst_it.Advance()) {
-    HInstruction* instruction = inst_it.Current();
-    PRINT_PASS_OSTREAM_MESSAGE(this, "Look at: " << instruction);
+    HPhi* phi = inst_it.Current()->AsPhi();
+    DCHECK(phi != nullptr);
+    PRINT_PASS_OSTREAM_MESSAGE(this, "Look at: " << phi);
+    // Special case the case where both inputs are from outside the loop.
+    if (BothInputsAreFromOutsideInnerLoop(phi, loop_info)) {
+      PRINT_PASS_OSTREAM_MESSAGE(this, "Phi has 2 external inputs: "
+                                        << phi->InputAt(0) << ' ' << phi->InputAt(1));
+      external_loop_phis_.insert(phi);
+      continue;
+    }
 
-    for (HUseIterator<HInstruction*> it2(instruction->GetUses()); !it2.Done(); it2.Advance()) {
+    for (HUseIterator<HInstruction*> it2(phi->GetUses()); !it2.Done(); it2.Advance()) {
       HInstruction* insn = it2.Current()->GetUser();
       HBasicBlock* insn_block = insn->GetBlock();
       HLoopInformation* li = insn_block->GetLoopInformation();
       PRINT_PASS_OSTREAM_MESSAGE(this, "Result is used by: " << insn);
       if (li != loop_info) {
-        // We are being used in a different loop.
+        // We are being used in a different loop (could be out of the loop).
         PRINT_PASS_MESSAGE(this, "Used in different loop");
         return false;
       }
@@ -215,4 +251,13 @@ void HRemoveUnusedLoops::RemoveLoop(HLoopInformation_X86* loop_info,
     tmp = tmp->GetParent();
   }
 }
+
+void HRemoveUnusedLoops::UpdateExternalPhis() {
+  for (auto it : external_loop_phis_) {
+    // Replace each phi with the value computed in the loop.
+    PRINT_PASS_OSTREAM_MESSAGE(this, "Replace Phi " << it << " with " << it->InputAt(1));
+    it->ReplaceWith(it->InputAt(1));
+  }
+}
+
 }  // namespace art

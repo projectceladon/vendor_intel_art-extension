@@ -42,6 +42,9 @@ class HRemoveUnusedLoops : public HOptimization_X86 {
   void RemoveLoop(HLoopInformation_X86* loop_info,
                   HBasicBlock*pre_header,
                   HBasicBlock* exit_block);
+  void UpdateExternalPhis();
+
+  std::set<HPhi*> external_loop_phis_;
 
   DISALLOW_COPY_AND_ASSIGN(HRemoveUnusedLoops);
 };
