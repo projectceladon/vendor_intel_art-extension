@@ -41,8 +41,12 @@ bool HLoopPeeling::ShouldPeel(HLoopInformation_X86* loop) {
           instruction != nullptr;
           instruction = instruction->GetNext()) {
         // Check if thrower or heap mutator/reader first.
+        // We also handle LoadString and LoadClass specially because they may not fall
+        // in either category but in reality are useful to hoist since they have no
+        // IR inputs and will reload same thing over and over.
         if (instruction->CanThrow() || instruction->HasSideEffects() ||
-            instruction->GetSideEffects().HasDependencies()) {
+            instruction->GetSideEffects().HasDependencies() ||
+            instruction->IsLoadClass() || instruction->IsLoadString()) {
           bool all_inputs_from_outside = true;
 
           // Now check that all inputs are from outside.
