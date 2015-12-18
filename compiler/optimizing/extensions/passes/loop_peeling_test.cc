@@ -40,7 +40,7 @@ static void TestPeeling(const uint16_t* data, ArenaAllocator* allocator, size_t 
   HGraphBuilder builder(graph);
   const DexFile::CodeItem* item = reinterpret_cast<const DexFile::CodeItem*>(data);
   builder.BuildGraph(*item);
-  graph->TryBuildingSsa();
+  TransformToSsa(graph);
 
   // Loop formation is needed to get loop hierarchy in place for peeling.
   HLoopFormation formation(graph);
@@ -52,7 +52,7 @@ static void TestPeeling(const uint16_t* data, ArenaAllocator* allocator, size_t 
     if (inner_loop->IsPeelable(&formation)) {
       inner_loop->PeelHead(&formation);
     }
-    ASSERT_EQ(inner_loop->GetPeeledBlockIds().Size(), num_peeled_blocks);
+    ASSERT_EQ(inner_loop->GetPeeledBlockIds().size(), num_peeled_blocks);
     inner_iter.Advance();
   }
 }

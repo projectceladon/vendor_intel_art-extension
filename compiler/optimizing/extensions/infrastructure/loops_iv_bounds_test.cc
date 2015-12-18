@@ -44,7 +44,7 @@ namespace art {
     HGraphBuilder builder(graph);
     const DexFile::CodeItem* item = reinterpret_cast<const DexFile::CodeItem*>(data);
     builder.BuildGraph(*item);
-    graph->TryBuildingSsa();
+    TransformToSsa(graph);
 
     // Loop formation is needed to get loop hierarchy in place.
     HLoopFormation formation(graph);
@@ -62,8 +62,8 @@ namespace art {
     ASSERT_EQ(bound_info.biv_end_value_, upper);
     ASSERT_EQ(bound_info.loop_biv_->GetIncrement(), inc);
 
-    GrowableArray<HInductionVariable*>& list = inner_loop->GetInductionVariables();
-    ASSERT_EQ(static_cast<int>(list.Size()), nbr_ivs);
+    ArenaVector<HInductionVariable*>& list = inner_loop->GetInductionVariables();
+    ASSERT_EQ(static_cast<int>(list.size()), nbr_ivs);
   }
 
   static void TestFPIVBounds(const uint16_t* data, ArenaAllocator* allocator,
@@ -75,7 +75,7 @@ namespace art {
     HGraphBuilder builder(graph);
     const DexFile::CodeItem* item = reinterpret_cast<const DexFile::CodeItem*>(data);
     builder.BuildGraph(*item);
-    graph->TryBuildingSsa();
+    TransformToSsa(graph);
 
     // Loop formation is needed to get loop hierarchy in place.
     HLoopFormation formation(graph);
@@ -93,8 +93,8 @@ namespace art {
     ASSERT_EQ(bound_info.biv_end_value_, upper);
     ASSERT_LT(fabs(bound_info.loop_biv_->GetFPIncrement() - inc), 0.001);
 
-    GrowableArray<HInductionVariable*>& list = inner_loop->GetInductionVariables();
-    ASSERT_EQ(static_cast<int>(list.Size()), nbr_ivs);
+    ArenaVector<HInductionVariable*>& list = inner_loop->GetInductionVariables();
+    ASSERT_EQ(static_cast<int>(list.size()), nbr_ivs);
   }
 
   TEST(LoopIVBoundTest, Simple) {
