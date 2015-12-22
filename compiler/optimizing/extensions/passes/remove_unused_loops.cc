@@ -30,7 +30,7 @@
 namespace art {
 
 void HRemoveUnusedLoops::Run() {
-  PRINT_PASS_MESSAGE(this, "start");
+  PRINT_PASS_OSTREAM_MESSAGE(this, "start " << GetMethodName(graph_));
 
   HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
   HLoopInformation_X86 *graph_loop_info = graph->GetLoopInformation();
@@ -61,6 +61,7 @@ void HRemoveUnusedLoops::Run() {
 
     // Walk through the blocks in the loop.
     bool loop_is_empty = true;
+    external_loop_phis_.clear();
     for (HBlocksInLoopIterator it_loop(*loop_info); !it_loop.Done(); it_loop.Advance()) {
       HBasicBlock* loop_block = it_loop.Current();
 
@@ -86,7 +87,7 @@ void HRemoveUnusedLoops::Run() {
       changed = true;
     }
   }
-  PRINT_PASS_MESSAGE(this, "end");
+  PRINT_PASS_OSTREAM_MESSAGE(this, "end " << GetMethodName(graph_));
   if (changed) {
     // We have to rebuild our loops properly, now that we have removed loops.
     HLoopFormation form_loops(graph_);
@@ -188,7 +189,8 @@ bool HRemoveUnusedLoops::CheckPhisInBlock(HLoopInformation_X86* loop_info,
     DCHECK(phi != nullptr);
     PRINT_PASS_OSTREAM_MESSAGE(this, "Look at: " << phi);
     // Special case the case where both inputs are from outside the loop.
-    if (BothInputsAreFromOutsideInnerLoop(phi, loop_info)) {
+    // Only valid in loop header.
+    if (phi->IsLoopHeaderPhi() && BothInputsAreFromOutsideInnerLoop(phi, loop_info)) {
       PRINT_PASS_OSTREAM_MESSAGE(this, "Phi has 2 external inputs: "
                                         << phi->InputAt(0) << ' ' << phi->InputAt(1));
       external_loop_phis_.insert(phi);
