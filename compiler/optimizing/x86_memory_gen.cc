@@ -311,6 +311,105 @@ class MemoryOperandVisitor : public HGraphVisitor {
     return result;
   }
 
+  void TryForLHSMemory(HInstruction* instruction) {
+    HInstruction* previous = instruction->GetPrevious();
+    if (previous) {
+      HInstructionRHSMemory* rhs_mem = previous->AsInstructionRHSMemory();
+      if (rhs_mem) {
+        TryMemoryOperation(instruction, rhs_mem);
+      }
+    }
+  }
+
+  void HandleFieldSet(HInstruction* insn) {
+    // Can we combine this with a preceding RHSMemory operation?
+    TryForLHSMemory(insn);
+  }
+
+  void VisitStaticFieldSet(HStaticFieldSet* instruction) OVERRIDE {
+    HandleFieldSet(instruction);
+  }
+
+  void VisitInstanceFieldSet(HInstanceFieldSet* instruction) OVERRIDE {
+    HandleFieldSet(instruction);
+  }
+
+  void VisitArraySet(HArraySet* insn) OVERRIDE {
+    // Can we combine this with a preceding RHSMemory operation?
+    TryForLHSMemory(insn);
+  }
+
+  void TryMemoryOperation(HInstruction* instruction, HInstructionRHSMemory* rhs_mem_op) {
+    // Does this instruction use the result of the rhs_mem_op?
+    HInstruction* input = instruction->InputAt(instruction->InputCount() - 1);
+    if (input != rhs_mem_op) {
+      // The result of the RHS mem op is not the input to the Set.
+      return;
+    }
+
+    // We can't support FP operations to memory.
+    if (Primitive::IsFloatingPointType(rhs_mem_op->InputAt(0)->GetType())) {
+      return;
+    }
+
+    // We only support add to memory.
+    if (!rhs_mem_op->IsAddRHSMemory()) {
+      return;
+    }
+
+    // Are these instructions compatible?
+    if (HInstanceFieldSet* i_set = instruction->AsInstanceFieldSet()) {
+      // The the memory operation can't have an index.
+      if (rhs_mem_op->InputCount() != 2) {
+        return;
+      }
+      // We need to match on base and offset.
+      if (i_set->InputAt(0) != rhs_mem_op->InputAt(1) ||
+          i_set->GetFieldOffset().Uint32Value() != rhs_mem_op->GetOffset()) {
+        return;
+      }
+    } else if (HStaticFieldSet* a_set = instruction->AsStaticFieldSet()) {
+      // The the memory operation can't have an index.
+      if (rhs_mem_op->InputCount() != 2) {
+        return;
+      }
+      // We need to match on base and offset.
+      if (a_set->InputAt(0) != rhs_mem_op->InputAt(1) ||
+          a_set->GetFieldOffset().Uint32Value() != rhs_mem_op->GetOffset()) {
+        return;
+      }
+    } else {
+      DCHECK(instruction->IsArraySet());
+      // Does the memory operation have an index?
+      if (rhs_mem_op->InputCount() != 3) {
+        return;
+      }
+      // We need to match on base and index.
+      HArraySet* set = instruction->AsArraySet();
+      if (set->GetArray() != rhs_mem_op->InputAt(1) ||
+          set->GetIndex() != rhs_mem_op->InputAt(2)) {
+        return;
+      }
+    }
+
+    HInstruction* new_rhs = rhs_mem_op->InputAt(0);
+    ArenaAllocator* arena = GetGraph()->GetArena();
+    HInstructionLHSMemory* new_insn =
+        new (arena) HAddLHSMemory(rhs_mem_op, new_rhs, rhs_mem_op->GetDexPc());
+
+    // Go ahead and do the replacement.
+    HBasicBlock* block = instruction->GetBlock();
+    block->ReplaceAndRemoveInstructionWith(instruction, new_insn);
+
+    // Remove the old RHS memory op if there is no other use of it.
+    if (!rhs_mem_op->HasUses()) {
+      if (rhs_mem_op->HasEnvironment()) {
+        new_insn->CopyEnvironmentFrom(rhs_mem_op->GetEnvironment());
+      }
+      block->RemoveInstruction(rhs_mem_op);
+    }
+  }
+
   void VisitBoundsCheck(HBoundsCheck* check) OVERRIDE {
     // Replace the length by the array itself, so that we can do compares to memory.
     HArrayLength* array_len = check->InputAt(1)->AsArrayLength();

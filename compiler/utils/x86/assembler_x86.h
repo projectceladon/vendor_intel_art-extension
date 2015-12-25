@@ -514,11 +514,14 @@ class X86Assembler FINAL : public Assembler {
   void adcl(Register dst, Register src);
   void adcl(Register reg, const Immediate& imm);
   void adcl(Register dst, const Address& address);
+  void adcl(const Address& address, Register reg);
+  void adcl(const Address& address, const Immediate& imm);
 
   void subl(Register dst, Register src);
   void subl(Register reg, const Immediate& imm);
   void subl(Register reg, const Address& address);
   void subl(const Address& address, Register src);
+  void subl(const Address& address, const Immediate& imm);
 
   void cdq();
 
@@ -539,6 +542,7 @@ class X86Assembler FINAL : public Assembler {
   void sbbl(Register reg, const Immediate& imm);
   void sbbl(Register reg, const Address& address);
   void sbbl(const Address& address, Register src);
+  void sbbl(const Address& address, const Immediate& imm);
 
   void incl(Register reg);
   void incl(const Address& address);

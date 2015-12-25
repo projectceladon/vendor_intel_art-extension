@@ -268,6 +268,76 @@ class HDivRHSMemory : public HInstructionRHSMemory {
   DISALLOW_COPY_AND_ASSIGN(HDivRHSMemory);
 };
 
+class HInstructionLHSMemory : public HTemplateInstruction<3> {
+ public:
+  size_t InputCount() const OVERRIDE { return input_count_; }
+
+  void SetArgumentAt(size_t index, HInstruction* argument) {
+    SetRawInputAt(index, argument);
+  }
+
+  DECLARE_INSTRUCTION(InstructionLHSMemory);
+
+  size_t GetOffset() const { return offset_; }
+
+  Primitive::Type GetType() const OVERRIDE { return type_; }
+
+  bool CanDoImplicitNullCheckOn(HInstruction* obj) const OVERRIDE {
+    // We can do an implicit check if we don't have an index and the offset is small.
+    return obj == InputAt(0) && from_static_ == false &&
+           offset_ < kPageSize && input_count_ == 2;
+  }
+
+  void SetFromStatic() { from_static_ = true; }
+
+  HInstruction* GetBase() const { return InputAt(0); }
+
+  HInstruction* GetRHS() const { return InputAt(InputCount() - 1); }
+
+  HInstruction* GetIndex() const {
+    return InputCount() == 2 ? nullptr : InputAt(1);
+  }
+
+ protected:
+  HInstructionLHSMemory(HInstructionRHSMemory* rhs_op,
+                        HInstruction* rhs,
+                        uint32_t dex_pc = kNoDexPc)
+    : HTemplateInstruction<3>(SideEffects::None(), dex_pc),
+      type_(rhs_op->GetType()),
+      from_static_(false),
+      offset_(rhs_op->GetOffset()) {
+    input_count_ = rhs_op->InputCount();
+    SetRawInputAt(0, rhs_op->InputAt(1));
+    if (input_count_ == 2) {
+      SetRawInputAt(1, rhs);
+    } else {
+      SetRawInputAt(1, rhs_op->InputAt(2));
+      SetRawInputAt(2, rhs);
+    }
+  }
+
+ private:
+  const Primitive::Type type_;
+  bool from_static_;
+  const size_t offset_;
+  uint32_t input_count_;
+
+  DISALLOW_COPY_AND_ASSIGN(HInstructionLHSMemory);
+};
+
+class HAddLHSMemory : public HInstructionLHSMemory {
+ public:
+  HAddLHSMemory(HInstructionRHSMemory* rhs_op,
+                HInstruction* rhs,
+                uint32_t dex_pc)
+      : HInstructionLHSMemory(rhs_op, rhs, dex_pc) {}
+
+  DECLARE_INSTRUCTION(AddLHSMemory);
+
+ private:
+  DISALLOW_COPY_AND_ASSIGN(HAddLHSMemory);
+};
+
 }  // namespace art
 
 #endif  // ART_COMPILER_OPTIMIZING_NODES_X86_H_

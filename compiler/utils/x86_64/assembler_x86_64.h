@@ -556,14 +556,20 @@ class X86_64Assembler FINAL : public Assembler {
   void addq(CpuRegister reg, const Immediate& imm);
   void addq(CpuRegister dst, CpuRegister src);
   void addq(CpuRegister dst, const Address& address);
+  void addq(const Address& dst, CpuRegister src);
+  void addq(const Address& dst, const Immediate& imm);
 
   void subl(CpuRegister dst, CpuRegister src);
   void subl(CpuRegister reg, const Immediate& imm);
   void subl(CpuRegister reg, const Address& address);
+  void subl(const Address& address, const Immediate& imm);
+  void subl(const Address& address, CpuRegister src);
 
   void subq(CpuRegister reg, const Immediate& imm);
   void subq(CpuRegister dst, CpuRegister src);
   void subq(CpuRegister dst, const Address& address);
+  void subq(const Address& address, const Immediate& imm);
+  void subq(const Address& address, CpuRegister src);
 
   void cdq();
   void cqo();

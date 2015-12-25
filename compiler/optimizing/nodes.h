@@ -1334,6 +1334,7 @@ class HLoopInformationOutwardIterator : public ValueObject {
   M(Suspend, Instruction)                                               \
   M(TestSuspend, Instruction)                                           \
   M(X86SelectValue, Instruction)                                        \
+  M(AddLHSMemory, InstructionLHSMemory)                                 \
   M(AddRHSMemory, InstructionRHSMemory)                                 \
   M(DivRHSMemory, InstructionRHSMemory)                                 \
   M(MulRHSMemory, InstructionRHSMemory)                                 \
@@ -1357,6 +1358,7 @@ class HLoopInformationOutwardIterator : public ValueObject {
 
 #if defined(ART_ENABLE_CODEGEN_x86) || defined(ART_ENABLE_CODEGEN_x86_64)
 #define FOR_EACH_INSTRUCTION_X86_COMMON(M)                              \
+  M(InstructionLHSMemory, Instruction)                                  \
   M(InstructionRHSMemory, Instruction)
 #else
 #define FOR_EACH_INSTRUCTION_X86_COMMON(M)

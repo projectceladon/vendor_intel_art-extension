@@ -207,6 +207,77 @@ TEST_F(AssemblerX86Test, FPUIntegerStore) {
   DriverStr(expected, "FPUIntegerStore");
 }
 
+TEST_F(AssemblerX86Test, AddlAddrImm) {
+  GetAssembler()->addl(x86::Address(x86::EAX, 0), x86::Immediate(100));
+  GetAssembler()->addl(x86::Address(x86::EDI, 0), x86::Immediate(101));
+  const char* expected = "addl $100, 0(%eax)\n"
+                         "addl $101, 0(%edi)\n";
+  DriverStr(expected, "addl_addr_imm");
+}
+
+
+TEST_F(AssemblerX86Test, AdclAddrImm) {
+  GetAssembler()->adcl(x86::Address(x86::EAX, 0), x86::Immediate(100));
+  GetAssembler()->adcl(x86::Address(x86::EDI, 0), x86::Immediate(101));
+  const char* expected = "adcl $100, 0(%eax)\n"
+                         "adcl $101, 0(%edi)\n";
+  DriverStr(expected, "adcl_addr_imm");
+}
+
+
+TEST_F(AssemblerX86Test, SublAddrImm) {
+  GetAssembler()->subl(x86::Address(x86::EAX, 0), x86::Immediate(100));
+  GetAssembler()->subl(x86::Address(x86::EDI, 0), x86::Immediate(101));
+  const char* expected = "subl $100, 0(%eax)\n"
+                         "subl $101, 0(%edi)\n";
+  DriverStr(expected, "subl_addr_imm");
+}
+
+
+TEST_F(AssemblerX86Test, SbblAddrImm) {
+  GetAssembler()->sbbl(x86::Address(x86::EAX, 0), x86::Immediate(100));
+  GetAssembler()->sbbl(x86::Address(x86::EDI, 0), x86::Immediate(101));
+  const char* expected = "sbbl $100, 0(%eax)\n"
+                         "sbbl $101, 0(%edi)\n";
+  DriverStr(expected, "sbbl_addr_imm");
+}
+
+
+TEST_F(AssemblerX86Test, AddlAddrReg) {
+  GetAssembler()->addl(x86::Address(x86::EAX, 0), x86::EDI);
+  GetAssembler()->addl(x86::Address(x86::EDI, 0), x86::EDI);
+  const char* expected = "addl %edi, 0(%eax)\n"
+                         "addl %edi, 0(%edi)\n";
+  DriverStr(expected, "addl_addr_reg");
+}
+
+
+TEST_F(AssemblerX86Test, AdclAddrReg) {
+  GetAssembler()->adcl(x86::Address(x86::EAX, 0), x86::EDI);
+  GetAssembler()->adcl(x86::Address(x86::EDI, 0), x86::EDI);
+  const char* expected = "adcl %edi, 0(%eax)\n"
+                         "adcl %edi, 0(%edi)\n";
+  DriverStr(expected, "adcl_addr_reg");
+}
+
+
+TEST_F(AssemblerX86Test, SublAddrReg) {
+  GetAssembler()->subl(x86::Address(x86::EAX, 0), x86::EDI);
+  GetAssembler()->subl(x86::Address(x86::EDI, 0), x86::EDI);
+  const char* expected = "subl %edi, 0(%eax)\n"
+                         "subl %edi, 0(%edi)\n";
+  DriverStr(expected, "subl_addr_reg");
+}
+
+
+TEST_F(AssemblerX86Test, SbblAddrReg) {
+  GetAssembler()->sbbl(x86::Address(x86::EAX, 0), x86::EDI);
+  GetAssembler()->sbbl(x86::Address(x86::EDI, 0), x86::EDI);
+  const char* expected = "sbbl %edi, 0(%eax)\n"
+                         "sbbl %edi, 0(%edi)\n";
+  DriverStr(expected, "sbbl_addr_reg");
+}
+
 TEST_F(AssemblerX86Test, Repnescasw) {
   GetAssembler()->repne_scasw();
   const char* expected = "repne scasw\n";

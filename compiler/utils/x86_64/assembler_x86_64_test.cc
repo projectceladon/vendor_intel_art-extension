@@ -970,6 +970,49 @@ TEST_F(AssemblerX86_64Test, Movsxd) {
   DriverStr(RepeatRr(&x86_64::X86_64Assembler::movsxd, "movsxd %{reg2}, %{reg1}"), "movsxd");
 }
 
+TEST_F(AssemblerX86_64Test, AddqAddrImm) {
+  GetAssembler()->addq(x86_64::Address(x86_64::CpuRegister(x86_64::RAX), 0),
+                       x86_64::Immediate(100));
+  GetAssembler()->addq(x86_64::Address(x86_64::CpuRegister(x86_64::R8), 0),
+                       x86_64::Immediate(101));
+  const char* expected = "addq $100, 0(%rax)\n"
+                         "addq $101, 0(%r8)\n";
+  DriverStr(expected, "addq_addr_imm");
+}
+
+
+TEST_F(AssemblerX86_64Test, AddqAddrReg) {
+  GetAssembler()->addq(x86_64::Address(x86_64::CpuRegister(x86_64::RAX), 0),
+                       x86_64::CpuRegister(x86_64::R8));
+  GetAssembler()->addq(x86_64::Address(x86_64::CpuRegister(x86_64::R8), 0),
+                       x86_64::CpuRegister(x86_64::RAX));
+  const char* expected = "addq %r8, 0(%rax)\n"
+                         "addq %rax, 0(%r8)\n";
+  DriverStr(expected, "addq_addr_reg");
+}
+
+
+TEST_F(AssemblerX86_64Test, SubqAddrImm) {
+  GetAssembler()->subq(x86_64::Address(x86_64::CpuRegister(x86_64::RAX), 0),
+                       x86_64::Immediate(100));
+  GetAssembler()->subq(x86_64::Address(x86_64::CpuRegister(x86_64::R8), 0),
+                       x86_64::Immediate(101));
+  const char* expected = "subq $100, 0(%rax)\n"
+                         "subq $101, 0(%r8)\n";
+  DriverStr(expected, "subq_addr_imm");
+}
+
+
+TEST_F(AssemblerX86_64Test, SubqAddrReg) {
+  GetAssembler()->subq(x86_64::Address(x86_64::CpuRegister(x86_64::RAX), 0),
+                       x86_64::CpuRegister(x86_64::R8));
+  GetAssembler()->subq(x86_64::Address(x86_64::CpuRegister(x86_64::R8), 0),
+                       x86_64::CpuRegister(x86_64::RBX));
+  const char* expected = "subq %r8, 0(%rax)\n"
+                         "subq %rbx, 0(%r8)\n";
+  DriverStr(expected, "subq_addr_reg");
+}
+
 ///////////////////
 // FP Operations //
 ///////////////////

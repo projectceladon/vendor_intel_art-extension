@@ -6907,8 +6907,9 @@ void InstructionCodeGeneratorX86_64::VisitAddRHSMemory(HAddRHSMemory* add) {
     case Primitive::kPrimInt:
       if (add->InputAt(0)->IsConstant()) {
         // We have to ensure that Out is set to the LHS constant value.
-        codegen_->Load64BitValue(out.AsRegister<CpuRegister>(),
-                                 codegen_->GetInt64ValueOf(add->InputAt(0)->AsConstant()));
+        int64_t v = codegen_->GetInt64ValueOf(add->InputAt(0)->AsConstant());
+        DCHECK(IsInt<32>(v));
+        __ movl(out.AsRegister<CpuRegister>(), Immediate(v));
       } else {
         DCHECK(first.Equals(out));
       }
@@ -6977,6 +6978,65 @@ void InstructionCodeGeneratorX86_64::VisitAddRHSMemory(HAddRHSMemory* add) {
   codegen_->MaybeRecordImplicitNullCheck(add);
 }
 
+static void FillLHSMemoryLocation(LocationSummary* locations, HInstructionLHSMemory* insn) {
+  bool is_int = insn->GetType() == Primitive::kPrimInt;
+  DCHECK(is_int || insn->GetType() == Primitive::kPrimLong);
+
+  // Base must be in a register.
+  locations->SetInAt(0, Location::RequiresRegister());
+  uint32_t num_inputs = insn->InputCount();
+  if (num_inputs == 3) {
+    // Index must also be in a register.
+    locations->SetInAt(1, Location::RequiresRegister());
+  }
+  uint32_t val_index = num_inputs - 1;
+  locations->SetInAt(val_index, Location::RegisterOrInt32Constant(insn->InputAt(val_index)));
+}
+
+void LocationsBuilderX86_64::VisitAddLHSMemory(HAddLHSMemory* add) {
+  LocationSummary* locations =
+      new (GetGraph()->GetArena()) LocationSummary(add, LocationSummary::kNoCall);
+  FillLHSMemoryLocation(locations, add);
+}
+
+void InstructionCodeGeneratorX86_64::VisitAddLHSMemory(HAddLHSMemory* add) {
+  LocationSummary* locations = add->GetLocations();
+  uint32_t num_ops = add->InputCount();
+  Location base = locations->InAt(0);
+  Location index;
+  Location rhs = locations->InAt(num_ops - 1);
+  if (num_ops == 3) {
+    index = locations->InAt(1);
+  }
+  size_t offset = add->GetOffset();
+
+  if (add->GetType() == Primitive::kPrimInt) {
+    Address addr(index.IsValid() ?
+        Address(base.AsRegister<CpuRegister>(), index.AsRegister<CpuRegister>(), TIMES_4, offset) :
+        Address(base.AsRegister<CpuRegister>(), offset));
+    if (rhs.IsConstant()) {
+      Immediate value(CodeGenerator::GetInt32ValueOf(rhs.GetConstant()));
+      __ addl(addr, value);
+    } else {
+      __ addl(addr, rhs.AsRegister<CpuRegister>());
+      }
+  } else {
+    DCHECK(add->GetType() == Primitive::kPrimLong);
+    Address addr(index.IsValid() ?
+        Address(base.AsRegister<CpuRegister>(), index.AsRegister<CpuRegister>(), TIMES_8, offset) :
+        Address(base.AsRegister<CpuRegister>(), offset));
+    if (rhs.IsConstant()) {
+      int64_t v = CodeGenerator::GetInt64ValueOf(rhs.GetConstant());
+      DCHECK(IsInt<32>(v));
+      Immediate value(v);
+      __ addq(addr, value);
+    } else {
+      __ addq(addr, rhs.AsRegister<CpuRegister>());
+    }
+  }
+  codegen_->MaybeRecordImplicitNullCheck(add);
+}
+
 void LocationsBuilderX86_64::VisitSubRHSMemory(HSubRHSMemory* sub) {
   LocationSummary* locations =
       new (GetGraph()->GetArena()) LocationSummary(sub, LocationSummary::kNoCall);
@@ -6998,8 +7058,9 @@ void InstructionCodeGeneratorX86_64::VisitSubRHSMemory(HSubRHSMemory* sub) {
     case Primitive::kPrimInt:
       if (sub->InputAt(0)->IsConstant()) {
         // We have to ensure that Out is set to the LHS constant value.
-        codegen_->Load64BitValue(out.AsRegister<CpuRegister>(),
-                                 codegen_->GetInt64ValueOf(sub->InputAt(0)->AsConstant()));
+        int64_t v = codegen_->GetInt64ValueOf(sub->InputAt(0)->AsConstant());
+        DCHECK(IsInt<32>(v));
+        __ movl(out.AsRegister<CpuRegister>(), Immediate(v));
       } else {
         DCHECK(first.Equals(out));
       }
@@ -7089,8 +7150,9 @@ void InstructionCodeGeneratorX86_64::VisitMulRHSMemory(HMulRHSMemory* mul) {
     case Primitive::kPrimInt:
       if (mul->InputAt(0)->IsConstant()) {
         // We have to ensure that Out is set to the LHS constant value.
-        codegen_->Load64BitValue(out.AsRegister<CpuRegister>(),
-                                 codegen_->GetInt64ValueOf(mul->InputAt(0)->AsConstant()));
+        int64_t v = codegen_->GetInt64ValueOf(mul->InputAt(0)->AsConstant());
+        DCHECK(IsInt<32>(v));
+        __ movl(out.AsRegister<CpuRegister>(), Immediate(v));
       } else {
         DCHECK(first.Equals(out));
       }

@@ -82,6 +82,12 @@ AliasCheck::AliasKind AliasCheck::Alias(HInstanceFieldGet* x_get, HInstruction* 
     case HInstruction::kArrayGet:
     case HInstruction::kArraySet:
       return kNoAlias;
+    case HInstruction::kAddLHSMemory:
+      if (y->AsInstructionLHSMemory()->GetIndex() != nullptr) {
+        // Has an index, which can't alias with a field.
+        return kNoAlias;
+      }
+      return kMayAlias;
     default:
       if (HasSideEffects(y)) {
         return kMayAlias;
@@ -108,6 +114,12 @@ AliasCheck::AliasKind AliasCheck::Alias(HInstanceFieldSet* x_set, HInstruction* 
       return y->AsStaticFieldGet()->IsVolatile() ? kMayAlias : kNoAlias;
     case HInstruction::kStaticFieldSet:
       return y->AsStaticFieldSet()->IsVolatile() ? kMayAlias : kNoAlias;
+    case HInstruction::kAddLHSMemory:
+      if (y->AsInstructionLHSMemory()->GetIndex() != nullptr) {
+        // Has an index, which can't alias with a field.
+        return kNoAlias;
+      }
+      return kMayAlias;
     case HInstruction::kArrayGet:
     case HInstruction::kArraySet:
     default:
@@ -161,6 +173,12 @@ AliasCheck::AliasKind AliasCheck::Alias(HStaticFieldGet* x_get, HInstruction* y)
     case HInstruction::kArrayGet:
     case HInstruction::kArraySet:
       return kNoAlias;
+    case HInstruction::kAddLHSMemory:
+      if (y->AsInstructionLHSMemory()->GetIndex() != nullptr) {
+        // Has an index, which can't alias with a field.
+        return kNoAlias;
+      }
+      return kMayAlias;
     default:
       if (HasSideEffects(y)) {
         return kMayAlias;
@@ -190,6 +208,12 @@ AliasCheck::AliasKind AliasCheck::Alias(HStaticFieldSet* x_set, HInstruction* y)
     case HInstruction::kArrayGet:
     case HInstruction::kArraySet:
       return kNoAlias;
+    case HInstruction::kAddLHSMemory:
+      if (y->AsInstructionLHSMemory()->GetIndex() != nullptr) {
+        // Has an index, which can't alias with a field.
+        return kNoAlias;
+      }
+      return kMayAlias;
     default:
       if (HasSideEffects(y)) {
         return kMayAlias;
@@ -266,6 +290,59 @@ AliasCheck::AliasKind AliasCheck::Array_alias(HInstruction* x, HInstruction* y) 
   return kMayAlias;
 }
 
+AliasCheck::AliasKind AliasCheck::LHSMemory_array_alias(HInstructionLHSMemory* x,
+                                                        HInstruction *index,
+                                                        HInstruction* y) {
+  // Do they have the same bases?
+  if (Array_base_same(x->InputAt(0), y->InputAt(0))) {
+    // We know the base is the same.  Can we differentiate the index?
+    return Array_index_alias(index, y->InputAt(1));
+  }
+
+  // Look at the type after looking at the base, as there are some cases where
+  // the we run into problems with arrays in Dex.  This may be fixed in
+  // a later AOSP.
+  Primitive::Type x_type = x->GetType();
+  Primitive::Type y_type = y->IsArrayGet() ? y->GetType() : y->AsArraySet()->GetComponentType();
+  if (x_type != y_type) {
+    // Unfortunately dex format has aget and aput un-typed. It means that we cannot for sure
+    // say whether it is fp-type or not. So we must not say they are not alias.
+    // So we cannot say for sure for the pairs (int, float), (float, int), (long, double) and
+    // (double, long).
+    // TODO: we might be a bit more better here. Say if compiler proved that this is a real
+    // integer type then we can say that int and float differs.
+    // We know that x_type is int or long.
+    if (Primitive::ComponentSize(x_type) != Primitive::ComponentSize(y_type) ||
+        !Primitive::IsIntOrLongType(y_type)) {
+      // The types don't match, so they have to be different.
+      return kNoAlias;
+    }
+  }
+
+  // TODO: Look at the instructions, and see if we can tell anything more.
+  return kMayAlias;
+}
+
+AliasCheck::AliasKind AliasCheck::LHSMemory_field_alias(HInstructionLHSMemory* x,
+                                                        HInstruction* base,
+                                                        const FieldInfo& field) {
+  if (field.IsVolatile()) {
+    return kMayAlias;
+  }
+
+  if (field.GetFieldOffset().SizeValue() != x->GetOffset()) {
+    // Not possible to alias.
+    return kNoAlias;
+  }
+
+  if (Instance_base_same(x->InputAt(0), base)) {
+    // They have the same type, offset and object.
+    return kMustAlias;
+  }
+
+  return kMayAlias;
+}
+
 AliasCheck::AliasKind AliasCheck::Alias(HArrayGet* x_get, HInstruction* y) {
   switch (y->GetKind()) {
     case HInstruction::kArrayGet:
@@ -279,6 +356,12 @@ AliasCheck::AliasKind AliasCheck::Alias(HArrayGet* x_get, HInstruction* y) {
       return y->AsStaticFieldGet()->IsVolatile() ? kMayAlias : kNoAlias;
     case HInstruction::kStaticFieldSet:
       return y->AsStaticFieldSet()->IsVolatile() ? kMayAlias : kNoAlias;
+    case HInstruction::kAddLHSMemory:
+      if (y->AsInstructionLHSMemory()->GetIndex() == nullptr) {
+        // Doesn't have an index, which can't alias with an array.
+        return kNoAlias;
+      }
+      return kMayAlias;
     default:
       if (HasSideEffects(y)) {
         return kMayAlias;
@@ -300,6 +383,53 @@ AliasCheck::AliasKind AliasCheck::Alias(HArraySet* x_set, HInstruction* y) {
       return y->AsStaticFieldGet()->IsVolatile() ? kMayAlias : kNoAlias;
     case HInstruction::kStaticFieldSet:
       return y->AsStaticFieldSet()->IsVolatile() ? kMayAlias : kNoAlias;
+    case HInstruction::kAddLHSMemory:
+      if (y->AsInstructionLHSMemory()->GetIndex() == nullptr) {
+        // Doesn't have an index, which can't alias with an array.
+        return kNoAlias;
+      }
+      return kMayAlias;
+    default:
+      if (HasSideEffects(y)) {
+        return kMayAlias;
+      }
+      return kNoAlias;
+  }
+}
+
+AliasCheck::AliasKind AliasCheck::Alias(HInstructionLHSMemory* x_lhs, HInstruction* y) {
+  HInstruction* index = x_lhs->GetIndex();
+  switch (y->GetKind()) {
+    case HInstruction::kArrayGet:
+    case HInstruction::kArraySet:
+      if (index != nullptr) {
+        // Can only alias with an array if we have an index.
+        return LHSMemory_array_alias(x_lhs, index, y);
+      }
+      return kNoAlias;
+    case HInstruction::kInstanceFieldGet:
+      if (index != nullptr) {
+        return kNoAlias;
+      }
+      return LHSMemory_field_alias(x_lhs, y->InputAt(0), y->AsInstanceFieldGet()->GetFieldInfo());
+    case HInstruction::kInstanceFieldSet:
+      if (index != nullptr) {
+        return kNoAlias;
+      }
+      return LHSMemory_field_alias(x_lhs, y->InputAt(0), y->AsInstanceFieldSet()->GetFieldInfo());
+    case HInstruction::kStaticFieldGet:
+      if (index != nullptr) {
+        return kNoAlias;
+      }
+      return LHSMemory_field_alias(x_lhs, y->InputAt(0), y->AsStaticFieldGet()->GetFieldInfo());
+    case HInstruction::kStaticFieldSet:
+      if (index != nullptr) {
+        return kNoAlias;
+      }
+      return LHSMemory_field_alias(x_lhs, y->InputAt(0), y->AsStaticFieldSet()->GetFieldInfo());
+    case HInstruction::kAddLHSMemory:
+      // This isn't common enough to worry about.
+      return kMayAlias;
     default:
       if (HasSideEffects(y)) {
         return kMayAlias;
@@ -337,6 +467,9 @@ AliasCheck::AliasKind AliasCheck::Alias(HInstruction* x, HInstruction* y) {
       break;
     case HInstruction::kArraySet:
       result = Alias(x->AsArraySet(), y);
+      break;
+    case HInstruction::kAddLHSMemory:
+      result = Alias(x->AsInstructionLHSMemory(), y);
       break;
     default:
       if (HasSideEffects(x)) {

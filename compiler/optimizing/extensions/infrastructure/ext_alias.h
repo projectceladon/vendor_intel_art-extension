@@ -57,12 +57,17 @@ class AliasCheck {
   inline AliasKind Alias(HStaticFieldSet* x, HInstruction* y);
   inline AliasKind Alias(HArrayGet* x, HInstruction* y);
   inline AliasKind Alias(HArraySet* x, HInstruction* y);
+  inline AliasKind Alias(HInstructionLHSMemory* x, HInstruction* y);
   AliasKind Array_index_alias(HInstruction* x, HInstruction *y);
   bool Array_base_same(HInstruction* x, HInstruction* y);
   bool Instance_base_same(HInstruction* x, HInstruction* y);
   AliasKind Array_alias(HInstruction* x, HInstruction* y);
   AliasKind Instance_alias(const FieldInfo& x_field, const FieldInfo& y_field,
                            HInstruction* x_base, HInstruction* y_base);
+  AliasKind LHSMemory_array_alias(HInstructionLHSMemory* x, HInstruction* index,
+                                  HInstruction* y);
+  AliasKind LHSMemory_field_alias(HInstructionLHSMemory* x, HInstruction* base,
+                                  const FieldInfo& field);
 };
 
 }  // namespace art

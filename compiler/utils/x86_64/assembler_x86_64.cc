@@ -1619,6 +1619,22 @@ void X86_64Assembler::addl(const Address& address, const Immediate& imm) {
 }
 
 
+void X86_64Assembler::addq(const Address& address, CpuRegister reg) {
+  AssemblerBuffer::EnsureCapacity ensured(&buffer_);
+  EmitRex64(reg, address);
+  EmitUint8(0x01);
+  EmitOperand(reg.LowBits(), address);
+}
+
+
+void X86_64Assembler::addq(const Address& address, const Immediate& imm) {
+  CHECK(imm.is_int32());
+  AssemblerBuffer::EnsureCapacity ensured(&buffer_);
+  EmitRex64(address);
+  EmitComplex(0, address, imm);
+}
+
+
 void X86_64Assembler::subl(CpuRegister dst, CpuRegister src) {
   AssemblerBuffer::EnsureCapacity ensured(&buffer_);
   EmitOptionalRex32(dst, src);
@@ -1631,6 +1647,37 @@ void X86_64Assembler::subl(CpuRegister reg, const Immediate& imm) {
   AssemblerBuffer::EnsureCapacity ensured(&buffer_);
   EmitOptionalRex32(reg);
   EmitComplex(5, Operand(reg), imm);
+}
+
+
+void X86_64Assembler::subl(const Address& dst, CpuRegister src) {
+  AssemblerBuffer::EnsureCapacity ensured(&buffer_);
+  EmitOptionalRex32(src, dst);
+  EmitUint8(0x81);
+  EmitOperand(src.LowBits(), dst);
+}
+
+
+void X86_64Assembler::subl(const Address& dst, const Immediate& imm) {
+  AssemblerBuffer::EnsureCapacity ensured(&buffer_);
+  EmitOptionalRex32(dst);
+  EmitComplex(5, dst, imm);
+}
+
+
+void X86_64Assembler::subq(const Address& dst, CpuRegister src) {
+  AssemblerBuffer::EnsureCapacity ensured(&buffer_);
+  EmitRex64(src, dst);
+  EmitUint8(0x29);
+  EmitOperand(src.LowBits(), dst);
+}
+
+
+void X86_64Assembler::subq(const Address& dst, const Immediate& imm) {
+  AssemblerBuffer::EnsureCapacity ensured(&buffer_);
+  CHECK(imm.is_int32());  // subq only supports 32b immediate.
+  EmitRex64(dst);
+  EmitComplex(5, dst, imm);
 }
 
 

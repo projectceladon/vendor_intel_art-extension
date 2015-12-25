@@ -7519,6 +7519,72 @@ void InstructionCodeGeneratorX86::VisitAddRHSMemory(HAddRHSMemory* add) {
   codegen_->MaybeRecordImplicitNullCheck(add);
 }
 
+static void FillLHSMemoryLocation(LocationSummary* locations, HInstructionLHSMemory* insn) {
+  DCHECK(insn->GetType() == Primitive::kPrimInt || insn->GetType() == Primitive::kPrimLong);
+
+  // Base must be in a register.
+  locations->SetInAt(0, Location::RequiresRegister());
+  uint32_t num_inputs = insn->InputCount();
+  if (num_inputs == 3) {
+    // Index must also be in a register.
+    locations->SetInAt(1, Location::RequiresRegister());
+  }
+  uint32_t val_index = num_inputs - 1;
+  locations->SetInAt(val_index, Location::RegisterOrConstant(insn->InputAt(val_index)));
+}
+
+void LocationsBuilderX86::VisitAddLHSMemory(HAddLHSMemory* add) {
+  LocationSummary* locations =
+      new (GetGraph()->GetArena()) LocationSummary(add, LocationSummary::kNoCall);
+  FillLHSMemoryLocation(locations, add);
+}
+
+void InstructionCodeGeneratorX86::VisitAddLHSMemory(HAddLHSMemory* add) {
+  LocationSummary* locations = add->GetLocations();
+  uint32_t num_ops = add->InputCount();
+  Location base = locations->InAt(0);
+  Location index;
+  Location rhs = locations->InAt(num_ops - 1);
+  if (num_ops == 3) {
+    index = locations->InAt(1);
+  }
+  size_t offset = add->GetOffset();
+
+  if (add->GetType() == Primitive::kPrimInt) {
+    Address addr(index.IsValid() ?
+        Address(base.AsRegister<Register>(), index.AsRegister<Register>(), TIMES_4, offset) :
+        Address(base.AsRegister<Register>(), offset));
+    if (rhs.IsConstant()) {
+      Immediate value(CodeGenerator::GetInt32ValueOf(rhs.GetConstant()));
+      __ addl(addr, value);
+    } else {
+      __ addl(addr, rhs.AsRegister<Register>());
+    }
+    codegen_->MaybeRecordImplicitNullCheck(add);
+  } else {
+    DCHECK(add->GetType() == Primitive::kPrimLong);
+    Address addr_lo(index.IsValid() ?
+        Address(base.AsRegister<Register>(), index.AsRegister<Register>(), TIMES_8, offset) :
+        Address(base.AsRegister<Register>(), offset));
+    Address addr_hi(index.IsValid() ?
+        Address(base.AsRegister<Register>(),
+                index.AsRegister<Register>(),
+                TIMES_8,
+                offset + kX86WordSize) :
+        Address(base.AsRegister<Register>(), offset + kX86WordSize));
+    if (rhs.IsConstant()) {
+      int64_t value = CodeGenerator::GetInt64ValueOf(rhs.GetConstant());
+      __ addl(addr_lo, Immediate(Low32Bits(value)));
+      codegen_->MaybeRecordImplicitNullCheck(add);
+      __ adcl(addr_hi, Immediate(High32Bits(value)));
+    } else {
+      __ addl(addr_lo, rhs.AsRegisterPairLow<Register>());
+      codegen_->MaybeRecordImplicitNullCheck(add);
+      __ adcl(addr_hi, rhs.AsRegisterPairHigh<Register>());
+    }
+  }
+}
+
 void LocationsBuilderX86::VisitSubRHSMemory(HSubRHSMemory* sub) {
   LocationSummary* locations =
       new (GetGraph()->GetArena()) LocationSummary(sub, LocationSummary::kNoCall);

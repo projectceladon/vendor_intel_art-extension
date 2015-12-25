@@ -1222,6 +1222,19 @@ void X86Assembler::adcl(Register dst, const Address& address) {
 }
 
 
+void X86Assembler::adcl(const Address& address, Register reg) {
+  AssemblerBuffer::EnsureCapacity ensured(&buffer_);
+  EmitUint8(0x11);
+  EmitOperand(reg, address);
+}
+
+
+void X86Assembler::adcl(const Address& address, const Immediate& imm) {
+  AssemblerBuffer::EnsureCapacity ensured(&buffer_);
+  EmitComplex(2, address, imm);
+}
+
+
 void X86Assembler::subl(Register dst, Register src) {
   AssemblerBuffer::EnsureCapacity ensured(&buffer_);
   EmitUint8(0x2B);
@@ -1232,6 +1245,12 @@ void X86Assembler::subl(Register dst, Register src) {
 void X86Assembler::subl(Register reg, const Immediate& imm) {
   AssemblerBuffer::EnsureCapacity ensured(&buffer_);
   EmitComplex(5, Operand(reg), imm);
+}
+
+
+void X86Assembler::subl(const Address& address, const Immediate& imm) {
+  AssemblerBuffer::EnsureCapacity ensured(&buffer_);
+  EmitComplex(5, address, imm);
 }
 
 
@@ -1353,6 +1372,12 @@ void X86Assembler::sbbl(const Address& address, Register src) {
   AssemblerBuffer::EnsureCapacity ensured(&buffer_);
   EmitUint8(0x19);
   EmitOperand(src, address);
+}
+
+
+void X86Assembler::sbbl(const Address& address, const Immediate& imm) {
+  AssemblerBuffer::EnsureCapacity ensured(&buffer_);
+  EmitComplex(3, address, imm);
 }
 
 
