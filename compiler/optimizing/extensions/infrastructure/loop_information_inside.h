@@ -34,7 +34,7 @@
 #define LOOPINFO_TO_LOOPINFO_X86(X) static_cast<HLoopInformation_X86*>(X)
 #endif
 
-// Forward declaration.
+// Forward declarations.
 class HInductionVariable;
 class HOptimization_X86;
 
@@ -469,6 +469,30 @@ class HLoopInformation_X86 : public HLoopInformation {
    * @return Whether the loop contains instructions that can throw exceptions.
    */
   bool CanThrow() const;
+
+  /**
+   * @brief Compute the number of instructions in a loop. Phi nodes and
+   * suspend checks (if requested so) are not considered in the computation.
+   * @param skip_suspend_checks Whether we want to count suspend checks as loop instructions.
+   * This argument is true by default.
+   */
+  uint64_t CountInstructionsInBody(bool skip_suspend_checks = true) const;
+
+  /**
+   * @return The graph attached to the loop information instance.
+   */
+  HGraph* GetGraph() const {
+    return graph_;
+  }
+
+  /**
+    * @brief Returns the phi input that is either inside or outside of the loop.
+    * @param phi A phi node that must have 2 inputs, and that must be in a loop.
+    * @param inside_of_loop Whether we want to retrieve the phi input that is inside
+    * of the loop.
+    * @return Returns the phi input that is either inside or outside of the loop.
+    */
+  HInstruction* PhiInput(HPhi* phi, bool inside_of_loop);
 
  protected:
   /**

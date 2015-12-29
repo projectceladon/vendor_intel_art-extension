@@ -32,6 +32,7 @@
 #include "gvn_after_fbl.h"
 #include "loadhoist_storesink.h"
 #include "loop_formation.h"
+#include "loop_full_unrolling.h"
 #ifndef SOFIA
 #include "non_temporal_move.h"
 #endif
@@ -89,8 +90,10 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   // value_propagation_through_heap or not.
   // { "value_propagation_through_heap", "GVN_after_form_bottom_loops", kPassInsertAfter },
   { "loop_formation_before_bottom_loops", "form_bottom_loops", kPassInsertBefore },
+  { "pure_invokes_analysis", "loop_peeling", kPassInsertAfter },
   { "non_temporal_move", "trivial_loop_evaluator", kPassInsertAfter},
   { "trivial_loop_evaluator", "find_ivs", kPassInsertAfter},
+  { "loop_full_unrolling", "constant_calculation_sinking", kPassInsertAfter},
 };
 
 /**
@@ -438,6 +441,7 @@ void RunOptimizationsX86(HGraph* graph,
   HFormBottomLoops* form_bottom_loops = new (arena) HFormBottomLoops(graph, stats);
   GVNAfterFormBottomLoops* gvn_after_fbl = new (arena) GVNAfterFormBottomLoops(graph);
   // HGenerateSelects* generate_selects = new (arena) HGenerateSelects(graph, stats);
+  HLoopFullUnrolling* loop_full_unrolling = new (arena) HLoopFullUnrolling(graph, stats);
 
   HOptimization_X86* opt_array[] = {
     form_bottom_loops,
@@ -458,6 +462,7 @@ void RunOptimizationsX86(HGraph* graph,
 #endif
     // &generate_selects
     // &value_propagation_through_heapvalue_propagation_through_heap,
+    loop_full_unrolling
   };
 
   // Fill verbose flags where we need it.

@@ -25,6 +25,7 @@
 #include "graph_x86.h"
 #include "induction_variable.h"
 #include "loop_information.h"
+#include "loop_iterators.h"
 #include "optimization_x86.h"
 
 namespace art {
@@ -1300,6 +1301,43 @@ bool HLoopInformation_X86::CanThrow() const {
   }
 
   return false;
+}
+
+uint64_t HLoopInformation_X86::CountInstructionsInBody(bool skip_suspend_checks) const {
+  uint64_t nb_instructions = 0u;
+
+  for (HBlocksInLoopIterator bb_it(*this); !bb_it.Done(); bb_it.Advance()) {
+    HBasicBlock* bb = bb_it.Current();
+    for (HInstructionIterator insn_it(bb->GetInstructions());
+         !insn_it.Done();
+         insn_it.Advance()) {
+      HInstruction::InstructionKind kind = insn_it.Current()->GetKind();
+      if (skip_suspend_checks) {
+        switch (kind) {
+          case HInstruction::kSuspendCheck:
+          case HInstruction::kTestSuspend:
+          case HInstruction::kSuspend:
+            continue;
+          default:
+            break;
+        }
+      }
+      nb_instructions++;
+    }
+  }
+
+  return nb_instructions;
+}
+
+HInstruction* HLoopInformation_X86::PhiInput(HPhi* phi, bool inside_of_loop) {
+  DCHECK(phi != nullptr);
+  DCHECK_EQ(phi->InputCount(), 2u);
+  DCHECK(phi->GetBlock()->GetLoopInformation() == this);
+
+  // This method assumes that the first predecessor of the loop header is
+  // the loop pre-header.
+  uint32_t input_id = inside_of_loop ? 1u : 0u;
+  return phi->InputAt(input_id);
 }
 
 }  // namespace art

@@ -223,51 +223,56 @@ void HInstructionCloner::VisitAboveOrEqual(HAboveOrEqual* instr) {
 void HInstructionCloner::VisitAdd(HAdd* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HAdd* clone = new (arena_) HAdd(instr->GetResultType(), lhs, rhs);
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitAnd(HAnd* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HAnd* clone = new (arena_) HAnd(instr->GetResultType(), lhs, rhs);
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitArrayGet(HArrayGet* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* array, *index;
     GetInputsForBinary(instr, &array, &index);
     HArrayGet* clone = new (arena_) HArrayGet(array, index, instr->GetType(),
                                               instr->GetDexPc());
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitArrayLength(HArrayLength* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* input;
     GetInputsForUnary(instr, &input);
     HArrayLength* clone = new (arena_) HArrayLength(input, instr->GetDexPc());
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitArraySet(HArraySet* instr) {
   if (cloning_enabled_) {
     HInstruction* array, *index, *value;
+    OverwriteAllowanceCheck(instr);
     GetInputsForTernary(instr, &array, &index, &value);
     HArraySet* clone = new (arena_) HArraySet(array, index, value,
         instr->GetComponentType(), instr->GetDexPc());
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
     if (instr->GetUseNonTemporalMove()) {
       clone->SetUseNonTemporalMove();
     }
@@ -300,19 +305,21 @@ void HInstructionCloner::VisitBelowOrEqual(HBelowOrEqual* instr) {
 void HInstructionCloner::VisitBooleanNot(HBooleanNot* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* input;
     GetInputsForUnary(instr, &input);
     HBooleanNot* clone = new (arena_) HBooleanNot(input);
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitBoundsCheck(HBoundsCheck* instr) {
   if (cloning_enabled_) {
     HInstruction* index, *length;
+    OverwriteAllowanceCheck(instr);
     GetInputsForBinary(instr, &index, &length);
     HBoundsCheck* clone = new (arena_) HBoundsCheck(index, length, instr->GetDexPc());
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
 
     // Also clone the environment appropriately.
     CloneEnvironment(instr, clone);
@@ -322,22 +329,24 @@ void HInstructionCloner::VisitBoundsCheck(HBoundsCheck* instr) {
 void HInstructionCloner::VisitBoundType(HBoundType* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* input;
     GetInputsForUnary(instr, &input);
     HBoundType* clone = new (arena_) HBoundType(input);
     clone->SetUpperBound(instr->GetUpperBound(), instr->GetUpperCanBeNull());
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitCheckCast(HCheckCast* instr) {
   if (cloning_enabled_) {
     HInstruction* object, *constant;
+    OverwriteAllowanceCheck(instr);
     GetInputsForBinary(instr, &object, &constant);
     DCHECK(constant->IsLoadClass());
     HCheckCast* clone = new (arena_) HCheckCast(object, constant->AsLoadClass(),
         instr->GetTypeCheckKind(), instr->GetDexPc());
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
 
     // Also clone the environment appropriately.
     CloneEnvironment(instr, clone);
@@ -347,10 +356,11 @@ void HInstructionCloner::VisitCheckCast(HCheckCast* instr) {
 void HInstructionCloner::VisitClinitCheck(HClinitCheck* instr) {
   if (cloning_enabled_) {
     HInstruction* input;
+    OverwriteAllowanceCheck(instr);
     GetInputsForUnary(instr, &input);
     DCHECK_EQ(input->IsLoadClass(), true);
     HClinitCheck* clone = new (arena_) HClinitCheck(input->AsLoadClass(), instr->GetDexPc());
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
 
     // Also clone the environment appropriately.
     CloneEnvironment(instr, clone);
@@ -360,30 +370,33 @@ void HInstructionCloner::VisitClinitCheck(HClinitCheck* instr) {
 void HInstructionCloner::VisitCompare(HCompare* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     DCHECK_EQ(lhs->GetType(), rhs->GetType());
     HCompare* clone = new (arena_) HCompare(lhs->GetType(), lhs, rhs, instr->GetBias(), instr->GetDexPc());
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitDiv(HDiv* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HDiv* clone = new (arena_) HDiv(instr->GetResultType(), lhs, rhs, instr->GetDexPc());
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitDivZeroCheck(HDivZeroCheck* instr) {
   if (cloning_enabled_) {
     HInstruction* input;
+    OverwriteAllowanceCheck(instr);
     GetInputsForUnary(instr, &input);
     HDivZeroCheck* clone = new (arena_) HDivZeroCheck(input, instr->GetDexPc());
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
 
     // Also clone the environment appropriately.
     CloneEnvironment(instr, clone);
@@ -393,54 +406,60 @@ void HInstructionCloner::VisitDivZeroCheck(HDivZeroCheck* instr) {
 void HInstructionCloner::VisitEqual(HEqual* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HEqual* clone = new (arena_) HEqual(lhs, rhs);
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitGoto(HGoto* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HGoto* clone = new (arena_) HGoto();
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitGreaterThan(HGreaterThan* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HGreaterThan* clone = new (arena_) HGreaterThan(lhs, rhs);
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitGreaterThanOrEqual(HGreaterThanOrEqual* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HGreaterThanOrEqual* clone = new (arena_) HGreaterThanOrEqual(lhs, rhs);
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitIf(HIf* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* input;
     GetInputsForUnary(instr, &input);
     HIf* clone = new (arena_) HIf(input);
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitInstanceFieldGet(HInstanceFieldGet* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* input;
     GetInputsForUnary(instr, &input);
     const FieldInfo& fi = instr->GetFieldInfo();
@@ -454,13 +473,14 @@ void HInstructionCloner::VisitInstanceFieldGet(HInstanceFieldGet* instr) {
                                        fi.GetDexFile(),
                                        fi.GetDexCache(),
                                        instr->GetDexPc());
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitInstanceFieldSet(HInstanceFieldSet* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* object, *value;
     GetInputsForBinary(instr, &object, &value);
     const FieldInfo& fi = instr->GetFieldInfo();
@@ -475,18 +495,19 @@ void HInstructionCloner::VisitInstanceFieldSet(HInstanceFieldSet* instr) {
                                        fi.GetDexFile(),
                                        fi.GetDexCache(),
                                        instr->GetDexPc());
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitInstanceOf(HInstanceOf* instr) {
   if (cloning_enabled_) {
     HInstruction* object, *constant;
+    OverwriteAllowanceCheck(instr);
     GetInputsForBinary(instr, &object, &constant);
     DCHECK(constant->IsLoadClass());
     HInstanceOf* clone = new (arena_) HInstanceOf(object, constant->AsLoadClass(),
         instr->GetTypeCheckKind(), instr->GetDexPc());
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
 
     // Also clone the environment appropriately.
     CloneEnvironment(instr, clone);
@@ -496,20 +517,22 @@ void HInstructionCloner::VisitInstanceOf(HInstanceOf* instr) {
 void HInstructionCloner::VisitLessThan(HLessThan* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HLessThan* clone = new (arena_) HLessThan(lhs, rhs);
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitLessThanOrEqual(HLessThanOrEqual* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HLessThanOrEqual* clone = new (arena_) HLessThanOrEqual(lhs, rhs);
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
@@ -528,7 +551,7 @@ void HInstructionCloner::VisitLoadClass(HLoadClass* instr) {
     if (instr->GetLoadedClassRTI().IsExact()) {
       clone->SetLoadedClassRTI(instr->GetLoadedClassRTI());
     }
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
 
     // Also clone the environment appropriately.
     CloneEnvironment(instr, clone);
@@ -538,59 +561,65 @@ void HInstructionCloner::VisitLoadClass(HLoadClass* instr) {
 void HInstructionCloner::VisitMul(HMul* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HMul* clone = new (arena_) HMul(instr->GetResultType(), lhs, rhs);
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitNeg(HNeg* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* input;
     GetInputsForUnary(instr, &input);
     HNeg* clone = new (arena_) HNeg(instr->GetResultType(), input);
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitNot(HNot* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* input;
     GetInputsForUnary(instr, &input);
     HNot* clone = new (arena_) HNot(instr->GetResultType(), input);
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitNotEqual(HNotEqual* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HNotEqual* clone = new (arena_) HNotEqual(lhs, rhs);
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitOr(HOr* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HOr* clone = new (arena_) HOr(instr->GetResultType(), lhs, rhs);
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitNullCheck(HNullCheck* instr) {
   if (cloning_enabled_) {
     HInstruction* input;
+    OverwriteAllowanceCheck(instr);
     GetInputsForUnary(instr, &input);
     HNullCheck* clone = new (arena_) HNullCheck(input, instr->GetDexPc());
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
 
     // Also clone the environment appropriately.
     CloneEnvironment(instr, clone);
@@ -600,8 +629,9 @@ void HInstructionCloner::VisitNullCheck(HNullCheck* instr) {
 void HInstructionCloner::VisitPhi(HPhi* phi) {
   if (cloning_enabled_) {
     DCHECK(!phi->HasEnvironment());
+    OverwriteAllowanceCheck(phi);
     HPhi* clone = new (arena_) HPhi(arena_, phi->GetRegNumber(), 0, phi->GetType());
-    orig_to_clone_.Put(phi, clone);
+    orig_to_clone_.Overwrite(phi, clone);
 
     // Now copy the inputs while making sure to use input from clone (if one exists).
     for (size_t input_idx = 0u; input_idx != phi->InputCount(); input_idx++) {
@@ -619,36 +649,40 @@ void HInstructionCloner::VisitPhi(HPhi* phi) {
 void HInstructionCloner::VisitRem(HRem* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HRem* clone = new (arena_) HRem(instr->GetResultType(), lhs, rhs, instr->GetDexPc());
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitShl(HShl* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HShl* clone = new (arena_) HShl(instr->GetResultType(), lhs, rhs);
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitShr(HShr* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HShr* clone = new (arena_) HShr(instr->GetResultType(), lhs, rhs);
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitStaticFieldGet(HStaticFieldGet* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* input;
     GetInputsForUnary(instr, &input);
     const FieldInfo& fi = instr->GetFieldInfo();
@@ -662,13 +696,14 @@ void HInstructionCloner::VisitStaticFieldGet(HStaticFieldGet* instr) {
                                      fi.GetDexFile(),
                                      fi.GetDexCache(),
                                      instr->GetDexPc());
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitStaticFieldSet(HStaticFieldSet* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* cls, *value;
     GetInputsForBinary(instr, &cls, &value);
     const FieldInfo& fi = instr->GetFieldInfo();
@@ -683,24 +718,26 @@ void HInstructionCloner::VisitStaticFieldSet(HStaticFieldSet* instr) {
                                      fi.GetDexFile(),
                                      fi.GetDexCache(),
                                      instr->GetDexPc());
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitSub(HSub* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HSub* clone = new (arena_) HSub(instr->GetResultType(), lhs, rhs);
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitSuspendCheck(HSuspendCheck* instr) {
   if (cloning_enabled_) {
+    OverwriteAllowanceCheck(instr);
     HSuspendCheck* clone = new (arena_) HSuspendCheck(instr->GetDexPc());
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
 
     // Also clone the environment appropriately.
     CloneEnvironment(instr, clone);
@@ -710,14 +747,15 @@ void HInstructionCloner::VisitSuspendCheck(HSuspendCheck* instr) {
 void HInstructionCloner::VisitTypeConversion(HTypeConversion* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());
+    OverwriteAllowanceCheck(instr);
     HInstruction* input;
     GetInputsForUnary(instr, &input);
     if (instr->GetResultType() != input->GetType()) {
       HTypeConversion* clone = new (arena_) HTypeConversion(instr->GetResultType(), input,
           instr->GetDexPc());
-      orig_to_clone_.Put(instr, clone);
+      orig_to_clone_.Overwrite(instr, clone);
     } else {
-      orig_to_clone_.Put(instr, input);
+      orig_to_clone_.Overwrite(instr, input);
     }
   }
 }
@@ -725,31 +763,34 @@ void HInstructionCloner::VisitTypeConversion(HTypeConversion* instr) {
 void HInstructionCloner::VisitUShr(HUShr* instr) {
   if (cloning_enabled_) {
     HInstruction* lhs, *rhs;
+    OverwriteAllowanceCheck(instr);
     GetInputsForBinary(instr, &lhs, &rhs);
     HUShr* clone = new (arena_) HUShr(instr->GetResultType(), lhs, rhs);
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitXor(HXor* instr) {
   if (cloning_enabled_) {
     HInstruction* lhs, *rhs;
+    OverwriteAllowanceCheck(instr);
     GetInputsForBinary(instr, &lhs, &rhs);
     HXor* clone = new (arena_) HXor(instr->GetResultType(), lhs, rhs);
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 
 void HInstructionCloner::VisitX86SelectValue(HX86SelectValue* instr) {
   if (cloning_enabled_) {
     HInstruction* input_0, *input_1, *input_2, *input_3;
+    OverwriteAllowanceCheck(instr);
     GetInputsForQuaternary(instr, &input_0, &input_1, &input_2, &input_3);
     HX86SelectValue* clone =
       new (arena_) HX86SelectValue(instr->GetType(),
                                    instr->GetCondition(),
                                    instr->GetOppositeCondition(),
                                    input_0, input_1, input_2, input_3);
-    orig_to_clone_.Put(instr, clone);
+    orig_to_clone_.Overwrite(instr, clone);
   }
 }
 

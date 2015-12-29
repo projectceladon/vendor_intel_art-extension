@@ -29,6 +29,7 @@ ifeq ($(findstring graph_x86,$(LIBART_COMPILER_SRC_FILES)),)
     $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/ext_utility.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/graph_x86.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/loop_information.cc \
+    $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/loop_unrolling.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/pass_framework.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/constant_calculation_sinking.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/find_ivs.cc \
@@ -37,6 +38,7 @@ ifeq ($(findstring graph_x86,$(LIBART_COMPILER_SRC_FILES)),)
     $(VENDOR_EXTENSIONS_FOLDER)/passes/gvn_after_fbl.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/loadhoist_storesink.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/loop_formation.cc \
+    $(VENDOR_EXTENSIONS_FOLDER)/passes/loop_full_unrolling.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/non_temporal_move.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/peeling.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/pure_invokes_analysis.cc \
