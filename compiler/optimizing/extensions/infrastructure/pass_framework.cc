@@ -29,6 +29,7 @@
 #include "find_ivs.h"
 #include "graph_visualizer.h"
 #include "loop_formation.h"
+#include "loop_full_unrolling.h"
 #ifndef SOFIA
 #include "non_temporal_move.h"
 #endif
@@ -71,6 +72,7 @@ struct HCustomPassPlacement {
 static HCustomPassPlacement kPassCustomPlacement[] = {
   { "loop_formation", "instruction_simplifier$after_bce", kPassInsertAfter },
   { "find_ivs", "loop_formation", kPassInsertAfter },
+  { "loop_full_unrolling", "find_ivs", kPassInsertAfter}, 
   { "remove_loop_suspend_checks", "find_ivs", kPassInsertAfter},
   { "remove_unused_loops", "remove_loop_suspend_checks", kPassInsertAfter },
   { "constant_calculation_sinking", "find_ivs", kPassInsertAfter},
@@ -380,6 +382,7 @@ void RunOptimizationsX86(HGraph* graph,
 #endif
   HLoopFormation formation_before_peeling(graph, "loop_formation_before_peeling");
   HLoopPeeling peeling(graph, stats);
+  HLoopFullUnrolling loop_full_unrolling(graph, stats); 
   /* neeraj - to check more - removed below optimizations (added in "ART-Extension: Support iteration peeling") to resolve incompatibility with O-Master
     &peeling,
     &formation_before_peeling,
@@ -394,6 +397,7 @@ void RunOptimizationsX86(HGraph* graph,
 #ifndef SOFIA
     &non_temporal_move,
 #endif
+    &loop_full_unrolling
   };
 
   // Create the array for the post-opts.
