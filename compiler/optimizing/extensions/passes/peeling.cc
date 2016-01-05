@@ -22,55 +22,102 @@
 #include "ext_utility.h"
 #include "graph_x86.h"
 #include "loop_iterators.h"
+#include "pass_option.h"
 #include "peeling.h"
 
 namespace art {
 
-static constexpr size_t kLeastRequiredCandidateCount = 1u;
-
 bool HLoopPeeling::ShouldPeel(HLoopInformation_X86* loop) {
   DCHECK(loop->IsInner());
 
-  size_t num_candidate_instr = 0u;
-  if (loop->GetBlocks().NumSetBits() <= 2u) {
-    // Check to see if peeling may be worth it - these are cases where GVN may do a better job
-    // by eliminating throwers/getters inside of a loop.
-    for (HBlocksInLoopIterator it_loop(*loop); !it_loop.Done(); it_loop.Advance()) {
-      HBasicBlock* block = it_loop.Current();
-      for (HInstruction* instruction = block->GetFirstInstruction();
-          instruction != nullptr;
-          instruction = instruction->GetNext()) {
-        // Check if thrower or heap mutator/reader first.
-        // We also handle LoadString and LoadClass specially because they may not fall
-        // in either category but in reality are useful to hoist since they have no
-        // IR inputs and will reload same thing over and over.
-        if (instruction->CanThrow() || instruction->DoesAnyWrite() ||
-            instruction->GetSideEffects().DoesAnyRead() ||
-            instruction->IsLoadClass() || instruction->IsLoadString()) {
-          bool all_inputs_from_outside = true;
+  static PassOption<int64_t> block_count_threshold(this,
+                                                   driver_,
+                                                   "BlockCountThreshold",
+                                                   kDefaultBlockThreshold);
+  if (loop->GetBlocks().NumSetBits() > block_count_threshold.GetValue()) {
+    PRINT_PASS_OSTREAM_MESSAGE(this, "Peeling failed because loop block count exceeds "
+                               << block_count_threshold.GetValue() << ".");
+    return false;
+  }
 
-          // Now check that all inputs are from outside.
-          for (size_t i = 0, e = instruction->InputCount(); i < e; ++i) {
-            HInstruction* input = instruction->InputAt(i);
-            if (loop->Contains(*input->GetBlock())) {
-              all_inputs_from_outside = false;
-              break;
-            }
-          }
+  int64_t num_candidate_instr = 0u;
+  int64_t instruction_count = 0u;
+  int64_t num_opaque_invokes = 0u;
+  static PassOption<int64_t> instruction_count_threshold(this,
+                                                         driver_,
+                                                         "InstructionCountThreshold",
+                                                         kDefaultInstructionThreshold);
+  static PassOption<int64_t> opaque_invoke_threshold(this,
+                                                     driver_,
+                                                     "OpaqueInvokeThreshold",
+                                                     kDefaultAllowedOpaqueInvokes);
 
-          // If all inputs from outside, count that we found a candidate which makes
-          // peeling worth it.
-          if (all_inputs_from_outside) {
-            num_candidate_instr++;
-            if (num_candidate_instr >= kLeastRequiredCandidateCount) {
-              return true;
-            }
+  // Check to see if peeling may be worth it - these are cases where GVN may do a better job
+  // by eliminating throwers/getters inside of a loop.
+  for (HBlocksInLoopIterator it_loop(*loop); !it_loop.Done(); it_loop.Advance()) {
+    HBasicBlock* block = it_loop.Current();
+    for (HInstruction* instruction = block->GetFirstInstruction();
+        instruction != nullptr;
+        instruction = instruction->GetNext()) {
+      instruction_count++;
+      if (instruction_count > instruction_count_threshold.GetValue()) {
+        PRINT_PASS_OSTREAM_MESSAGE(this, "Peeling failed because loop instruction count exceeds "
+                                   << instruction_count_threshold.GetValue() << ".");
+        return false;
+      }
+
+      // Test whether we are looking at an opaque invoke. We test this by testing
+      // whether or not it can be moved - since moving it signifies we know what it does.
+      if (instruction->IsInvoke() && !instruction->CanBeMoved()) {
+        num_opaque_invokes++;
+        if (num_opaque_invokes > opaque_invoke_threshold.GetValue()) {
+          PRINT_PASS_OSTREAM_MESSAGE(this, "Peeling failed because the opaque invoke count "
+                                     "exceeds " << opaque_invoke_threshold.GetValue() << ".");
+          return false;
+        }
+      }
+
+      if (!instruction->CanBeMoved()) {
+        // If instruction cannot be moved, no point in considering this instruction.
+        continue;
+      }
+
+      // Check if thrower or heap mutator/reader first.
+      // We also handle LoadString and LoadClass specially because they may not fall
+      // in either category but in reality are useful to hoist since they have no
+      // IR inputs and will reload same thing over and over.
+      if (instruction->CanThrow() || instruction->HasSideEffects() ||
+          instruction->GetSideEffects().HasDependencies() ||
+          instruction->IsLoadClass() || instruction->IsLoadString()) {
+        bool all_inputs_from_outside = true;
+
+        // Now check that all inputs are from outside.
+        for (size_t i = 0, e = instruction->InputCount(); i < e; ++i) {
+          HInstruction* input = instruction->InputAt(i);
+          if (loop->Contains(*input->GetBlock())) {
+            all_inputs_from_outside = false;
+            break;
           }
+        }
+
+        // If all inputs from outside, count that we found a candidate which makes
+        // peeling worth it.
+        if (all_inputs_from_outside) {
+          num_candidate_instr++;
         }
       }
     }
   }
 
+  static PassOption<int64_t> least_candidate_count(this,
+                                                   driver_,
+                                                   "LeastCandidateCount",
+                                                   kDefaultLeastCandidateCount);
+  if (num_candidate_instr >= least_candidate_count.GetValue()) {
+    return true;
+  }
+
+  PRINT_PASS_OSTREAM_MESSAGE(this, "Peeling failed because no viable candidate was found.");
   return false;
 }
 

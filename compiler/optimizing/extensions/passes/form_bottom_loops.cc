@@ -84,6 +84,11 @@ bool HFormBottomLoops::ShouldTransformLoop(HLoopInformation_X86* loop,
     return false;
   }
 
+  if (loop->IsOrHasIrreducibleLoop()) {
+    PRINT_PASS_OSTREAM_MESSAGE(this, "Loop is irreducible.");
+    return false;
+  }
+
   // Exit block is alone and it always has one predecessor due to
   // critical edge elimination.
   DCHECK_EQ(exit_block->GetPredecessors().size(), static_cast<size_t>(1));
@@ -146,6 +151,11 @@ bool HFormBottomLoops::ShouldTransformLoop(HLoopInformation_X86* loop,
     }
   } else {
     PRINT_PASS_MESSAGE(this, "Loop header doesn't exit the loop");
+    return false;
+  }
+
+  if (loop->HasTryCatchHandler()) {
+    PRINT_PASS_OSTREAM_MESSAGE(this, "Found a try or catch handler inside the loop");
     return false;
   }
 
@@ -460,7 +470,9 @@ void HFormBottomLoops::CloneInstructions(FBLContext& context,
     // Special case for HLoadClass, we want to clone it to back branch and
     // the original node will go to pre-header which dominates the back
     // branch, so instead of cloning we can use just original HLoadClass node.
-    if (insn->IsLoadClass()) {
+    // We do same for ClInitCheck because there is no gap expected between
+    // the class loading and the check.
+    if (insn->IsLoadClass() || insn->IsClinitCheck()) {
       cloner.AddCloneManually(insn, insn);
     } else {
       // Clone the instruction.

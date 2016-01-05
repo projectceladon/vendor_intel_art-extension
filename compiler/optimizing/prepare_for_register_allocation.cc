@@ -15,6 +15,7 @@
  */
 
 #include "prepare_for_register_allocation.h"
+#include "ext_utility.h"
 
 namespace art {
 
@@ -236,7 +237,7 @@ bool PrepareForRegisterAllocation::CanMoveClinitCheck(HInstruction* input,
     for (HInstruction* between = input->GetNext(); between != user; between = between->GetNext()) {
       CHECK(between != nullptr);  // User must be after input in the same block.
       CHECK(!between->CanThrow());
-      CHECK(!between->HasSideEffects());
+      CHECK(!between->GetSideEffects().HasSideEffectsExcludingGC());
     }
   }
   return true;

@@ -3989,6 +3989,10 @@ class HInvokeStaticOrDirect : public HInvoke {
     return dispatch_info_.direct_code_ptr;
   }
 
+  DispatchInfo GetDispatchInfo() const {
+    return dispatch_info_;
+  }
+
   ClinitCheckRequirement GetClinitCheckRequirement() const {
     return GetPackedField<ClinitCheckRequirementField>();
   }
@@ -4011,6 +4015,16 @@ class HInvokeStaticOrDirect : public HInvoke {
     inputs_.pop_back();
     SetPackedField<ClinitCheckRequirementField>(new_requirement);
     DCHECK(!IsStaticWithExplicitClinitCheck());
+  }
+
+  // This is a helper method called by cloner to synchronize number of inputs.
+  void TrimInputCapacity(uint32_t new_input_count) {
+    DCHECK_GE(inputs_.size(), new_input_count);
+    uint32_t num_to_trim = inputs_.size() - new_input_count;
+    while (num_to_trim > 0) {
+      inputs_.pop_back();
+      num_to_trim--;
+    }
   }
 
   // Is this a call to a static method whose declaring class has an
@@ -5601,6 +5615,44 @@ class HLoadString : public HExpression<1> {
     SetRawInputAt(0, current_method);
   }
 
+  // We have to introduce new constructors because HSharpening::ProcessLoadString
+  // transforms objects of this class in a way that makes it impossible to clone
+  // them using only original constructor. These constructors are used in cloning.cc.
+  HLoadString(LoadKind load_kind,
+              uint32_t string_index,
+              const DexFile& dex_file,
+              uint32_t dex_pc)
+      : HExpression(Primitive::kPrimNot, SideEffectsForArchRuntimeCalls(), dex_pc),
+        string_index_(string_index) {
+    SetPackedFlag<kFlagIsInDexCache>(false);
+    SetPackedField<LoadKindField>(load_kind);
+    load_data_.ref.dex_file = &dex_file;
+  }
+
+  HLoadString(LoadKind load_kind,
+              uint32_t string_index,
+              uint64_t address,
+              uint32_t dex_pc)
+      : HExpression(Primitive::kPrimNot, SideEffectsForArchRuntimeCalls(), dex_pc),
+        string_index_(string_index) {
+    SetPackedFlag<kFlagIsInDexCache>(false);
+    SetPackedField<LoadKindField>(load_kind);
+    load_data_.address = address;
+  }
+
+  HLoadString(LoadKind load_kind,
+              uint32_t string_index,
+              const DexFile& dex_file,
+              size_t element_index,
+              uint32_t dex_pc)
+      : HExpression(Primitive::kPrimNot, SideEffectsForArchRuntimeCalls(), dex_pc),
+        string_index_(string_index) {
+    SetPackedFlag<kFlagIsInDexCache>(false);
+    SetPackedField<LoadKindField>(load_kind);
+    load_data_.ref.dex_cache_element_index = element_index;
+    load_data_.ref.dex_file = &dex_file;
+  }
+
   void SetLoadKindWithAddress(LoadKind load_kind, uint64_t address) {
     DCHECK(HasAddress(load_kind));
     load_data_.address = address;
@@ -5681,6 +5733,12 @@ class HLoadString : public HExpression<1> {
     SetSideEffects(SideEffects::None());
   }
 
+  static bool HasStringReference(LoadKind load_kind) {
+    return load_kind == LoadKind::kBootImageLinkTimeAddress ||
+        load_kind == LoadKind::kBootImageLinkTimePcRelative ||
+        load_kind == LoadKind::kDexCacheViaMethod;
+  }
+
   size_t InputCount() const OVERRIDE {
     return (InputAt(0) != nullptr) ? 1u : 0u;
   }
@@ -5697,12 +5755,6 @@ class HLoadString : public HExpression<1> {
   static constexpr size_t kNumberOfLoadStringPackedBits = kFieldLoadKind + kFieldLoadKindSize;
   static_assert(kNumberOfLoadStringPackedBits <= kMaxNumberOfPackedBits, "Too many packed fields.");
   using LoadKindField = BitField<LoadKind, kFieldLoadKind, kFieldLoadKindSize>;
-
-  static bool HasStringReference(LoadKind load_kind) {
-    return load_kind == LoadKind::kBootImageLinkTimeAddress ||
-        load_kind == LoadKind::kBootImageLinkTimePcRelative ||
-        load_kind == LoadKind::kDexCacheViaMethod;
-  }
 
   static bool HasAddress(LoadKind load_kind) {
     return load_kind == LoadKind::kBootImageAddress || load_kind == LoadKind::kDexCacheAddress;

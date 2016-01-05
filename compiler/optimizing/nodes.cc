@@ -2467,8 +2467,13 @@ std::ostream& operator<<(std::ostream& os, HInvokeStaticOrDirect::ClinitCheckReq
 
 bool HLoadString::InstructionDataEquals(HInstruction* other) const {
   HLoadString* other_load_string = other->AsLoadString();
-  if (string_index_ != other_load_string->string_index_ ||
-      GetPackedFields() != other_load_string->GetPackedFields()) {
+  if (GetPackedFields() != other_load_string->GetPackedFields()) {
+    return false;
+  }
+  if ((GetLoadKind() == LoadKind::kBootImageLinkTimeAddress ||
+       GetLoadKind() == LoadKind::kBootImageLinkTimePcRelative ||
+       GetLoadKind() == LoadKind::kDexCacheViaMethod) &&
+       string_index_ != other_load_string->string_index_) {
     return false;
   }
   LoadKind load_kind = GetLoadKind();

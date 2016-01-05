@@ -335,7 +335,7 @@ void RunOptimizationsX86(HGraph* graph,
       new (arena) HValuePropagationThroughHeap(graph, driver, stats);
   HLoopFormation* formation_before_peeling =
       new (arena) HLoopFormation(graph, "loop_formation_before_peeling");
-  HLoopPeeling* peeling = new (arena) HLoopPeeling(graph, stats);
+  HLoopPeeling* peeling = new (arena) HLoopPeeling(graph, driver, stats);
   HPureInvokesAnalysis* pure_invokes_analysis = new (arena) HPureInvokesAnalysis(graph, stats);
   HLoopFormation* formation_before_bottom_loops =
       new (arena) HLoopFormation(graph, "loop_formation_before_bottom_loops");

@@ -802,20 +802,29 @@ void HLoopInformation_X86::AddToAll(HBasicBlock* block) {
   }
 }
 
-bool HLoopInformation_X86::HasCatchHandler() const {
-  // Walk through the loop's blocks to find a catch handler.
+bool HLoopInformation_X86::HasTryCatchHandler() const {
+  // Walk through the loop's blocks to find either try blocks or catch blocks.
   for (HBlocksInLoopIterator it_loop(*this); !it_loop.Done(); it_loop.Advance()) {
     HBasicBlock* block = it_loop.Current();
     if (block->IsCatchBlock()) {
       return true;
+    } else if (block->IsTryBlock()) {
+      return true;
+    } else if (block->IsSingleTryBoundary()) {
+      return true;
     }
   }
 
-  // No catch handler found.
+  // No try/catch handler found.
   return false;
 }
 
 bool HLoopInformation_X86::IsPeelable(HOptimization_X86* optim) const {
+  if (IsOrHasIrreducibleLoop()) {
+    PRINT_PASS_OSTREAM_MESSAGE(optim, "Peeling failed because the loop is irreducible.");
+    return false;
+  }
+
   if (!IsInner()) {
     // Peeling an iteration of an outer loop, it means that in the peel we would have
     // the inner loop. For now reject because it is unlikely to desire this behavior
@@ -826,11 +835,12 @@ bool HLoopInformation_X86::IsPeelable(HOptimization_X86* optim) const {
     return false;
   }
 
-  if (HasCatchHandler()) {
+  if (HasTryCatchHandler()) {
     // Catch information is stored specially and all data structures around this would
     // need updated if we peeled this. Since this case is unlikely to be desired, reject
     // for now and support only when needed.
-    PRINT_PASS_OSTREAM_MESSAGE(optim, "Peeling failed because the loop has a catch handler.");
+    PRINT_PASS_OSTREAM_MESSAGE(optim, "Peeling failed because the loop has try blocks or "
+                               "catch handler.");
     return false;
   }
 
@@ -840,6 +850,12 @@ bool HLoopInformation_X86::IsPeelable(HOptimization_X86* optim) const {
     // If ever desired in future, the cleanest approach to enable this is to allow entire graph
     // phi regeneration instead of just localized regeneration.
     PRINT_PASS_OSTREAM_MESSAGE(optim, "Peeling failed because the loop has multiple exits.");
+    return false;
+  }
+
+  if (GetBackEdges().size() != 1u) {
+    // The peeler makes assumption that there is a single back-edge when creating links.
+    PRINT_PASS_OSTREAM_MESSAGE(optim, "Peeling failed because the loop has multiple backedges.");
     return false;
   }
 
@@ -1338,6 +1354,45 @@ HInstruction* HLoopInformation_X86::PhiInput(HPhi* phi, bool inside_of_loop) {
   // the loop pre-header.
   uint32_t input_id = inside_of_loop ? 1u : 0u;
   return phi->InputAt(input_id);
+}
+
+bool HLoopInformation_X86::AllInputsDefinedOutsideLoop(HInstruction* instr) {
+  for (HInputIterator it(instr); !it.Done(); it.Advance()) {
+    HInstruction* input = it.Current();
+    if (!this->IsDefinedOutOfTheLoop(input)) {
+      return false;
+    }
+  }
+
+  for (HEnvironment* environment = instr->GetEnvironment();
+       environment != nullptr;
+       environment = environment->GetParent()) {
+    for (size_t i = 0, e = environment->Size(); i < e; ++i) {
+      HInstruction* input = environment->GetInstructionAt(i);
+      if (input != nullptr) {
+        if (!this->IsDefinedOutOfTheLoop(input)) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+bool HLoopInformation_X86::IsOrHasIrreducibleLoop() const {
+  if (IsIrreducible()) {
+    return true;
+  }
+
+  if (graph_->HasIrreducibleLoops()) {
+    for (HBlocksInLoopIterator it_loop(*this); !it_loop.Done(); it_loop.Advance()) {
+      if (it_loop.Current()->GetLoopInformation()->IsIrreducible()) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 }  // namespace art

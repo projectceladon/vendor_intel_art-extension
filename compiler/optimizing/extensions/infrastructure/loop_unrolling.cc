@@ -436,6 +436,16 @@ bool HLoopUnrolling::Gate(uint64_t max_unrolled_instructions) const {
     return false;
   }
 
+  if (loop_->IsOrHasIrreducibleLoop()) {
+    PRINT_PASS_OSTREAM_MESSAGE(optim_, "Unrolling failed because the loop is irreducible.");
+    return false;
+  }
+
+  if (loop_->HasTryCatchHandler()) {
+    PRINT_PASS_OSTREAM_MESSAGE(optim_, "Found a try or catch handler inside the loop.");
+    return false;
+  }
+
   if (!loop_->HasKnownNumIterations()) {
     PRINT_PASS_OSTREAM_MESSAGE(optim_, "Loop must have a known number of iterations.");
     return false;

@@ -420,10 +420,10 @@ class HLoopInformation_X86 : public HLoopInformation {
   }
 
   /**
-   * @brief Used to check if loop has a catch handler block.
+   * @brief Used to check if loop has a try block or a catch handler block.
    * @return Returns true if loop has catch block.
    */
-  bool HasCatchHandler() const;
+  bool HasTryCatchHandler() const;
 
   /**
    * @brief This is used to get a list of ids for the peeled blocks.
@@ -495,6 +495,20 @@ class HLoopInformation_X86 : public HLoopInformation {
     * @return Returns the phi input that is either inside or outside of the loop.
     */
   HInstruction* PhiInput(HPhi* phi, bool inside_of_loop);
+
+  /**
+   * @brief Used to check whether all inputs for this instruction are defined out of loop.
+   * @param instr The instruction whose inputs need checked.
+   * @return Returns true if all inputs are from outside the loop (including inputs into
+   * the environment).
+   */
+  bool AllInputsDefinedOutsideLoop(HInstruction* instr);
+
+  /**
+   * @brief Used to determine whether the loop is irreducible or contains irreducible loop
+   * @details Returns true if either the loop is irreducible or contains irreducible loop.
+   */
+  bool IsOrHasIrreducibleLoop() const;
 
  protected:
   /**
