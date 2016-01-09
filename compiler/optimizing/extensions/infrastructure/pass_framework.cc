@@ -39,6 +39,7 @@
 #include "option_content.h"
 #include "pass_framework.h"
 #include "peeling.h"
+#include "pure_invokes_analysis.h"
 #include "remove_suspend.h"
 #include "remove_unused_loops.h"
 #include "scoped_thread_state_change.h"
@@ -431,6 +432,7 @@ void RunOptimizationsX86(HGraph* graph,
   HLoopFormation* formation_before_peeling =
       new (arena) HLoopFormation(graph, "loop_formation_before_peeling");
   HLoopPeeling* peeling = new (arena) HLoopPeeling(graph, stats);
+  HPureInvokesAnalysis* pure_invokes_analysis = new (arena) HPureInvokesAnalysis(graph, stats);
   HLoopFormation* formation_before_bottom_loops =
       new (arena) HLoopFormation(graph, "loop_formation_before_bottom_loops");
   HFormBottomLoops* form_bottom_loops = new (arena) HFormBottomLoops(graph, stats);
@@ -448,6 +450,7 @@ void RunOptimizationsX86(HGraph* graph,
     remove_unused_loops,
     lhss,
     peeling,
+    pure_invokes_analysis,
     formation_before_peeling,
     tle,
 #ifndef SOFIA

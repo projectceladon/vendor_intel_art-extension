@@ -77,6 +77,9 @@ enum MethodCompilationStat {
   kIntelStoreSink,
   kIntelSelect,
   kIntelValuePropagationThroughHeap,
+  kIntelPureDirectCallDeleted,
+  kIntelPureStaticCallDeleted,
+  kIntelUselessNullCheckDeleted,
   kLastStat
 };
 
@@ -167,6 +170,9 @@ class OptimizingCompilerStats {
       case kIntelStoreSink: return "kIntelStoreSink";
       case kIntelSelect: return "kIntelSelect";
       case kIntelValuePropagationThroughHeap: return "kIntelValuePropagationThroughHeap";
+      case kIntelPureDirectCallDeleted: return "kIntelPureDirectCallDeleted";
+      case kIntelPureStaticCallDeleted: return "kIntelPureStaticCallDeleted";
+      case kIntelUselessNullCheckDeleted: return "kIntelUselessNullCheckDeleted";
       default: LOG(FATAL) << "invalid stat";
     }
     return "OptStat#" + name;

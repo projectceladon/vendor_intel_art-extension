@@ -159,5 +159,11 @@ class HInstruction;
    */
   char GetTypeId(Primitive::Type type);
 
+  /**
+   * @brief Returns pretty method name for the invoke.
+   * @param call The invoke.
+   * @return Called method name as string.
+   */
+  std::string CalledMethodName(HInvokeStaticOrDirect* call);
 }  // namespace art
 #endif  // COMPILER_OPTIMIZING_EXTENSIONS_INFRASTRUCTURE_EXT_UTILITIES_H

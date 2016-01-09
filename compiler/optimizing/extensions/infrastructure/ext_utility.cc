@@ -278,4 +278,10 @@ namespace art {
     return 'v';
   }
 
+  std::string CalledMethodName(HInvokeStaticOrDirect* call) {
+    DCHECK(call != nullptr);
+    const MethodReference target_method = call->GetTargetMethod();
+    return PrettyMethod(target_method.dex_method_index,
+                        *target_method.dex_file);
+  }
 }  // namespace art
