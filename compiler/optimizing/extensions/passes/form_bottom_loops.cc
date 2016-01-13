@@ -587,14 +587,24 @@ bool HFormBottomLoops::CheckLoopHeader(HLoopInformation_X86* loop_info, HBasicBl
        !inst_it.Done();
        inst_it.Advance()) {
     HPhi* phi = inst_it.Current()->AsPhi();
-    for (size_t i = 0, e = phi->InputCount(); i < e; i++) {
+    for (size_t i = 1, e = phi->InputCount(); i < e; i++) {
       HPhi* input = phi->InputAt(i)->AsPhi();
-      // Is this a Phi from later in the block?
-      if (input != nullptr && input->GetBlock() == loop_header &&
-          seen_phis.find(input) == seen_phis.end()) {
-        // Reference to another Phi in this block that we haven't processed yet.
-        PRINT_PASS_OSTREAM_MESSAGE(this, "Forward Phi reference: " << phi);
-        return false;
+      if (input != nullptr && input->GetBlock() == loop_header) {
+        // Is this a Phi from later in the block?
+        if (seen_phis.find(input) == seen_phis.end()) {
+          // Reference to another Phi in this block that we haven't processed yet.
+          PRINT_PASS_OSTREAM_MESSAGE(this, "Forward Phi reference: " << phi);
+          return false;
+        }
+        // We also want to disable the case if our input is Phi and there is an
+        // use outside of the loop.
+        for (HUseIterator<HInstruction*> it(phi->GetUses()); !it.Done(); it.Advance()) {
+          HInstruction* user = it.Current()->GetUser();
+          if (!loop_info->Contains(*user->GetBlock())) {
+            PRINT_PASS_OSTREAM_MESSAGE(this, "Outside complex Phi usage: " << phi);
+            return false;
+          }
+        }
       }
       seen_phis.insert(phi);
     }
