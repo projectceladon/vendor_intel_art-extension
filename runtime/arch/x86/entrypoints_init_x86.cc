@@ -79,6 +79,10 @@ void InitEntryPoints(JniEntryPoints* jpoints, QuickEntryPoints* qpoints) {
   qpoints->pReadBarrierMark = art_quick_read_barrier_mark;
   qpoints->pReadBarrierSlow = art_quick_read_barrier_slow;
   qpoints->pReadBarrierForRootSlow = art_quick_read_barrier_for_root_slow;
+
+  // JNI
+  qpoints->pJniMethodStartFromCode = JniMethodStartFromCode;
+  qpoints->pJniMethodStartSynchronizedFromCode = JniMethodStartSynchronizedFromCode;
 };
 
 }  // namespace art
