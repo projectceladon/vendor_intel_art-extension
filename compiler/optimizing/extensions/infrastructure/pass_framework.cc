@@ -85,10 +85,7 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   // optimization, called "select_generator".
   // { "generate_selects", "boolean_simplifier", kPassInsertAfter },
   { "GVN_after_form_bottom_loops", "form_bottom_loops", kPassInsertAfter },
-  // TODO: Google has implemented load/store elimination optimization.
-  // We should evaluate that optimization and decide, whether we need
-  // value_propagation_through_heap or not.
-  // { "value_propagation_through_heap", "GVN_after_form_bottom_loops", kPassInsertAfter },
+  { "value_propagation_through_heap", "GVN_after_form_bottom_loops", kPassInsertAfter },
   { "loop_formation_before_bottom_loops", "form_bottom_loops", kPassInsertBefore },
   { "pure_invokes_analysis", "loop_peeling", kPassInsertAfter },
   { "non_temporal_move", "trivial_loop_evaluator", kPassInsertAfter},
@@ -431,7 +428,8 @@ void RunOptimizationsX86(HGraph* graph,
   HNonTemporalMove* non_temporal_move = new (arena) HNonTemporalMove(graph, stats);
 #endif
   LoadHoistStoreSink* lhss = new (arena) LoadHoistStoreSink(graph, stats);
-  // HValuePropagationThroughHeap value_propagation_through_heap(graph, stats);
+  HValuePropagationThroughHeap* value_propagation_through_heap =
+      new (arena) HValuePropagationThroughHeap(graph, stats);
   HLoopFormation* formation_before_peeling =
       new (arena) HLoopFormation(graph, "loop_formation_before_peeling");
   HLoopPeeling* peeling = new (arena) HLoopPeeling(graph, stats);
@@ -461,7 +459,7 @@ void RunOptimizationsX86(HGraph* graph,
     non_temporal_move,
 #endif
     // &generate_selects
-    // &value_propagation_through_heapvalue_propagation_through_heap,
+    value_propagation_through_heap,
     loop_full_unrolling
   };
 
