@@ -298,7 +298,7 @@ void HLoopUnrolling::AppendInstructions(const LoopBody& new_body, uint64_t itera
 
       // Add the instruction to the new basic block.
       HInstruction* toAdd = cloner_.GetClone(insn);
-      if (toAdd->GetBlock() == nullptr) {
+      if (toAdd != nullptr && toAdd->GetBlock() == nullptr) {
         // We do it only if it is a clone not if it already exists.
         copy_bb->AddInstruction(toAdd);
       }
