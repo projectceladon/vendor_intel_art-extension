@@ -51,6 +51,8 @@ ART_USE_READ_BARRIER ?= true
 
 ART_CPP_EXTENSION := .cc
 
+ART_USE_TLAB := true
+
 ifndef LIBART_IMG_HOST_BASE_ADDRESS
   $(error LIBART_IMG_HOST_BASE_ADDRESS unset)
 endif

@@ -306,12 +306,12 @@ class ContinuousSpace : public Space {
 
   // Is object within this space? We check to see if the pointer is beyond the end first as
   // continuous spaces are iterated over from low to high.
-  bool HasAddress(const mirror::Object* obj) const {
+  bool HasAddress(const mirror::Object * obj) const {
     const uint8_t* byte_ptr = reinterpret_cast<const uint8_t*>(obj);
     return byte_ptr >= Begin() && byte_ptr < Limit();
   }
 
-  bool Contains(const mirror::Object* obj) const {
+  bool Contains(const mirror::Object * obj) const {
     return HasAddress(obj);
   }
 

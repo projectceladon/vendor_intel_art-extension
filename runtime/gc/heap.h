@@ -177,6 +177,7 @@ class Heap {
        size_t large_object_threshold,
        size_t parallel_gc_threads,
        size_t conc_gc_threads,
+       size_t first_iter_copy_size,
        bool low_memory_mode,
        size_t long_pause_threshold,
        size_t long_gc_threshold,
@@ -485,11 +486,12 @@ class Heap {
 
   void AddFinalizerReference(Thread* self, ObjPtr<mirror::Object>* object);
 
-  // Returns the number of bytes currently allocated.
   size_t GetBytesAllocated() const {
     return num_bytes_allocated_.LoadSequentiallyConsistent();
   }
-
+  size_t GetRevokeBytes() const {
+    return num_bytes_freed_revoke_.LoadSequentiallyConsistent();
+  }
   // Returns the number of objects currently allocated.
   size_t GetObjectsAllocated() const
       REQUIRES(!Locks::heap_bitmap_lock_);
@@ -570,9 +572,10 @@ class Heap {
   // Deflate monitors, ... and trim the spaces.
   void Trim(Thread* self) REQUIRES(!*gc_complete_lock_);
 
-  void RevokeThreadLocalBuffers(Thread* thread);
+  void RevokeThreadLocalBuffers(Thread* thread, bool record_free = true);
   void RevokeRosAllocThreadLocalBuffers(Thread* thread);
-  void RevokeAllThreadLocalBuffers();
+  void RevokeAllThreadLocalBuffers(bool record_free = true);
+  void AssertAllThreadLocalBuffersAreRevoked();
   void AssertThreadLocalBuffersAreRevoked(Thread* thread);
   void AssertAllBumpPointerSpaceThreadLocalBuffersAreRevoked();
   void RosAllocVerification(TimingLogger* timings, const char* name)
@@ -646,7 +649,6 @@ class Heap {
   space::RosAllocSpace* GetRosAllocSpace() const {
     return rosalloc_space_;
   }
-
   // Return the corresponding rosalloc space.
   space::RosAllocSpace* GetRosAllocSpace(gc::allocator::RosAlloc* rosalloc) const
       REQUIRES_SHARED(Locks::mutator_lock_);
@@ -694,6 +696,12 @@ class Heap {
   size_t GetConcGCThreadCount() const {
     return conc_gc_threads_;
   }
+  // For Parallel Copying collector.
+  // Get task size of the first iteration of copy task.
+  size_t GetFirstIterCopySize() const {
+    return first_iter_copy_size_;
+  }
+
   accounting::ModUnionTable* FindModUnionTableFromSpace(space::Space* space);
   void AddModUnionTable(accounting::ModUnionTable* mod_union_table);
 
@@ -1158,6 +1166,9 @@ class Heap {
 
   // How many GC threads we may use for unpaused parts of garbage collection.
   const size_t conc_gc_threads_;
+
+  // How many objects in the parallel copy task for first iteration.
+  const size_t first_iter_copy_size_;
 
   // Boolean for if we are in low memory mode.
   const bool low_memory_mode_;
