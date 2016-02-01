@@ -134,6 +134,8 @@ bool HRemoveUnusedLoops::CheckInstructionsInBlock(HLoopInformation_X86* loop_inf
       continue;
     }
 
+    bool no_side_effects = true;  // All instructions are okay.
+    std::unordered_set<HPhi*> worklist;
     for (HUseIterator<HInstruction*> it2(instruction->GetUses()); !it2.Done(); it2.Advance()) {
       HInstruction* insn = it2.Current()->GetUser();
       HBasicBlock* insn_block = insn->GetBlock();
@@ -145,12 +147,18 @@ bool HRemoveUnusedLoops::CheckInstructionsInBlock(HLoopInformation_X86* loop_inf
         HPhi* insn_as_phi = insn->AsPhi();
         if (insn_as_phi != nullptr && !insn->HasUses()) {
           PRINT_PASS_MESSAGE(this, "Used by Phi in different loop -- has no uses (removing)");
-          insn_as_phi->GetBlock()->RemovePhi(insn_as_phi);
+          worklist.insert(insn_as_phi);
         } else {
           PRINT_PASS_MESSAGE(this, "Used in different loop");
-          return false;
+          no_side_effects = false;
         }
       }
+    }
+    for (auto insn_as_phi : worklist) {
+      insn_as_phi->GetBlock()->RemovePhi(insn_as_phi);
+    }
+    if (!no_side_effects) {
+      return false;  // Other insn may be skipped.
     }
   }
 
