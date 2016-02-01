@@ -207,8 +207,7 @@ class TLEVisitor : public HGraphVisitor {
                                                            int64_t,
                                                            in_value.d))),
         values_.Overwrite(instr, Value(static_cast<float>(in_value.d))),
-        values_.Overwrite(instr, Value(static_cast<double>(in_value.d)))
-      ));
+        values_.Overwrite(instr, Value(static_cast<double>(in_value.d)))));
 
     switch (orig_out_type) {
       case Primitive::kPrimChar:

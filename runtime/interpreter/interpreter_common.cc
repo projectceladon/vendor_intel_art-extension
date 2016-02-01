@@ -751,7 +751,6 @@ static inline bool DoCallCommon(ArtMethod* called_method,
 
   // Do the call now.
   if (LIKELY(Runtime::Current()->IsStarted())) {
-
     // Check if it is not yet compiled.
     if (Runtime::Current()->IsJitBlockMode() == true) {
       jit::Jit* const jit = Runtime::Current()->GetJit();
