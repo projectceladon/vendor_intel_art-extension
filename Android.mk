@@ -18,6 +18,15 @@ LOCAL_PATH := $(call my-dir)
 
 art_path := $(LOCAL_PATH)
 
+# Allow vendor to deploy another ART VM with proprietary optimizations.
+ifneq ($(VENDOR_ART_PATH),)
+  # Set this way to reduce conflicts in file.
+  art_path := $(VENDOR_ART_PATH)
+else
+  # If vendor is not deploying separate VM, just use ART.
+  VENDOR_ART_PATH := $(art_path)
+endif
+
 ########################################################################
 # clean-oat rules
 #
