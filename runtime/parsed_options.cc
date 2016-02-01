@@ -304,6 +304,18 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
           .IntoKey(M::Experimental)
       .Define("-Xforce-nb-testing")
           .IntoKey(M::ForceNativeBridge)
+	  .Define("-XX:GcProfile")
+          .WithValue(true)
+          .IntoKey(M::GcProfile)
+      .Define("-X:GcProfileDir:_")
+          .WithType<std::string>()
+          .IntoKey(M::GcProfileDir)
+      .Define("-XX:GcProfAlloc")
+          .WithValue(true)
+          .IntoKey(M::GcProfAlloc)
+      .Define("-XX:GcProfAtStart")
+          .WithValue(true)
+          .IntoKey(M::GcProfAtStart)
       .Define("-Xplugin:_")
           .WithType<std::vector<Plugin>>().AppendValues()
           .IntoKey(M::Plugins)
@@ -443,6 +455,12 @@ static void MaybeOverrideVerbosity() {
 bool ParsedOptions::DoParse(const RuntimeOptions& options,
                             bool ignore_unrecognized,
                             RuntimeArgumentMap* runtime_options) {
+  // Initialize Gc profiling parameters, turn off by default.
+  enable_gcprofile_ = false;
+  gcprofile_dir_ = "/data/local/tmp/gcprofile";
+  enable_succ_alloc_profile_ = false;
+  enable_gcprofile_at_start_ = false;
+
   for (size_t i = 0; i < options.size(); ++i) {
     if (true && options[0].first == "-Xzygote") {
       LOG(INFO) << "option[" << i << "]=" << options[i].first;
@@ -791,6 +809,10 @@ void ParsedOptions::Usage(const char* fmt, ...) {
   UsageMessage(stream, "  -Xjitdisableopt\n");
   UsageMessage(stream, "  -Xjitsuspendpoll\n");
   UsageMessage(stream, "  -XX:mainThreadStackSize=N\n");
+  UsageMessage(stream, "  -XX:GcProfile\n");
+  UsageMessage(stream, "  -XGcProfileDir:dirname\n");
+  UsageMessage(stream, "  -XX:GcProfAlloc\n");
+  UsageMessage(stream, "  -XX:GcProfAtStart\n");
   UsageMessage(stream, "\n");
 
   Exit((error) ? 1 : 0);

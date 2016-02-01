@@ -71,6 +71,7 @@ LIBART_COMMON_SRC_FILES := \
   gc/collector/sticky_mark_sweep.cc \
   gc/gc_cause.cc \
   gc/heap.cc \
+  gc/gcprofiler.cc \
   gc/reference_processor.cc \
   gc/reference_queue.cc \
   gc/scoped_gc_critical_section.cc \
@@ -355,6 +356,7 @@ LIBART_ENUM_OPERATOR_OUT_HEADER_FILES := \
   gc/collector_type.h \
   gc/collector/gc_type.h \
   gc/heap.h \
+  gc/gcprofiler.h \
   gc/space/region_space.h \
   gc/space/space.h \
   gc/weak_root_state.h \

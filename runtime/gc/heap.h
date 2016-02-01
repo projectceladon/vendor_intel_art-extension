@@ -679,6 +679,9 @@ class Heap {
   void DumpSpaces(std::ostream& stream) const REQUIRES_SHARED(Locks::mutator_lock_);
   std::string DumpSpaces() const REQUIRES_SHARED(Locks::mutator_lock_);
 
+// Safe version of pretty type of which check to make sure objects are heap addresses.
+  std::string SafeGetClassDescriptor(mirror::Class* klass) NO_THREAD_SAFETY_ANALYSIS;
+
   // GC performance measuring
   void DumpGcPerformanceInfo(std::ostream& os)
       REQUIRES(!*gc_complete_lock_);
@@ -817,6 +820,11 @@ class Heap {
   // Create a new alloc space and compact default alloc space to it.
   HomogeneousSpaceCompactResult PerformHomogeneousSpaceCompact() REQUIRES(!*gc_complete_lock_);
   bool SupportHomogeneousSpaceCompactAndCollectorTransitions() const;
+  void GCProfileSetDir(const std::string& dir);
+  void GCProfileStart();
+  void GCProfileEnd(bool drop_result);
+  void GCProfileEnableSuccAllocProfile(bool enable);
+  bool GCProfileRunning();
 
   // Install an allocation listener.
   void SetAllocationListener(AllocationListener* l);
@@ -965,6 +973,10 @@ class Heap {
                                                size_t alloc_size,
                                                bool grow);
 
+  // Returns true if the address passed in is within the address range of a continuous space.
+  bool IsValidContinuousSpaceObjectAddress(const mirror::Object* obj) const
+      REQUIRES_SHARED(Locks::mutator_lock_);
+
   // Run the finalizers. If timeout is non zero, then we use the VMRuntime version.
   void RunFinalization(JNIEnv* env, uint64_t timeout);
 
@@ -980,6 +992,8 @@ class Heap {
       REQUIRES_SHARED(Locks::mutator_lock_)
       REQUIRES(!*pending_task_lock_);
   bool IsGCRequestPending() const;
+  // Calculate the space size of GC, used by gc profiler.
+  uint32_t CalculateSpaceSize(bool compacting_gc);
 
   // Sometimes CollectGarbageInternal decides to run a different Gc than you requested. Returns
   // which type of Gc was actually ran.

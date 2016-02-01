@@ -69,8 +69,17 @@ void MarkCompact::RunPhases() {
     ScopedPause pause(this);
     GetHeap()->PreGcVerificationPaused(this);
     GetHeap()->PrePauseRosAllocVerification(this);
-    MarkingPhase();
-    ReclaimPhase();
+    if (Runtime::Current()->EnabledGcProfile()) {
+      uint64_t mark_start = NanoTime();
+      MarkingPhase();
+      RegisterMark(NanoTime() - mark_start);
+      uint64_t sweep_start = NanoTime();
+      ReclaimPhase();
+      RegisterSweep(NanoTime() - sweep_start);
+    } else {
+      MarkingPhase();
+      ReclaimPhase();
+    }
   }
   GetHeap()->PostGcVerification(this);
   FinishPhase();
