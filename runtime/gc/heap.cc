@@ -73,6 +73,7 @@
 #include "handle_scope-inl.h"
 #include "thread_list.h"
 #include "well_known_classes.h"
+#include "gc/gcprofiler.h"
 
 namespace art {
 
@@ -1698,7 +1699,13 @@ mirror::Object* Heap::AllocateInternalWithGc(Thread* self,
   DCHECK(klass != nullptr);
   StackHandleScope<1> hs(self);
   HandleWrapper<mirror::Class> h(hs.NewHandleWrapper(klass));
-  klass = nullptr;  // Invalidate for safety.
+  GcProfiler* gc_profiler = nullptr;
+  if (Runtime::Current()->EnabledGcProfile() == false) {
+    // Keep 'klass' for GC profiling.
+    klass = nullptr;  // Invalidate for safety.
+  } else {
+    gc_profiler = GcProfiler::GetInstance();
+  }
   // The allocation failed. If the GC is running, block until it completes, and then retry the
   // allocation.
   collector::GcType last_gc = WaitForGcToComplete(kGcCauseForAlloc, self);
@@ -1713,6 +1720,11 @@ mirror::Object* Heap::AllocateInternalWithGc(Thread* self,
     mirror::Object* ptr = TryToAllocate<true, false>(self, allocator, alloc_size, bytes_allocated,
                                                      usable_size, bytes_tl_bulk_allocated);
     if (ptr != nullptr) {
+      if (gc_profiler != nullptr) {
+        // Set fail allocation record.
+        gc_profiler->CreateFailRecord(*klass, GetBytesAllocated(), max_allowed_footprint_,
+                                     alloc_size, last_gc, kFailUntilGCConcurrent);
+      }
       return ptr;
     }
   }
@@ -1728,6 +1740,11 @@ mirror::Object* Heap::AllocateInternalWithGc(Thread* self,
     mirror::Object* ptr = TryToAllocate<true, false>(self, allocator, alloc_size, bytes_allocated,
                                                      usable_size, bytes_tl_bulk_allocated);
     if (ptr != nullptr) {
+      if (gc_profiler != nullptr) {
+        // Set fail allocation record.
+        gc_profiler->CreateFailRecord(*klass, GetBytesAllocated(), max_allowed_footprint_,
+                                     alloc_size, tried_type, kFailUntilGCForAlloc);
+      }
       return ptr;
     }
   }
@@ -1749,6 +1766,11 @@ mirror::Object* Heap::AllocateInternalWithGc(Thread* self,
       mirror::Object* ptr = TryToAllocate<true, false>(self, allocator, alloc_size, bytes_allocated,
                                                        usable_size, bytes_tl_bulk_allocated);
       if (ptr != nullptr) {
+        if (gc_profiler != nullptr) {
+          // Set fail allocation record.
+          gc_profiler->CreateFailRecord(*klass, GetBytesAllocated(), max_allowed_footprint_,
+                                       alloc_size, gc_type, kFailUntilGCForAlloc);
+        }
         return ptr;
       }
     }
@@ -1758,6 +1780,11 @@ mirror::Object* Heap::AllocateInternalWithGc(Thread* self,
   mirror::Object* ptr = TryToAllocate<true, true>(self, allocator, alloc_size, bytes_allocated,
                                                   usable_size, bytes_tl_bulk_allocated);
   if (ptr != nullptr) {
+    if (gc_profiler != nullptr) {
+      // Set fail allocation record.
+      gc_profiler->CreateFailRecord(*klass, GetBytesAllocated(), max_allowed_footprint_,
+                                   alloc_size, gc_plan_.back(), kFailUntilAllocGrowHeap);
+    }
     return ptr;
   }
   // Most allocations should have succeeded by now, so the heap is really full, really fragmented,
@@ -1858,7 +1885,18 @@ mirror::Object* Heap::AllocateInternalWithGc(Thread* self,
   }
   // If the allocation hasn't succeeded by this point, throw an OOM error.
   if (ptr == nullptr) {
+    if (gc_profiler != nullptr) {
+      // Set fail record as OOM.
+      gc_profiler->CreateFailRecord(*klass, GetBytesAllocated(), max_allowed_footprint_,
+                                   alloc_size, gc_plan_.back(), kFailThrowGCOOM);
+    }
+
     ThrowOutOfMemoryError(self, alloc_size, allocator);
+  }
+  if (gc_profiler != nullptr) {
+    // Set fail record.
+    gc_profiler->CreateFailRecord(*klass, GetBytesAllocated(), max_allowed_footprint_,
+                                 alloc_size, gc_plan_.back(), kFailUntilGCForAllocClearRef);
   }
   return ptr;
 }
@@ -2607,6 +2645,28 @@ collector::GarbageCollector* Heap::Compact(space::ContinuousMemMapAllocSpace* ta
   }
 }
 
+uint32_t Heap::CalculateSpaceSize(bool compacting_gc) {
+  uint32_t space_size = 0;
+  if (compacting_gc) {
+    switch (collector_type_) {
+      case kCollectorTypeSS:
+        space_size = bump_pointer_space_->Size();
+        break;
+      case kCollectorTypeGSS:
+        space_size = bump_pointer_space_->Size() + main_space_->Size();
+        break;
+      case kCollectorTypeMC:
+        space_size = bump_pointer_space_->Size();
+        break;
+      default:
+        LOG(FATAL) << "Invalid collector type " << static_cast<size_t>(collector_type_);
+    }
+  } else {
+    space_size = main_space_->Size();
+  }
+  return space_size;
+}
+
 collector::GcType Heap::CollectGarbageInternal(collector::GcType gc_type,
                                                GcCause gc_cause,
                                                bool clear_soft_references) {
@@ -2662,6 +2722,12 @@ collector::GcType Heap::CollectGarbageInternal(collector::GcType gc_type,
   DCHECK_NE(gc_type, collector::kGcTypeNone);
 
   collector::GarbageCollector* collector = nullptr;
+  GcProfiler *gc_profiler = nullptr;
+  uint64_t blocking_time = 0;
+  if (Runtime::Current()->EnabledGcProfile()) {
+    gc_profiler = GcProfiler::GetInstance();
+  }
+
   // TODO: Clean this up.
   if (compacting_gc) {
     DCHECK(current_allocator_ == kAllocatorTypeBumpPointer ||
@@ -2720,6 +2786,14 @@ collector::GcType Heap::CollectGarbageInternal(collector::GcType gc_type,
   CHECK(collector != nullptr)
       << "Could not find garbage collector with collector_type="
       << static_cast<size_t>(collector_type_) << " and gc_type=" << gc_type;
+
+  if (gc_profiler != nullptr) {
+    uint32_t space_size = CalculateSpaceSize(compacting_gc);
+    // Create a gc record and insert to Record list.
+    gc_profiler->InsertNewGcRecord(gc_cause, gc_type, NanoTime(), GetBytesAllocated(),
+                                   max_allowed_footprint_, space_size,
+                                   large_object_space_->GetBytesAllocated());
+  }
   collector->Run(gc_cause, clear_soft_references || runtime->IsZygote());
   total_objects_freed_ever_ += GetCurrentGcIteration()->GetFreedObjects();
   total_bytes_freed_ever_ += GetCurrentGcIteration()->GetFreedBytes();
@@ -2729,6 +2803,25 @@ collector::GcType Heap::CollectGarbageInternal(collector::GcType gc_type,
   // Grow the heap so that we know when to perform the next GC.
   GrowForUtilization(collector, bytes_allocated_before_gc);
   LogGC(gc_cause, collector);
+  if (gc_profiler != nullptr) {
+    uint32_t space_size = CalculateSpaceSize(compacting_gc);
+    // Fill the gc record info.
+    gc_profiler->FillGcRecordInfo(collector, max_allowed_footprint_,
+                                 concurrent_start_bytes_, allocation_stack_->Size(),
+                                 GetTotalMemory(), GetBytesAllocated(), space_size,
+                                 large_object_space_->GetBytesAllocated());
+    // If it is GC for alloc, blocking time is GC duration.
+    // Otherwise, blocking time is max pause time.
+    if (gc_cause == kGcCauseForAlloc) {
+       blocking_time = GetCurrentGcIteration()->GetDurationNs();
+    } else {
+       for (uint64_t pause : GetCurrentGcIteration()->GetPauseTimes()) {
+         blocking_time = pause > blocking_time ? pause : blocking_time;
+       }
+    }
+    // Set blocking time to record.
+    gc_profiler->UpdateMaxWaitForGcTimeAndBlockingTime(blocking_time, false, true);
+  }
   FinishGC(self, gc_type);
   // Inform DDMS that a GC completed.
   Dbg::GcDidFinish();
@@ -3490,6 +3583,17 @@ collector::GcType Heap::WaitForGcToCompleteLocked(GcCause cause, Thread* self) {
   }
   uint64_t wait_time = NanoTime() - wait_start;
   total_wait_time_ += wait_time;
+  if (Runtime::Current()->EnabledGcProfile()) {
+    // Record the wait time for the gc, update the gc blocking time necessory
+    // only record when last_gc_type != kGcTypeNone.
+    GcProfiler* gc_profiler = GcProfiler::GetInstance();
+    if (last_gc_type != collector::kGcTypeNone) {
+      gc_profiler->UpdateMaxWaitForGcTimeAndBlockingTime(wait_time);
+    } else {
+      // If no GC heppened, update the wasted wait time.
+      gc_profiler->UpdateWastedWaitTime(wait_time);
+    }
+  }
   if (wait_time > long_pause_log_threshold_) {
     LOG(INFO) << "WaitForGcToComplete blocked for " << PrettyDuration(wait_time)
         << " for cause " << cause;
@@ -4173,5 +4277,29 @@ void Heap::GetBootImagesSize(uint32_t* boot_image_begin,
   }
 }
 
+void Heap::GCProfileSetDir(const std::string& dir) {
+  GcProfiler *gc_profiler = GcProfiler::GetInstance();
+  gc_profiler->SetDir(dir);
+}
+
+void Heap::GCProfileStart() {
+  GcProfiler *gc_profiler = GcProfiler::GetInstance();
+  gc_profiler->Start();
+}
+
+void Heap::GCProfileEnd(bool drop_result) {
+  GcProfiler *gc_profiler = GcProfiler::GetInstance();
+  gc_profiler->Stop(drop_result);
+}
+
+void Heap::GCProfileEnableSuccAllocProfile(bool enable) {
+  GcProfiler *gc_profiler = GcProfiler::GetInstance();
+  gc_profiler->EnableSuccAllocProfile(enable);
+}
+
+bool Heap::GCProfileRunning() {
+  GcProfiler *gc_profiler = GcProfiler::GetInstance();
+  return gc_profiler->IsRunning();
+}
 }  // namespace gc
 }  // namespace art

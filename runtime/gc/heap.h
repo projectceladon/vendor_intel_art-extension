@@ -796,6 +796,12 @@ class Heap {
   HomogeneousSpaceCompactResult PerformHomogeneousSpaceCompact() REQUIRES(!*gc_complete_lock_);
   bool SupportHomogeneousSpaceCompactAndCollectorTransitions() const;
 
+  void GCProfileSetDir(const std::string& dir);
+  void GCProfileStart();
+  void GCProfileEnd(bool drop_result);
+  void GCProfileEnableSuccAllocProfile(bool enable);
+  bool GCProfileRunning();
+
  private:
   class ConcurrentGCTask;
   class CollectorTransitionTask;
@@ -930,6 +936,8 @@ class Heap {
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!*pending_task_lock_);
   bool IsGCRequestPending() const;
+  // Calculate the space size of GC, used by gc profiler.
+  uint32_t CalculateSpaceSize(bool compacting_gc);
 
   // Sometimes CollectGarbageInternal decides to run a different Gc than you requested. Returns
   // which type of Gc was actually ran.

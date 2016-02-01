@@ -216,6 +216,10 @@ Runtime::Runtime()
       system_thread_group_(nullptr),
       system_class_loader_(nullptr),
       dump_gc_performance_on_shutdown_(false),
+      enable_gcprofile_(false),
+      gcprofile_dir_("/data/local/tmp/gcprofile"),
+      enable_succ_alloc_profile_(false),
+      enable_gcprofile_at_start_(false),
       preinitialization_transaction_(nullptr),
       verify_(verifier::VerifyMode::kNone),
       allow_dex_file_fallback_(true),
@@ -293,6 +297,10 @@ Runtime::~Runtime() {
   // Make sure to let the GC complete if it is running.
   heap_->WaitForGcToComplete(gc::kGcCauseBackground, self);
   heap_->DeleteThreadPool();
+  if (enable_gcprofile_) {
+    LOG(INFO) << "GCProfile: stop gc profile when destroying vm";
+    GetHeap()->GCProfileEnd(false);
+  }
   if (jit_ != nullptr) {
     ScopedTrace trace2("Delete jit");
     VLOG(jit) << "Deleting jit thread pool";
@@ -458,6 +466,10 @@ void Runtime::PreZygoteFork() {
 }
 
 void Runtime::CallExitHook(jint status) {
+  if (enable_gcprofile_) {
+    LOG(INFO) << "GCProfile: stop gcprofile in ExitHook";
+    GetHeap()->GCProfileEnd(false);
+  }
   if (exit_ != nullptr) {
     ScopedThreadStateChange tsc(Thread::Current(), kNative);
     exit_(status);
@@ -677,7 +689,13 @@ bool Runtime::Start() {
                  trace_config_->trace_mode,
                  0);
   }
-
+  // Start GC Profiling if enable profile at start.
+  // The forked process start GC Profiling in DidForkFromZygote.
+  if (enable_gcprofile_ && enable_gcprofile_at_start_) {
+    LOG(INFO) << "GCProfile: start gc profile when runtime initializing";
+    GetHeap()->GCProfileEnd(true);
+    GetHeap()->GCProfileStart();
+  }
   return true;
 }
 
@@ -766,6 +784,12 @@ void Runtime::InitNonZygoteOrPostFork(
   // Start the JDWP thread. If the command-line debugger flags specified "suspend=y",
   // this will pause the runtime, so we probably want this to come last.
   Dbg::StartJdwp();
+
+  if (enable_gcprofile_ && enable_gcprofile_at_start_) {
+    LOG(INFO) << "GCProfile: start gc profile when fork from zygote";
+    GetHeap()->GCProfileEnd(true);
+    GetHeap()->GCProfileStart();
+  }
 }
 
 void Runtime::StartSignalCatcher() {
@@ -1016,6 +1040,12 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
   }
 
   XGcOption xgc_option = runtime_options.GetOrDefault(Opt::GcOption);
+
+  enable_gcprofile_ = runtime_options.GetOrDefault(Opt::GcProfile);
+  gcprofile_dir_ = runtime_options.ReleaseOrDefault(Opt::GcProfileDir);
+  enable_succ_alloc_profile_ = runtime_options.GetOrDefault(Opt::GcProfAlloc);
+  enable_gcprofile_at_start_ = runtime_options.GetOrDefault(Opt::GcProfAtStart);
+
   heap_ = new gc::Heap(runtime_options.GetOrDefault(Opt::MemoryInitialSize),
                        runtime_options.GetOrDefault(Opt::HeapGrowthLimit),
                        runtime_options.GetOrDefault(Opt::HeapMinFree),
@@ -1084,6 +1114,14 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
     low_4gb_arena_pool_.reset(new ArenaPool(/* use_malloc */ false, /* low_4gb */ true));
   }
   linear_alloc_.reset(CreateLinearAlloc());
+
+  if (enable_gcprofile_) {
+    GetHeap()->GCProfileSetDir(gcprofile_dir_);
+    GetHeap()->GCProfileEnableSuccAllocProfile(enable_succ_alloc_profile_);
+  } else {
+    enable_succ_alloc_profile_ = false;
+    enable_gcprofile_at_start_ = false;
+  }
 
   BlockSignals();
   InitPlatformSignalHandlers();

@@ -156,6 +156,15 @@ void SignalCatcher::HandleSigQuit() {
 void SignalCatcher::HandleSigUsr1() {
   LOG(INFO) << "SIGUSR1 forcing GC (no HPROF)";
   Runtime::Current()->GetHeap()->CollectGarbage(false);
+  if (Runtime::Current()->EnabledGcProfile()) {
+    if (!Runtime::Current()->GetHeap()->GCProfileRunning()) {
+      LOG(INFO) << "SIGUSR1 start profiling GC";
+      Runtime::Current()->GetHeap()->GCProfileStart();
+    } else {
+      LOG(INFO) << "SIGUSR1 stop profiling GC";
+      Runtime::Current()->GetHeap()->GCProfileEnd(false);
+    }
+  }
 }
 
 int SignalCatcher::WaitForSignal(Thread* self, SignalSet& signals) {
