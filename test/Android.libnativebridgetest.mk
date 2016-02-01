@@ -16,7 +16,7 @@
 
 LOCAL_PATH := $(call my-dir)
 
-include art/build/Android.common_build.mk
+include $(VENDOR_ART_PATH)/build/Android.common_build.mk
 
 LIBNATIVEBRIDGETEST_COMMON_SRC_FILES := \
   115-native-bridge/nativebridge.cc
@@ -44,8 +44,8 @@ define build-libnativebridgetest
   endif
   LOCAL_SRC_FILES := $(LIBNATIVEBRIDGETEST_COMMON_SRC_FILES)
   LOCAL_SHARED_LIBRARIES += libartd
-  LOCAL_C_INCLUDES += $(ART_C_INCLUDES) art/runtime
-  LOCAL_ADDITIONAL_DEPENDENCIES := art/build/Android.common_build.mk
+  LOCAL_C_INCLUDES += $(ART_C_INCLUDES) $(VENDOR_ART_PATH)/runtime
+  LOCAL_ADDITIONAL_DEPENDENCIES := $(VENDOR_ART_PATH)/build/Android.common_build.mk
   LOCAL_ADDITIONAL_DEPENDENCIES += $(LOCAL_PATH)/Android.libnativebridgetest.mk
   ifeq ($$(art_target_or_host),target)
     $(call set-target-local-clang-vars)

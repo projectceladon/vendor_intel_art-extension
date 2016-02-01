@@ -16,7 +16,7 @@
 
 LOCAL_PATH:= $(call my-dir)
 
-include art/build/Android.common_build.mk
+include $(VENDOR_ART_PATH)/build/Android.common_build.mk
 
 include $(CLEAR_VARS)
 LOCAL_CPP_EXTENSION := $(ART_CPP_EXTENSION)
@@ -28,7 +28,7 @@ LOCAL_CLANG = $(ART_TARGET_CLANG)
 LOCAL_MODULE:= libsigchain
 LOCAL_SHARED_LIBRARIES := liblog
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
-LOCAL_ADDITIONAL_DEPENDENCIES += art/build/Android.common_build.mk
+LOCAL_ADDITIONAL_DEPENDENCIES += $(VENDOR_ART_PATH)/build/Android.common_build.mk
 LOCAL_NATIVE_COVERAGE := $(ART_COVERAGE)
 $(eval $(call set-target-local-clang-vars))
 include $(BUILD_SHARED_LIBRARY)
@@ -43,7 +43,7 @@ LOCAL_CLANG = $(ART_TARGET_CLANG)
 LOCAL_MODULE:= libsigchain
 LOCAL_SHARED_LIBRARIES := liblog
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
-LOCAL_ADDITIONAL_DEPENDENCIES += art/build/Android.common_build.mk
+LOCAL_ADDITIONAL_DEPENDENCIES += $(VENDOR_ART_PATH)/build/Android.common_build.mk
 $(eval $(call set-target-local-clang-vars))
 include $(BUILD_STATIC_LIBRARY)
 

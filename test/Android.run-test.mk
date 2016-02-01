@@ -15,7 +15,7 @@
 
 LOCAL_PATH := $(call my-dir)
 
-include art/build/Android.common_test.mk
+include $(VENDOR_ART_PATH)/build/Android.common_test.mk
 
 # List of all tests of the form 003-omnibus-opcodes.
 TEST_ART_RUN_TESTS := $(wildcard $(LOCAL_PATH)/[0-9]*)
@@ -928,7 +928,7 @@ $$(run_test_rule_name): $(TEST_ART_RUN_TEST_DEPENDENCIES) $(HOST_OUT_EXECUTABLES
 	    JACK=$(abspath $(JACK)) \
 	    JACK_VERSION=$(JACK_DEFAULT_VERSION) \
 	    JACK_CLASSPATH=$$(PRIVATE_JACK_CLASSPATH) \
-	    art/test/run-test $$(PRIVATE_RUN_TEST_OPTIONS) $(12) \
+	    $(VENDOR_ART_PATH)/test/run-test $$(PRIVATE_RUN_TEST_OPTIONS) $(12) \
 	      && $$(call ART_TEST_PASSED,$$@) || $$(call ART_TEST_FAILED,$$@)
 	$$(hide) (echo $(MAKECMDGOALS) | grep -q $$@ && \
 	  echo "run-test run as top-level target, removing test directory $(ART_HOST_TEST_DIR)" && \
@@ -1060,4 +1060,4 @@ RUN_TYPES :=
 DEBUGGABLE_TYPES :=
 
 include $(LOCAL_PATH)/Android.libarttest.mk
-include art/test/Android.libnativebridgetest.mk
+include $(VENDOR_ART_PATH)/test/Android.libnativebridgetest.mk

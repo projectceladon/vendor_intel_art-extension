@@ -15,13 +15,13 @@
 #
 
 # The path for which all the dex files are relative, not actually the current directory.
-LOCAL_PATH := art/test
+LOCAL_PATH := $(VENDOR_ART_PATH)/test
 
-include art/build/Android.common_test.mk
-include art/build/Android.common_path.mk
-include art/build/Android.common_build.mk
+include $(VENDOR_ART_PATH)/build/Android.common_test.mk
+include $(VENDOR_ART_PATH)/build/Android.common_path.mk
+include $(VENDOR_ART_PATH)/build/Android.common_build.mk
 
-# Subdirectories in art/test which contain dex files used as inputs for gtests.
+# Subdirectories in $(VENDOR_ART_PATH)/test which contain dex files used as inputs for gtests.
 GTEST_DEX_DIRECTORIES := \
   AbstractMethod \
   AllFields \
@@ -51,7 +51,7 @@ GTEST_DEX_DIRECTORIES := \
 
 # Create build rules for each dex file recording the dependency.
 $(foreach dir,$(GTEST_DEX_DIRECTORIES), $(eval $(call build-art-test-dex,art-gtest,$(dir), \
-  $(ART_TARGET_NATIVETEST_OUT),art/build/Android.gtest.mk,ART_TEST_TARGET_GTEST_$(dir)_DEX, \
+  $(ART_TARGET_NATIVETEST_OUT),$(VENDOR_ART_PATH)/build/Android.gtest.mk,ART_TEST_TARGET_GTEST_$(dir)_DEX, \
   ART_TEST_HOST_GTEST_$(dir)_DEX)))
 
 # Create rules for MainStripped, a copy of Main with the classes.dex stripped
@@ -169,7 +169,7 @@ ART_GTEST_profile_assistant_test_TARGET_DEPS := \
   profman
 
 # The path for which all the source files are relative, not actually the current directory.
-LOCAL_PATH := art
+LOCAL_PATH := $(VENDOR_ART_PATH)
 
 RUNTIME_GTEST_COMMON_SRC_FILES := \
   cmdline/cmdline_parser_test.cc \
@@ -407,11 +407,11 @@ LOCAL_MODULE := libart-gtest
 LOCAL_MODULE_TAGS := optional
 LOCAL_CPP_EXTENSION := cc
 LOCAL_SRC_FILES := runtime/common_runtime_test.cc compiler/common_compiler_test.cc
-LOCAL_C_INCLUDES := $(ART_C_INCLUDES) art/runtime art/cmdline art/compiler
+LOCAL_C_INCLUDES := $(ART_C_INCLUDES) $(VENDOR_ART_PATH)/runtime $(VENDOR_ART_PATH)/cmdline $(VENDOR_ART_PATH)/compiler
 LOCAL_SHARED_LIBRARIES := libartd libartd-compiler libdl
 LOCAL_STATIC_LIBRARIES += libgtest
-LOCAL_ADDITIONAL_DEPENDENCIES := art/build/Android.common_build.mk
-LOCAL_ADDITIONAL_DEPENDENCIES += art/build/Android.gtest.mk
+LOCAL_ADDITIONAL_DEPENDENCIES := $(VENDOR_ART_PATH)/build/Android.common_build.mk
+LOCAL_ADDITIONAL_DEPENDENCIES += $(VENDOR_ART_PATH)/build/Android.gtest.mk
 $(eval $(call set-target-local-clang-vars))
 $(eval $(call set-target-local-cflags-vars,debug))
 LOCAL_CLANG_CFLAGS += -Wno-used-but-marked-unused -Wno-deprecated -Wno-missing-noreturn # gtest issue
@@ -424,15 +424,15 @@ LOCAL_CPP_EXTENSION := cc
 LOCAL_CFLAGS := $(ART_HOST_CFLAGS)
 LOCAL_ASFLAGS := $(ART_HOST_ASFLAGS)
 LOCAL_SRC_FILES := runtime/common_runtime_test.cc compiler/common_compiler_test.cc
-LOCAL_C_INCLUDES := $(ART_C_INCLUDES) art/runtime art/cmdline art/compiler
+LOCAL_C_INCLUDES := $(ART_C_INCLUDES) $(VENDOR_ART_PATH)/runtime $(VENDOR_ART_PATH)/cmdline $(VENDOR_ART_PATH)/compiler
 LOCAL_SHARED_LIBRARIES := libartd libartd-compiler
 LOCAL_STATIC_LIBRARIES := libgtest_host
 LOCAL_LDLIBS += -ldl -lpthread
 LOCAL_MULTILIB := both
 LOCAL_CLANG := $(ART_HOST_CLANG)
 LOCAL_CLANG_CFLAGS += -Wno-used-but-marked-unused -Wno-deprecated -Wno-missing-noreturn  # gtest issue
-LOCAL_ADDITIONAL_DEPENDENCIES := art/build/Android.common_build.mk
-LOCAL_ADDITIONAL_DEPENDENCIES += art/build/Android.gtest.mk
+LOCAL_ADDITIONAL_DEPENDENCIES := $(VENDOR_ART_PATH)/build/Android.common_build.mk
+LOCAL_ADDITIONAL_DEPENDENCIES += $(VENDOR_ART_PATH)/build/Android.gtest.mk
 include $(BUILD_HOST_SHARED_LIBRARY)
 
 # Variables holding collections of gtest pre-requisits used to run a number of gtests.
@@ -532,7 +532,7 @@ valgrind-$$(gtest_rule): $$(gtest_exe) $$(gtest_deps) $(ART_VALGRIND_DEPENDENCIE
 	$(hide) $$(call ART_TEST_SKIP,$$@) && \
 	  VALGRIND_LIB=$(HOST_OUT)/lib64/valgrind \
 	  $(HOST_OUT_EXECUTABLES)/valgrind --leak-check=full --error-exitcode=1 \
-	    --suppressions=art/test/valgrind-suppressions.txt $$< && \
+	    --suppressions=$(VENDOR_ART_PATH)/test/valgrind-suppressions.txt $$< && \
 	    $$(call ART_TEST_PASSED,$$@) || $$(call ART_TEST_FAILED,$$@)
 
   ART_TEST_HOST_VALGRIND_GTEST$$($(2)ART_PHONY_TEST_HOST_SUFFIX)_RULES += valgrind-$$(gtest_rule)
@@ -571,12 +571,12 @@ define define-art-gtest
   endif
   LOCAL_CPP_EXTENSION := $$(ART_CPP_EXTENSION)
   LOCAL_SRC_FILES := $$(art_gtest_filename)
-  LOCAL_C_INCLUDES += $$(ART_C_INCLUDES) art/runtime art/cmdline $$(art_gtest_extra_c_includes)
+  LOCAL_C_INCLUDES += $$(ART_C_INCLUDES) $(VENDOR_ART_PATH)/runtime $(VENDOR_ART_PATH)/cmdline $$(art_gtest_extra_c_includes)
   LOCAL_SHARED_LIBRARIES += libartd $$(art_gtest_extra_shared_libraries) libart-gtest libartd-disassembler
   LOCAL_WHOLE_STATIC_LIBRARIES += libsigchain
 
-  LOCAL_ADDITIONAL_DEPENDENCIES := art/build/Android.common_build.mk
-  LOCAL_ADDITIONAL_DEPENDENCIES += art/build/Android.gtest.mk
+  LOCAL_ADDITIONAL_DEPENDENCIES := $(VENDOR_ART_PATH)/build/Android.common_build.mk
+  LOCAL_ADDITIONAL_DEPENDENCIES += $(VENDOR_ART_PATH)/build/Android.gtest.mk
 
   # Mac OS linker doesn't understand --export-dynamic.
   ifneq ($$(HOST_OS)-$$(art_target_or_host),darwin-host)
@@ -669,11 +669,11 @@ endef  # define-art-gtest
 
 ifeq ($(ART_BUILD_TARGET),true)
   $(foreach file,$(RUNTIME_GTEST_TARGET_SRC_FILES), $(eval $(call define-art-gtest,target,$(file),,libbacktrace)))
-  $(foreach file,$(COMPILER_GTEST_TARGET_SRC_FILES), $(eval $(call define-art-gtest,target,$(file),art/compiler,libartd-compiler libbacktrace libnativeloader)))
+  $(foreach file,$(COMPILER_GTEST_TARGET_SRC_FILES), $(eval $(call define-art-gtest,target,$(file),$(VENDOR_ART_PATH)/compiler,libartd-compiler libbacktrace libnativeloader)))
 endif
 ifeq ($(ART_BUILD_HOST),true)
   $(foreach file,$(RUNTIME_GTEST_HOST_SRC_FILES), $(eval $(call define-art-gtest,host,$(file),,libbacktrace)))
-  $(foreach file,$(COMPILER_GTEST_HOST_SRC_FILES), $(eval $(call define-art-gtest,host,$(file),art/compiler,libartd-compiler libbacktrace libnativeloader)))
+  $(foreach file,$(COMPILER_GTEST_HOST_SRC_FILES), $(eval $(call define-art-gtest,host,$(file),$(VENDOR_ART_PATH)/compiler,libartd-compiler libbacktrace libnativeloader)))
 endif
 
 # Used outside the art project to get a list of the current tests

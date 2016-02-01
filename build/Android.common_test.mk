@@ -17,7 +17,7 @@
 ifndef ART_ANDROID_COMMON_TEST_MK
 ART_ANDROID_COMMON_TEST_MK = true
 
-include art/build/Android.common_path.mk
+include $(VENDOR_ART_PATH)/build/Android.common_path.mk
 
 # We need to set a define for the nativetest dir so that common_runtime_test will know the right
 # path. (The problem is being a 32b test on 64b device, which is still located in nativetest64).
@@ -179,7 +179,7 @@ endef
 
 # Create a build rule to create the dex file for a test.
 # $(1): module prefix, e.g. art-test-dex
-# $(2): input test directory in art/test, e.g. HelloWorld
+# $(2): input test directory in $(VENDOR_ART_PATH)/test, e.g. HelloWorld
 # $(3): target output module path (default module path is used on host)
 # $(4): additional dependencies
 # $(5): a make variable used to collate target dependencies, e.g ART_TEST_TARGET_OAT_HelloWorld_DEX
@@ -195,7 +195,7 @@ define build-art-test-dex
     LOCAL_SRC_FILES := $(call all-java-files-under, $(2))
     LOCAL_NO_STANDARD_LIBRARIES := true
     LOCAL_DEX_PREOPT := false
-    LOCAL_ADDITIONAL_DEPENDENCIES := art/build/Android.common_test.mk $(4)
+    LOCAL_ADDITIONAL_DEPENDENCIES := $(VENDOR_ART_PATH)/build/Android.common_test.mk $(4)
     LOCAL_MODULE_TAGS := tests
     LOCAL_JAVA_LIBRARIES := $(TARGET_CORE_JARS)
     LOCAL_MODULE_PATH := $(3)
@@ -212,7 +212,7 @@ define build-art-test-dex
     LOCAL_SRC_FILES := $(call all-java-files-under, $(2))
     LOCAL_NO_STANDARD_LIBRARIES := true
     LOCAL_DEX_PREOPT := false
-    LOCAL_ADDITIONAL_DEPENDENCIES := art/build/Android.common_test.mk $(4)
+    LOCAL_ADDITIONAL_DEPENDENCIES := $(VENDOR_ART_PATH)/build/Android.common_test.mk $(4)
     LOCAL_JAVA_LIBRARIES := $(HOST_CORE_JARS)
     LOCAL_DEX_PREOPT_IMAGE := $(HOST_CORE_IMG_LOCATION)
     ifneq ($(wildcard $(LOCAL_PATH)/$(2)/main.list),)

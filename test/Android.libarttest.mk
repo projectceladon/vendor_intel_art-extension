@@ -16,7 +16,7 @@
 
 LOCAL_PATH := $(call my-dir)
 
-include art/build/Android.common_build.mk
+include $(VENDOR_ART_PATH)/build/Android.common_build.mk
 
 LIBARTTEST_COMMON_SRC_FILES := \
   common/runtime_state.cc \
@@ -80,8 +80,8 @@ define build-libarttest
   endif
   LOCAL_SRC_FILES := $(LIBARTTEST_COMMON_SRC_FILES)
   LOCAL_SHARED_LIBRARIES += libart$$(suffix) libbacktrace libnativehelper
-  LOCAL_C_INCLUDES += $(ART_C_INCLUDES) art/runtime
-  LOCAL_ADDITIONAL_DEPENDENCIES := art/build/Android.common_build.mk
+  LOCAL_C_INCLUDES += $(ART_C_INCLUDES) $(VENDOR_ART_PATH)/runtime
+  LOCAL_ADDITIONAL_DEPENDENCIES := $(VENDOR_ART_PATH)/build/Android.common_build.mk
   LOCAL_ADDITIONAL_DEPENDENCIES += $(LOCAL_PATH)/Android.libarttest.mk
   ifeq ($$(art_target_or_host),target)
     $(call set-target-local-clang-vars)

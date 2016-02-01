@@ -16,7 +16,7 @@
 
 LOCAL_PATH := $(call my-dir)
 
-include art/build/Android.common.mk
+include $(VENDOR_ART_PATH)/build/Android.common.mk
 
 dalvikvm_cflags := -Wall -Werror -Wextra -std=gnu++11
 
@@ -26,12 +26,12 @@ LOCAL_MODULE_TAGS := optional
 LOCAL_CPP_EXTENSION := cc
 LOCAL_SRC_FILES := dalvikvm.cc
 LOCAL_CFLAGS := $(dalvikvm_cflags)
-LOCAL_C_INCLUDES := art/runtime
+LOCAL_C_INCLUDES := $(VENDOR_ART_PATH)/runtime
 LOCAL_SHARED_LIBRARIES := libdl liblog libnativehelper
 LOCAL_WHOLE_STATIC_LIBRARIES := libsigchain
 LOCAL_LDFLAGS := -Wl,--export-dynamic
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
-LOCAL_ADDITIONAL_DEPENDENCIES += art/build/Android.common.mk
+LOCAL_ADDITIONAL_DEPENDENCIES += $(VENDOR_ART_PATH)/build/Android.common.mk
 LOCAL_MULTILIB := both
 LOCAL_MODULE_STEM_32 := dalvikvm32
 LOCAL_MODULE_STEM_64 := dalvikvm64
@@ -54,7 +54,7 @@ LOCAL_CLANG := true
 LOCAL_CPP_EXTENSION := cc
 LOCAL_SRC_FILES := dalvikvm.cc
 LOCAL_CFLAGS := $(dalvikvm_cflags)
-LOCAL_C_INCLUDES := art/runtime
+LOCAL_C_INCLUDES := $(VENDOR_ART_PATH)/runtime
 LOCAL_SHARED_LIBRARIES := libnativehelper
 LOCAL_WHOLE_STATIC_LIBRARIES := libsigchain
 LOCAL_LDFLAGS := -ldl -lpthread
@@ -63,7 +63,7 @@ ifneq ($(HOST_OS),darwin)
   LOCAL_LDFLAGS += -Wl,--export-dynamic
 endif
 LOCAL_ADDITIONAL_DEPENDENCIES += $(LOCAL_PATH)/Android.mk
-LOCAL_ADDITIONAL_DEPENDENCIES += art/build/Android.common.mk
+LOCAL_ADDITIONAL_DEPENDENCIES += $(VENDOR_ART_PATH)/build/Android.common.mk
 LOCAL_IS_HOST_MODULE := true
 LOCAL_MULTILIB := both
 ifdef ART_MULTILIB_OVERRIDE_host

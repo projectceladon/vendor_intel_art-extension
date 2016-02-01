@@ -17,7 +17,7 @@
 LOCAL_PATH:= $(call my-dir)
 
 dexlist_src_files := dexlist.cc
-dexlist_c_includes := art/runtime
+dexlist_c_includes := $(VENDOR_ART_PATH)/runtime
 dexlist_libraries := libart
 
 ##

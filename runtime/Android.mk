@@ -16,7 +16,7 @@
 
 LOCAL_PATH := $(call my-dir)
 
-include art/build/Android.common_build.mk
+include $(VENDOR_ART_PATH)/build/Android.common_build.mk
 
 LIBART_COMMON_SRC_FILES := \
   art_field.cc \
@@ -474,8 +474,8 @@ ifeq ($(4),libart)
   ENUM_OPERATOR_OUT_CC_FILES := $$(patsubst %.h,%_operator_out.cc,$$(LIBART_ENUM_OPERATOR_OUT_HEADER_FILES))
   ENUM_OPERATOR_OUT_GEN := $$(addprefix $$(GENERATED_SRC_DIR)/,$$(ENUM_OPERATOR_OUT_CC_FILES))
 
-$$(ENUM_OPERATOR_OUT_GEN): art/tools/generate-operator-out.py
-$$(ENUM_OPERATOR_OUT_GEN): PRIVATE_CUSTOM_TOOL = art/tools/generate-operator-out.py $(LOCAL_PATH) $$< > $$@
+$$(ENUM_OPERATOR_OUT_GEN): $(VENDOR_ART_PATH)/tools/generate-operator-out.py
+$$(ENUM_OPERATOR_OUT_GEN): PRIVATE_CUSTOM_TOOL = $(VENDOR_ART_PATH)/tools/generate-operator-out.py $(LOCAL_PATH) $$< > $$@
 $$(ENUM_OPERATOR_OUT_GEN): $$(GENERATED_SRC_DIR)/%_operator_out.cc : $(LOCAL_PATH)/%.h
 	$$(transform-generated-source)
 
@@ -524,9 +524,9 @@ endif
   endif
 
   LOCAL_C_INCLUDES += $$(ART_C_INCLUDES)
-  LOCAL_C_INCLUDES += art/cmdline
-  LOCAL_C_INCLUDES += art/sigchainlib
-  LOCAL_C_INCLUDES += art
+  LOCAL_C_INCLUDES += $(VENDOR_ART_PATH)/cmdline
+  LOCAL_C_INCLUDES += $(VENDOR_ART_PATH)/sigchainlib
+  LOCAL_C_INCLUDES += $(VENDOR_ART_PATH)
 
   ifeq ($$(art_static_or_shared),static)
     LOCAL_STATIC_LIBRARIES := libnativehelper
@@ -572,7 +572,7 @@ endif
     endif
     LOCAL_NOTICE_FILE := $(LOCAL_PATH)/openjdkjvm/NOTICE
   endif
-  LOCAL_ADDITIONAL_DEPENDENCIES := art/build/Android.common_build.mk
+  LOCAL_ADDITIONAL_DEPENDENCIES := $(VENDOR_ART_PATH)/build/Android.common_build.mk
   LOCAL_ADDITIONAL_DEPENDENCIES += $$(LOCAL_PATH)/Android.mk
 
   ifeq ($$(art_target_or_host),target)

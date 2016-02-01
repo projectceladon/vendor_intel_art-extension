@@ -17,8 +17,8 @@
 ifndef ART_ANDROID_COMMON_BUILD_MK
 ART_ANDROID_COMMON_BUILD_MK = true
 
-include art/build/Android.common.mk
-include art/build/Android.common_utils.mk
+include $(VENDOR_ART_PATH)/build/Android.common.mk
+include $(VENDOR_ART_PATH)/build/Android.common_utils.mk
 
 # These can be overridden via the environment or by editing to
 # enable/disable certain build configuration.
@@ -79,8 +79,8 @@ endif
 # Used to enable JIT
 #
 ART_JIT := false
-ifneq ($(wildcard art/JIT_ART),)
-$(info Enabling ART_JIT because of existence of art/JIT_ART)
+ifneq ($(wildcard $(VENDOR_ART_PATH)/JIT_ART),)
+$(info Enabling ART_JIT because of existence of $(VENDOR_ART_PATH)/JIT_ART)
 ART_JIT := true
 endif
 ifeq ($(WITH_ART_JIT), true)

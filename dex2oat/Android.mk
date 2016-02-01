@@ -25,7 +25,7 @@ ifeq (,$(filter address, $(SANITIZE_TARGET)))
 
 LOCAL_PATH := $(call my-dir)
 
-include art/build/Android.executable.mk
+include $(VENDOR_ART_PATH)/build/Android.executable.mk
 
 DEX2OAT_SRC_FILES := \
 	dex2oat.cc
@@ -48,11 +48,11 @@ else
 endif
 
 ifeq ($(ART_BUILD_TARGET_NDEBUG),true)
-  $(eval $(call build-art-executable,dex2oat,$(DEX2OAT_SRC_FILES),libcutils libart-compiler libsigchain,art/compiler,target,ndebug,$(dex2oat_target_arch)))
+  $(eval $(call build-art-executable,dex2oat,$(DEX2OAT_SRC_FILES),libcutils libart-compiler libsigchain,$(VENDOR_ART_PATH)/compiler,target,ndebug,$(dex2oat_target_arch)))
 endif
 
 ifeq ($(ART_BUILD_TARGET_DEBUG),true)
-  $(eval $(call build-art-executable,dex2oat,$(DEX2OAT_SRC_FILES),libcutils libartd-compiler libsigchain,art/compiler,target,debug,$(dex2oat_target_arch)))
+  $(eval $(call build-art-executable,dex2oat,$(DEX2OAT_SRC_FILES),libcutils libartd-compiler libsigchain,$(VENDOR_ART_PATH)/compiler,target,debug,$(dex2oat_target_arch)))
 endif
 
 # Note: the order is important because of static linking resolution.
@@ -81,16 +81,16 @@ DEX2OAT_STATIC_DEPENDENCIES := \
 
 # We always build dex2oat and dependencies, even if the host build is otherwise disabled, since they are used to cross compile for the target.
 ifeq ($(ART_BUILD_HOST_NDEBUG),true)
-  $(eval $(call build-art-executable,dex2oat,$(DEX2OAT_SRC_FILES),libcutils libart-compiler libsigchain libziparchive-host liblz4,art/compiler,host,ndebug,$(dex2oat_host_arch)))
+  $(eval $(call build-art-executable,dex2oat,$(DEX2OAT_SRC_FILES),libcutils libart-compiler libsigchain libziparchive-host liblz4,$(VENDOR_ART_PATH)/compiler,host,ndebug,$(dex2oat_host_arch)))
   ifeq ($(ART_BUILD_HOST_STATIC),true)
-    $(eval $(call build-art-executable,dex2oat,$(DEX2OAT_SRC_FILES),libart libart-compiler libart $(DEX2OAT_STATIC_DEPENDENCIES),art/compiler,host,ndebug,$(dex2oat_host_arch),static))
+    $(eval $(call build-art-executable,dex2oat,$(DEX2OAT_SRC_FILES),libart libart-compiler libart $(DEX2OAT_STATIC_DEPENDENCIES),$(VENDOR_ART_PATH)/compiler,host,ndebug,$(dex2oat_host_arch),static))
   endif
 endif
 
 ifeq ($(ART_BUILD_HOST_DEBUG),true)
-  $(eval $(call build-art-executable,dex2oat,$(DEX2OAT_SRC_FILES),libcutils libartd-compiler libsigchain libziparchive-host liblz4,art/compiler,host,debug,$(dex2oat_host_arch)))
+  $(eval $(call build-art-executable,dex2oat,$(DEX2OAT_SRC_FILES),libcutils libartd-compiler libsigchain libziparchive-host liblz4,$(VENDOR_ART_PATH)/compiler,host,debug,$(dex2oat_host_arch)))
   ifeq ($(ART_BUILD_HOST_STATIC),true)
-    $(eval $(call build-art-executable,dex2oat,$(DEX2OAT_SRC_FILES),libartd libartd-compiler libartd $(DEX2OAT_STATIC_DEPENDENCIES),art/compiler,host,debug,$(dex2oat_host_arch),static))
+    $(eval $(call build-art-executable,dex2oat,$(DEX2OAT_SRC_FILES),libartd libartd-compiler libartd $(DEX2OAT_STATIC_DEPENDENCIES),$(VENDOR_ART_PATH)/compiler,host,debug,$(dex2oat_host_arch),static))
   endif
 endif
 

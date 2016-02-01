@@ -16,7 +16,7 @@
 
 LOCAL_PATH := $(call my-dir)
 
-include art/build/Android.common_build.mk
+include $(VENDOR_ART_PATH)/build/Android.common_build.mk
 
 LIBART_COMPILER_SRC_FILES := \
 	compiled_method.cc \
@@ -238,8 +238,8 @@ define build-libart-compiler
                                 $$(sort $$(foreach arch,$$(art_codegen_targets), $$(LIBART_COMPILER_ENUM_OPERATOR_OUT_HEADER_FILES_$$(arch)))))
   ENUM_OPERATOR_OUT_GEN := $$(addprefix $$(GENERATED_SRC_DIR)/,$$(ENUM_OPERATOR_OUT_CC_FILES))
 
-$$(ENUM_OPERATOR_OUT_GEN): art/tools/generate-operator-out.py
-$$(ENUM_OPERATOR_OUT_GEN): PRIVATE_CUSTOM_TOOL = art/tools/generate-operator-out.py $(LOCAL_PATH) $$< > $$@
+$$(ENUM_OPERATOR_OUT_GEN): $(VENDOR_ART_PATH)/tools/generate-operator-out.py
+$$(ENUM_OPERATOR_OUT_GEN): PRIVATE_CUSTOM_TOOL = $(VENDOR_ART_PATH)/tools/generate-operator-out.py $(LOCAL_PATH) $$< > $$@
 $$(ENUM_OPERATOR_OUT_GEN): $$(GENERATED_SRC_DIR)/%_operator_out.cc : $(LOCAL_PATH)/%.h
 	$$(transform-generated-source)
 
@@ -264,13 +264,13 @@ $$(ENUM_OPERATOR_OUT_GEN): $$(GENERATED_SRC_DIR)/%_operator_out.cc : $(LOCAL_PAT
     endif
   endif
 
-  LOCAL_C_INCLUDES += $(ART_C_INCLUDES) art/runtime art/disassembler
+  LOCAL_C_INCLUDES += $(ART_C_INCLUDES) $(VENDOR_ART_PATH)/runtime $(VENDOR_ART_PATH)/disassembler
 
   ifeq ($$(art_target_or_host),host)
     # For compiler driver TLS.
     LOCAL_LDLIBS += -lpthread
   endif
-  LOCAL_ADDITIONAL_DEPENDENCIES := art/build/Android.common_build.mk
+  LOCAL_ADDITIONAL_DEPENDENCIES := $(VENDOR_ART_PATH)/build/Android.common_build.mk
   LOCAL_ADDITIONAL_DEPENDENCIES += $(LOCAL_PATH)/Android.mk
   # Vixl assembly support for ARM64 targets.
   ifeq ($$(art_ndebug_or_debug),debug)

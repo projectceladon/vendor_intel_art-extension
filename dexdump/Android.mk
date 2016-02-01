@@ -19,7 +19,7 @@
 LOCAL_PATH:= $(call my-dir)
 
 dexdump_src_files := dexdump_main.cc dexdump.cc
-dexdump_c_includes := art/runtime
+dexdump_c_includes := $(VENDOR_ART_PATH)/runtime
 dexdump_libraries := libart
 
 ##

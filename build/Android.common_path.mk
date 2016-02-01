@@ -17,7 +17,7 @@
 ifndef ART_ANDROID_COMMON_PATH_MK
 ART_ANDROID_COMMON_PATH_MK := true
 
-include art/build/Android.common.mk
+include $(VENDOR_ART_PATH)/build/Android.common.mk
 
 # Directory used for dalvik-cache on device.
 ART_TARGET_DALVIK_CACHE_DIR := /data/dalvik-cache

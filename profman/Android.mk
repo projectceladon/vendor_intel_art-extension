@@ -16,7 +16,7 @@
 
 LOCAL_PATH := $(call my-dir)
 
-include art/build/Android.executable.mk
+include $(VENDOR_ART_PATH)/build/Android.executable.mk
 
 PROFMAN_SRC_FILES := \
 	profman.cc \
@@ -31,15 +31,15 @@ else
 endif
 
 ifeq ($(ART_BUILD_TARGET_NDEBUG),true)
-  $(eval $(call build-art-executable,profman,$(PROFMAN_SRC_FILES),libcutils,art/profman,target,ndebug,$(profman_arch)))
+  $(eval $(call build-art-executable,profman,$(PROFMAN_SRC_FILES),libcutils,$(VENDOR_ART_PATH)/profman,target,ndebug,$(profman_arch)))
 endif
 ifeq ($(ART_BUILD_TARGET_DEBUG),true)
-  $(eval $(call build-art-executable,profman,$(PROFMAN_SRC_FILES),libcutils,art/profman,target,debug,$(profman_arch)))
+  $(eval $(call build-art-executable,profman,$(PROFMAN_SRC_FILES),libcutils,$(VENDOR_ART_PATH)/profman,target,debug,$(profman_arch)))
 endif
 
 ifeq ($(ART_BUILD_HOST_NDEBUG),true)
-  $(eval $(call build-art-executable,profman,$(PROFMAN_SRC_FILES),libcutils,art/profman,host,ndebug))
+  $(eval $(call build-art-executable,profman,$(PROFMAN_SRC_FILES),libcutils,$(VENDOR_ART_PATH)/profman,host,ndebug))
 endif
 ifeq ($(ART_BUILD_HOST_DEBUG),true)
-  $(eval $(call build-art-executable,profman,$(PROFMAN_SRC_FILES),libcutils,art/profman,host,debug))
+  $(eval $(call build-art-executable,profman,$(PROFMAN_SRC_FILES),libcutils,$(VENDOR_ART_PATH)/profman,host,debug))
 endif

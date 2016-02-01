@@ -16,7 +16,7 @@
 
 LOCAL_PATH := $(call my-dir)
 
-include art/build/Android.common_build.mk
+include $(VENDOR_ART_PATH)/build/Android.common_build.mk
 
 LIBART_SIMULATOR_SRC_FILES := \
   code_simulator.cc \
@@ -77,11 +77,11 @@ define build-libart-simulator
     LOCAL_SHARED_LIBRARIES += libart
   endif
 
-  LOCAL_C_INCLUDES += $(ART_C_INCLUDES) art/runtime
+  LOCAL_C_INCLUDES += $(ART_C_INCLUDES) $(VENDOR_ART_PATH)/runtime
   LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)
   LOCAL_MULTILIB := both
 
-  LOCAL_ADDITIONAL_DEPENDENCIES := art/build/Android.common_build.mk
+  LOCAL_ADDITIONAL_DEPENDENCIES := $(VENDOR_ART_PATH)/build/Android.common_build.mk
   LOCAL_ADDITIONAL_DEPENDENCIES += $(LOCAL_PATH)/Android.mk
   LOCAL_NATIVE_COVERAGE := $(ART_COVERAGE)
   # For simulator_arm64.

@@ -14,7 +14,7 @@
 # limitations under the License.
 #
 
-include art/build/Android.common_build.mk
+include $(VENDOR_ART_PATH)/build/Android.common_build.mk
 
 ART_HOST_EXECUTABLES ?=
 ART_TARGET_EXECUTABLES ?=
@@ -55,7 +55,7 @@ define build-art-executable
   LOCAL_CPP_EXTENSION := $(ART_CPP_EXTENSION)
   LOCAL_MODULE_TAGS := optional
   LOCAL_SRC_FILES := $$(art_source)
-  LOCAL_C_INCLUDES += $(ART_C_INCLUDES) art/runtime art/cmdline $$(art_c_includes)
+  LOCAL_C_INCLUDES += $(ART_C_INCLUDES) $(VENDOR_ART_PATH)/runtime $(VENDOR_ART_PATH)/cmdline $$(art_c_includes)
 
   ifeq ($$(art_static_or_shared),static)
     LOCAL_STATIC_LIBRARIES += $$(art_libraries)
@@ -122,9 +122,9 @@ define build-art-executable
     endif
   endif
 
-  LOCAL_ADDITIONAL_DEPENDENCIES := art/build/Android.common_build.mk
-  LOCAL_ADDITIONAL_DEPENDENCIES += art/build/Android.common_utils.mk
-  LOCAL_ADDITIONAL_DEPENDENCIES += art/build/Android.executable.mk
+  LOCAL_ADDITIONAL_DEPENDENCIES := $(VENDOR_ART_PATH)/build/Android.common_build.mk
+  LOCAL_ADDITIONAL_DEPENDENCIES += $(VENDOR_ART_PATH)/build/Android.common_utils.mk
+  LOCAL_ADDITIONAL_DEPENDENCIES += $(VENDOR_ART_PATH)/build/Android.executable.mk
 
   ifeq ($$(art_target_or_host),target)
     LOCAL_MODULE_TARGET_ARCH := $(ART_SUPPORTED_ARCH)

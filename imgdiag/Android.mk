@@ -16,7 +16,7 @@
 
 LOCAL_PATH := $(call my-dir)
 
-include art/build/Android.executable.mk
+include $(VENDOR_ART_PATH)/build/Android.executable.mk
 
 IMGDIAG_SRC_FILES := \
 	imgdiag.cc
@@ -29,4 +29,4 @@ IMGDIAG_SRC_FILES := \
 # Honor HOST_PREFER_32_BIT, as building a 64-bit imgdiag executable
 # when HOST_PREFER_32_BIT is true would require an unmet dependency on
 # 64-bit libbacktrace.
-$(eval $(call build-art-multi-executable,imgdiag,$(IMGDIAG_SRC_FILES),libart-compiler libbacktrace,libcutils,libziparchive-host,art/compiler,both,$(HOST_PREFER_32_BIT)))
+$(eval $(call build-art-multi-executable,imgdiag,$(IMGDIAG_SRC_FILES),libart-compiler libbacktrace,libcutils,libziparchive-host,$(VENDOR_ART_PATH)/compiler,both,$(HOST_PREFER_32_BIT)))
