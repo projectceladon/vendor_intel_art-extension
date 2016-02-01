@@ -21,7 +21,7 @@ include $(VENDOR_ART_PATH)/build/Android.common_test.mk
 include $(VENDOR_ART_PATH)/build/Android.common_path.mk
 include $(VENDOR_ART_PATH)/build/Android.common_build.mk
 
-# Subdirectories in art/test which contain dex files used as inputs for gtests.
+# Subdirectories in $(VENDOR_ART_PATH)/test which contain dex files used as inputs for gtests.
 GTEST_DEX_DIRECTORIES := \
   AbstractMethod \
   AllFields \

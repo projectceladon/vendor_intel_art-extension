@@ -196,7 +196,7 @@ endef
 
 # Create a build rule to create the dex file for a test.
 # $(1): module prefix, e.g. art-test-dex
-# $(2): input test directory in art/test, e.g. HelloWorld
+# $(2): input test directory in $(VENDOR_ART_PATH)/test, e.g. HelloWorld
 # $(3): target output module path (default module path is used on host)
 # $(4): additional dependencies
 # $(5): a make variable used to collate target dependencies, e.g ART_TEST_TARGET_OAT_HelloWorld_DEX
