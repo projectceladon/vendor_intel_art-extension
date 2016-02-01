@@ -22,6 +22,7 @@
 #ifndef ART_COMPILER_OPTIMIZING_NON_TEMPORAL_MOVE_H_
 #define ART_COMPILER_OPTIMIZING_NON_TEMPORAL_MOVE_H_
 
+#include "driver/compiler_driver.h"
 #include "nodes.h"
 #include "optimization_x86.h"
 
@@ -31,15 +32,16 @@ class DexCompilationUnit;
 
 class HNonTemporalMove : public HOptimization_X86 {
  public:
-  explicit HNonTemporalMove(HGraph* graph, OptimizingCompilerStats* stats = nullptr)
-      : HOptimization_X86(graph, kNonTemporalMovePassName, stats) {}
+  explicit HNonTemporalMove(HGraph* graph, CompilerDriver* driver,
+                            OptimizingCompilerStats* stats = nullptr)
+      : HOptimization_X86(graph, kNonTemporalMovePassName, stats), driver_(driver) {}
 
   void Run() OVERRIDE;
 
-  static constexpr int kMinNonTemporalIterations = 131072;
-
  private:
   static constexpr const char* kNonTemporalMovePassName = "non_temporal_move";
+
+  static constexpr int kDefaultMinNonTemporalIterations = 131072;
 
   typedef std::set<HArraySet*> ArraySets;
 
@@ -50,6 +52,8 @@ class HNonTemporalMove : public HOptimization_X86 {
    * @returns 'true' if the loop should use non-temporal moves.
    */
   bool Gate(HLoopInformation_X86* loop_info, ArraySets& array_sets);
+
+  const CompilerDriver* driver_;
 
   DISALLOW_COPY_AND_ASSIGN(HNonTemporalMove);
 };

@@ -21,11 +21,11 @@
  */
 #include "remove_unused_loops.h"
 
+#include "base/stringprintf.h"
 #include "ext_utility.h"
 #include "graph_x86.h"
 #include "loop_formation.h"
 #include "loop_iterators.h"
-#include "base/stringprintf.h"
 
 namespace art {
 

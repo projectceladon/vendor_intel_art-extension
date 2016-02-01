@@ -37,7 +37,7 @@
 #include "non_temporal_move.h"
 #endif
 #include "optimization.h"
-#include "option_content.h"
+#include "optimizing_compiler_stats.h"
 #include "pass_framework.h"
 #include "peeling.h"
 #include "pure_invokes_analysis.h"
@@ -234,114 +234,6 @@ void PrintPasses(ArenaVector<HOptimization*>& opts) {
   }
 }
 
-void FillUserPassOptions(ArenaVector<HOptimization*>& opts,
-                         CompilerDriver* driver) {
-  const PassManagerOptions* pass_options = driver->GetCompilerOptions().GetPassManagerOptions();
-  const std::string& options = pass_options->GetOverriddenPassOptions();
-  const size_t options_len = options.size();
-
-  // Before anything, check if we care about anything right now.
-  if (options_len == 0) {
-    return;
-  }
-
-  for (auto optimization : opts) {
-    if (optimization == nullptr) {
-      continue;
-    }
-
-    const char* pass_name = optimization->GetPassName();
-    const size_t pass_name_len = strlen(pass_name);
-    const size_t min_option_size = 4;  // 2 delimiters, 1 option name, 1 option.
-    size_t search_pos = 0;
-
-    // If there is no room for pass options, exit early.
-    if (options_len < pass_name_len + min_option_size) {
-      continue;
-    }
-
-    do {
-      search_pos = options.find(pass_name, search_pos);
-
-      // Check if we found this pass name in rest of string.
-      if (search_pos == std::string::npos) {
-        // No more options for this pass.
-        break;
-      }
-
-      // The string contains the pass name. Now check that there is
-      // room for the options: at least one char for option name,
-      // two chars for two delimiter, and at least one char for option.
-      if (search_pos + pass_name_len + min_option_size >= options_len) {
-        // No more options for this pass.
-        break;
-      }
-
-      // Update the current search position to not include the pass name.
-      search_pos += pass_name_len;
-
-      // The format must be "PassName:SettingName:#" where # is the option.
-      // Thus look for the first ":" which must exist.
-      if (options[search_pos] != ':') {
-        // Missing delimiter right after pass name.
-        continue;
-      } else {
-        search_pos += 1;
-      }
-
-      // Now look for the actual option by finding the next ":" delimiter.
-      const size_t option_name_pos = search_pos;
-      size_t option_pos = options.find(':', option_name_pos);
-
-      if (option_pos == std::string::npos) {
-        // Missing a delimiter that would capture where option starts.
-        continue;
-      } else if (option_pos == option_name_pos) {
-        // Missing option thus did not move from option name.
-        continue;
-      } else {
-        // Skip the delimiter.
-        option_pos += 1;
-      }
-
-      // Look for the terminating delimiter which must be a comma.
-      size_t next_configuration_separator = options.find(',', option_pos);
-      if (next_configuration_separator == std::string::npos) {
-        next_configuration_separator = options_len;
-      }
-
-      // Prevent end of string errors.
-      if (next_configuration_separator == option_pos) {
-          continue;
-      }
-
-      // Get the actual option itself.
-      std::string option_string =
-          options.substr(option_pos, next_configuration_separator - option_pos);
-
-      std::string option_name =
-          options.substr(option_name_pos, option_pos - option_name_pos - 1);
-
-      // We attempt to convert the option value to integer. Strtoll is being used to
-      // convert because it is exception safe.
-      char* end_ptr = nullptr;
-      const char* option_ptr = option_string.c_str();
-      DCHECK(option_ptr != nullptr);  // Paranoid: option_ptr must be a valid pointer.
-      int64_t int_value = strtoll(option_ptr, &end_ptr, 0);
-      DCHECK(end_ptr != nullptr);  // Paranoid: end_ptr must be set by the strtoll call.
-
-      // If strtoll call succeeded, the option is now considered as integer.
-      if (*option_ptr != '\0' && end_ptr != option_ptr && *end_ptr == '\0') {
-        optimization->DefineOption(option_name, OptionContent(int_value));
-      } else {
-        // Otherwise, it is considered as a string.
-        optimization->DefineOption(option_name, OptionContent(option_string.c_str()));
-      }
-      search_pos = next_configuration_separator;
-    } while (true);
-  }
-}
-
 bool PrintPassesOnlyOnce(ArenaVector<HOptimization*>& opts,
                          CompilerDriver* driver) {
   bool need_print = driver->GetCompilerOptions().
@@ -420,16 +312,16 @@ void RunOptimizationsX86(HGraph* graph,
   ArenaAllocator* arena = graph->GetArena();
   HLoopFormation* loop_formation = new (arena) HLoopFormation(graph);
   HFindInductionVariables* find_ivs = new (arena) HFindInductionVariables(graph, stats);
-  HRemoveLoopSuspendChecks* remove_suspends = new (arena) HRemoveLoopSuspendChecks(graph, stats);
+  HRemoveLoopSuspendChecks* remove_suspends = new (arena) HRemoveLoopSuspendChecks(graph, driver, stats);
   HRemoveUnusedLoops* remove_unused_loops = new (arena) HRemoveUnusedLoops(graph, stats);
-  TrivialLoopEvaluator* tle = new (arena) TrivialLoopEvaluator(graph, stats);
+  TrivialLoopEvaluator* tle = new (arena) TrivialLoopEvaluator(graph, driver, stats);
   HConstantCalculationSinking* ccs = new (arena) HConstantCalculationSinking(graph, stats);
 #ifndef SOFIA
-  HNonTemporalMove* non_temporal_move = new (arena) HNonTemporalMove(graph, stats);
+  HNonTemporalMove* non_temporal_move = new (arena) HNonTemporalMove(graph, driver, stats);
 #endif
   LoadHoistStoreSink* lhss = new (arena) LoadHoistStoreSink(graph, stats);
   HValuePropagationThroughHeap* value_propagation_through_heap =
-      new (arena) HValuePropagationThroughHeap(graph, stats);
+      new (arena) HValuePropagationThroughHeap(graph, driver, stats);
   HLoopFormation* formation_before_peeling =
       new (arena) HLoopFormation(graph, "loop_formation_before_peeling");
   HLoopPeeling* peeling = new (arena) HLoopPeeling(graph, stats);
@@ -439,7 +331,7 @@ void RunOptimizationsX86(HGraph* graph,
   HFormBottomLoops* form_bottom_loops = new (arena) HFormBottomLoops(graph, stats);
   GVNAfterFormBottomLoops* gvn_after_fbl = new (arena) GVNAfterFormBottomLoops(graph);
   // HGenerateSelects* generate_selects = new (arena) HGenerateSelects(graph, stats);
-  HLoopFullUnrolling* loop_full_unrolling = new (arena) HLoopFullUnrolling(graph, stats);
+  HLoopFullUnrolling* loop_full_unrolling = new (arena) HLoopFullUnrolling(graph, driver, stats);
 
   HOptimization_X86* opt_array[] = {
     form_bottom_loops,
@@ -475,8 +367,6 @@ void RunOptimizationsX86(HGraph* graph,
 
   // Print the pass list, if needed.
   PrintPassesOnlyOnce(opt_list, driver);
-
-  FillUserPassOptions(opt_list, driver);
 
   // Now execute the optimizations.
   size_t phase_id = 0;

@@ -22,6 +22,7 @@
 #ifndef ART_COMPILER_OPTIMIZING_REMOVE_SUSPEND_H_
 #define ART_COMPILER_OPTIMIZING_REMOVE_SUSPEND_H_
 
+#include "driver/compiler_driver.h"
 #include "nodes.h"
 #include "optimization_x86.h"
 
@@ -31,15 +32,18 @@ namespace art {
 
 class HRemoveLoopSuspendChecks : public HOptimization_X86 {
  public:
-  explicit HRemoveLoopSuspendChecks(HGraph* graph, OptimizingCompilerStats* stats = nullptr)
-      : HOptimization_X86(graph, kRemoveLoopSuspendChecks, stats) {}
+  explicit HRemoveLoopSuspendChecks(HGraph* graph,
+                                    CompilerDriver* driver,
+                                    OptimizingCompilerStats* stats = nullptr)
+      : HOptimization_X86(graph, kRemoveLoopSuspendChecks, stats),
+        driver_(driver) {}
 
   void Run() OVERRIDE;
 
-  static constexpr int32_t kMaxSuspendFreeLoopCost = MAX_SUSPEND_TIME_CYCLES;
-
  private:
   static constexpr const char* kRemoveLoopSuspendChecks = "remove_loop_suspend_checks";
+
+  const CompilerDriver* driver_;
 
   DISALLOW_COPY_AND_ASSIGN(HRemoveLoopSuspendChecks);
 };

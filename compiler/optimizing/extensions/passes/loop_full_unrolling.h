@@ -17,6 +17,7 @@
 #ifndef ART_COMPILER_OPTIMIZING_EXTENSIONS_PASSES_LOOP_FULL_UNROLLING_H_
 #define ART_COMPILER_OPTIMIZING_EXTENSIONS_PASSES_LOOP_FULL_UNROLLING_H_
 
+#include "driver/compiler_driver.h"
 #include "nodes.h"
 #include "optimization_x86.h"
 
@@ -32,12 +33,8 @@ class HLoopUnrolling;
  */
 class HLoopFullUnrolling : public HOptimization_X86 {
  public:
-  HLoopFullUnrolling(HGraph* graph, OptimizingCompilerStats* stats = nullptr)
-    : HOptimization_X86(graph, kHLoopFullUnrollingPassName, stats) {
-      // This default value is legacy from L. Is it still the best value now?
-      DefineOption("MaxInstructionsUnrolled", OptionContent(60));
-      DefineOption("Enabled", OptionContent(0));
-    }
+  HLoopFullUnrolling(HGraph* graph, CompilerDriver* driver, OptimizingCompilerStats* stats = nullptr)
+    : HOptimization_X86(graph, kHLoopFullUnrollingPassName, stats), driver_(driver) {}
 
   void Run() OVERRIDE;
 
@@ -45,6 +42,12 @@ class HLoopFullUnrolling : public HOptimization_X86 {
   bool Gate(HLoopUnrolling* loop_unrolling) const;
 
   static constexpr const char* kHLoopFullUnrollingPassName = "loop_full_unrolling";
+
+  static constexpr int64_t kDefaultMaxInstructionsUnrolled = 60;
+
+  const CompilerDriver* driver_;
+
+  DISALLOW_COPY_AND_ASSIGN(HLoopFullUnrolling);
 };
 
 }  // namespace art

@@ -24,6 +24,7 @@
 #define ART_COMPILER_OPTIMIZING_TRIVIAL_LOOP_EVALUATOR_H_
 
 #include "code_generator.h"
+#include "driver/compiler_driver.h"
 #include "ext_utility.h"
 #include "nodes.h"
 #include "optimization_x86.h"
@@ -41,8 +42,10 @@ class TLEVisitor;
  */
 class TrivialLoopEvaluator : public HOptimization_X86 {
   public:
-    explicit TrivialLoopEvaluator(HGraph* graph, OptimizingCompilerStats* stats = nullptr)
-      : HOptimization_X86(graph, "trivial_loop_evaluator", stats) {}
+    explicit TrivialLoopEvaluator(HGraph* graph, CompilerDriver* driver,
+                                  OptimizingCompilerStats* stats = nullptr)
+      : HOptimization_X86(graph, "trivial_loop_evaluator", stats), driver_(driver) {}
+
     virtual ~TrivialLoopEvaluator() {}
 
     void Run() OVERRIDE;
@@ -77,7 +80,9 @@ class TrivialLoopEvaluator : public HOptimization_X86 {
 
     /** Maximum number of iterations in an evaluable loop. Beyond this limits, loops are considered
      * too costly to be statically evaluated. */
-    static constexpr int64_t kLoopEvalMaxIter = 1000;
+    static constexpr int64_t kDefaultLoopEvalMaxIter = 1000;
+
+    const CompilerDriver* driver_;
 
     /** Copy and assignment are not allowed. */
     DISALLOW_COPY_AND_ASSIGN(TrivialLoopEvaluator);

@@ -25,6 +25,7 @@
 #include "graph_x86.h"
 #include "loop_iterators.h"
 #include "nodes.h"
+#include "pass_option.h"
 #include "trivial_loop_evaluator.h"
 
 namespace art {
@@ -850,9 +851,10 @@ bool TrivialLoopEvaluator::LoopGate(HLoopInformation_X86* loop) {
 
   // The iteration count must be smaller than the threshold we fixed in order to
   // prevent increasing compile time too much.
-  if (loop->GetNumIterations(loop->GetHeader()) > kLoopEvalMaxIter) {
+  static PassOption<int64_t> eval_max_iter(this, driver_, "LoopEvalMaxIter", kDefaultLoopEvalMaxIter);
+  if (loop->GetNumIterations(loop->GetHeader()) > eval_max_iter.GetValue()) {
     PRINT_PASS_OSTREAM_MESSAGE(this,
-        "Loop has too many iterations (max supported : " << kLoopEvalMaxIter << ").");
+        "Loop has too many iterations (max supported : " << eval_max_iter.GetValue() << ").");
     return false;
   }
 

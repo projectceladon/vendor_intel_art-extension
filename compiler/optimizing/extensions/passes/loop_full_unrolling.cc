@@ -20,6 +20,7 @@
 #include "loop_iterators.h"
 #include "loop_full_unrolling.h"
 #include "loop_unrolling.h"
+#include "pass_option.h"
 
 namespace art {
 
@@ -62,14 +63,14 @@ bool HLoopFullUnrolling::Gate(HLoopUnrolling* loop_unrolling) const {
   DCHECK(loop_unrolling != nullptr);
 
   // Get the user option for max unrolled instructions limit.
-  uint64_t max_unrolled_instructions = GetOption("MaxInstructionsUnrolled").AsInt();
-  bool pass_enabled = (GetOption("Enabled").AsInt() == 1);
-
-  if (pass_enabled == false) {
+  static PassOption<bool> pass_enabled(this, driver_, "Enabled", false);
+  if (pass_enabled.GetValue() == false) {
     return false;
   }
 
-  if (!loop_unrolling->Gate(max_unrolled_instructions)) {
+  static PassOption<int64_t> max_unrolled(this, driver_,
+    "MaxInstructionsUnrolled", kDefaultMaxInstructionsUnrolled);
+  if (!loop_unrolling->Gate(max_unrolled.GetValue())) {
     return false;
   }
 

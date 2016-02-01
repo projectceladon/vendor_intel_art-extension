@@ -19,6 +19,8 @@
 #include "loop_iterators.h"
 #include "loop_formation.h"
 #include "value_propagation_through_heap.h"
+#include "pass_option.h"
+
 #include <set>
 
 namespace art {
@@ -157,7 +159,9 @@ bool HValuePropagationThroughHeap::Gate(HLoopInformation_X86* loop) const {
   DCHECK(loop->GetPreHeader() != nullptr);
 
   // To save the compilation time, limit the loop basic blocks.
-  if (loop->NumberOfBlocks() > kMaximumBasicBlockNumbers) {
+  static PassOption<int64_t> max_bb_number(this, driver_,
+      "MaxBasicBlockNumber", kDefaultMaximumBasicBlockNumbers);
+  if (loop->NumberOfBlocks() > max_bb_number.GetValue()) {
     return false;
   }
   // For the safety of memory operations, do not allow invokes, volatile or monitor

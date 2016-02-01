@@ -26,6 +26,7 @@
 #include "induction_variable.h"
 #include "loop_formation.h"
 #include "loop_iterators.h"
+#include "pass_option.h"
 
 namespace art {
 
@@ -82,10 +83,13 @@ bool HNonTemporalMove::Gate(HLoopInformation_X86* loop_info, ArraySets& array_se
   }
 
   // The number of iterations must be large enough.
-  if (loop_info->GetNumIterations(loop_info->GetHeader()) < kMinNonTemporalIterations) {
+  static PassOption<int64_t> min_non_temporal(this, driver_,
+    "MinNonTemporalIterations", kDefaultMinNonTemporalIterations);
+
+  if (loop_info->GetNumIterations(loop_info->GetHeader()) < min_non_temporal.GetValue()) {
     PRINT_PASS_OSTREAM_MESSAGE(this, "Loop has " << loop_info->GetNumIterations(loop_info->GetHeader())
                                      << " iterations; needs at least "
-                                     << kMinNonTemporalIterations);
+                                     << min_non_temporal.GetValue());
     return false;
   }
 

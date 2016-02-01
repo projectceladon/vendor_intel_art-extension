@@ -20,7 +20,6 @@
 #include "base/arena_object.h"
 #include "nodes.h"
 #include "optimizing_compiler_stats.h"
-#include "option_content.h"
 
 namespace art {
 
@@ -44,31 +43,12 @@ class HOptimization : public ArenaObject<kArenaAllocOptimization> {
   // Perform the analysis itself.
   virtual void Run() = 0;
 
-  bool DefineOption(const std::string& option_name, const OptionContent& option) {
-    bool res = false;
-    if (options_list_.find(option_name) != options_list_.end()) {
-      options_list_.Overwrite(option_name, option);
-      res = true;
-    } else {
-      options_list_.Put(option_name, option);
-      res = true;
-    }
-    return res;
-  }
-
-  const OptionContent GetOption(const std::string& option_name) const {
-    DCHECK(options_list_.find(option_name) != options_list_.end())
-      << "Error: Could not retrieve option \"" << option_name << "\".";
-    return options_list_.Get(option_name);
-  }
-
  protected:
   void MaybeRecordStat(MethodCompilationStat compilation_stat, size_t count = 1) const;
 
   HGraph* const graph_;
   // Used to record stats about the optimization.
   OptimizingCompilerStats* const stats_;
-  SafeMap<std::string, OptionContent> options_list_;
 
  private:
   // Optimization pass name.

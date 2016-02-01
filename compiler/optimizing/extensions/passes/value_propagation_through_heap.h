@@ -17,6 +17,7 @@
 #ifndef ART_COMPILER_OPTIMIZING_VALUE_PROPAGATION_THROUGHHEAP_H_
 #define ART_COMPILER_OPTIMIZING_VALUE_PROPAGATION_THROUGHHEAP_H_
 
+#include "driver/compiler_driver.h"
 #include "ext_alias.h"
 #include "nodes.h"
 #include "optimization_x86.h"
@@ -27,8 +28,10 @@ namespace art {
 
 class HValuePropagationThroughHeap : public HOptimization_X86 {
  public:
-  explicit HValuePropagationThroughHeap(HGraph* graph, OptimizingCompilerStats* stats)
-      : HOptimization_X86(graph, kValuePropagationThroughHeap, stats) {}
+  explicit HValuePropagationThroughHeap(HGraph* graph, CompilerDriver* driver,
+                                        OptimizingCompilerStats* stats)
+      : HOptimization_X86(graph, kValuePropagationThroughHeap, stats),
+        driver_(driver) {}
 
   void Run() OVERRIDE;
 
@@ -62,7 +65,9 @@ class HValuePropagationThroughHeap : public HOptimization_X86 {
 
   // The maximum basic block numbers in the loop for this optimization to apply
   // to save compilation time.
-  static constexpr int64_t kMaximumBasicBlockNumbers = 11;
+  static constexpr int64_t kDefaultMaximumBasicBlockNumbers = 11;
+
+  const CompilerDriver* driver_;
 
   DISALLOW_COPY_AND_ASSIGN(HValuePropagationThroughHeap);
 };

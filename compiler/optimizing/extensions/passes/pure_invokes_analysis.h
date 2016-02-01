@@ -17,7 +17,7 @@
 #ifndef ART_COMPILER_OPTIMIZING_PURE_INVOKES_ANALYSIS_H_
 #define ART_COMPILER_OPTIMIZING_PURE_INVOKES_ANALYSIS_H_
 
-#include "driver/dex_compilation_unit.h"
+#include "driver/compiler_driver.h"
 #include "graph_x86.h"
 #include "ext_utility.h"
 #include "nodes.h"

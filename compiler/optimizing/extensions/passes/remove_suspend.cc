@@ -21,10 +21,11 @@
  */
 #include "remove_suspend.h"
 
+#include "base/stringprintf.h"
 #include "ext_utility.h"
 #include "graph_x86.h"
 #include "loop_iterators.h"
-#include "base/stringprintf.h"
+#include "pass_option.h"
 
 namespace art {
 
@@ -105,9 +106,11 @@ void HRemoveLoopSuspendChecks::Run() {
       }
       cost *= num_iterations;
 
-      if (cost > kMaxSuspendFreeLoopCost) {
+      static PassOption<int64_t> max_suspend_cost(this, driver_, "MaxSuspendFreeLoopCost",
+        MAX_SUSPEND_TIME_CYCLES);
+      if (cost > static_cast<uint64_t>(max_suspend_cost.GetValue())) {
         PRINT_PASS_OSTREAM_MESSAGE(this, "The cost of the loop (" << cost
-                                         << ") exceeds " << kMaxSuspendFreeLoopCost);
+                                         << ") exceeds " << max_suspend_cost.GetValue());
         continue;
       }
 
