@@ -1259,7 +1259,7 @@ space::ContinuousMemMapAllocSpace* SemiSpace::GetToSpace() {
 }
 
 space::ContinuousMemMapAllocSpace* SemiSpace::GetPromoSpace() {
-  if (!generational_) return nullptr;
+  DCHECK(generational_ == true);
   DCHECK(promo_dest_space_ != nullptr);
   return promo_dest_space_;
 }
