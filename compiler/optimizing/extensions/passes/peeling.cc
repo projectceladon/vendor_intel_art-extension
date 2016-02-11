@@ -44,8 +44,8 @@ bool HLoopPeeling::ShouldPeel(HLoopInformation_X86* loop) {
         // We also handle LoadString and LoadClass specially because they may not fall
         // in either category but in reality are useful to hoist since they have no
         // IR inputs and will reload same thing over and over.
-        if (instruction->CanThrow() || instruction->HasSideEffects() ||
-            instruction->GetSideEffects().HasDependencies() ||
+        if (instruction->CanThrow() || instruction->DoesAnyWrite() ||
+            instruction->GetSideEffects().DoesAnyRead() ||
             instruction->IsLoadClass() || instruction->IsLoadString()) {
           bool all_inputs_from_outside = true;
 
