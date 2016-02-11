@@ -102,7 +102,7 @@ void HValuePropagationThroughHeap::PropagateValueToGetters(HLoopInformation_X86*
       // Record setter, getters or the instruction which has side effects.
       if (insn_type == HInstruction::kInstanceFieldSet ||
           insn_type == HInstruction::kStaticFieldSet ||
-          alias_.HasSideEffects(insn)) {
+          alias_.HasWriteSideEffects(insn)) {
         loop_setters.insert(insn);
       } else if (insn_type == HInstruction::kInstanceFieldGet ||
                  insn_type == HInstruction::kStaticFieldGet) {

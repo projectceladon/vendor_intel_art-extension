@@ -428,7 +428,7 @@ bool LoadHoistStoreSink::FindLoadStoreCouples(HLoopInformation_X86* loop,
 
       // Finally, we need to consider instructions that have side effects to prevent
       // hoisting or sinking instructions that might alias with them.
-      if (is_get || is_set || alias_.HasSideEffects(insn)) {
+      if (is_get || is_set || alias_.HasWriteSideEffects(insn)) {
         has_side_effects.insert(insn);
       }
     }

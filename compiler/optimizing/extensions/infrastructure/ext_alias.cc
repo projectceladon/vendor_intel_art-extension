@@ -89,7 +89,7 @@ AliasCheck::AliasKind AliasCheck::Alias(HInstanceFieldGet* x_get, HInstruction* 
       }
       return kMayAlias;
     default:
-      if (HasSideEffects(y)) {
+      if (HasWriteSideEffects(y)) {
         return kMayAlias;
       }
       return kNoAlias;
@@ -124,7 +124,7 @@ AliasCheck::AliasKind AliasCheck::Alias(HInstanceFieldSet* x_set, HInstruction* 
     case HInstruction::kArraySet:
       return kNoAlias;
     default:
-      if (HasSideEffects(y)) {
+      if (HasWriteSideEffects(y)) {
         return kMayAlias;
       }
       return kNoAlias;
@@ -181,7 +181,7 @@ AliasCheck::AliasKind AliasCheck::Alias(HStaticFieldGet* x_get, HInstruction* y)
       }
       return kMayAlias;
     default:
-      if (HasSideEffects(y)) {
+      if (HasWriteSideEffects(y)) {
         return kMayAlias;
       }
       return kNoAlias;
@@ -216,7 +216,7 @@ AliasCheck::AliasKind AliasCheck::Alias(HStaticFieldSet* x_set, HInstruction* y)
       }
       return kMayAlias;
     default:
-      if (HasSideEffects(y)) {
+      if (HasWriteSideEffects(y)) {
         return kMayAlias;
       }
       return kNoAlias;
@@ -364,7 +364,7 @@ AliasCheck::AliasKind AliasCheck::Alias(HArrayGet* x_get, HInstruction* y) {
       }
       return kMayAlias;
     default:
-      if (HasSideEffects(y)) {
+      if (HasWriteSideEffects(y)) {
         return kMayAlias;
       }
       return kNoAlias;
@@ -391,7 +391,7 @@ AliasCheck::AliasKind AliasCheck::Alias(HArraySet* x_set, HInstruction* y) {
       }
       return kMayAlias;
     default:
-      if (HasSideEffects(y)) {
+      if (HasWriteSideEffects(y)) {
         return kMayAlias;
       }
       return kNoAlias;
@@ -432,7 +432,7 @@ AliasCheck::AliasKind AliasCheck::Alias(HInstructionLHSMemory* x_lhs, HInstructi
       // This isn't common enough to worry about.
       return kMayAlias;
     default:
-      if (HasSideEffects(y)) {
+      if (HasWriteSideEffects(y)) {
         return kMayAlias;
       }
       return kNoAlias;
@@ -473,7 +473,7 @@ AliasCheck::AliasKind AliasCheck::Alias(HInstruction* x, HInstruction* y) {
       result = Alias(x->AsInstructionLHSMemory(), y);
       break;
     default:
-      if (HasSideEffects(x)) {
+      if (HasWriteSideEffects(x)) {
         result = kMayAlias;
       }
       break;

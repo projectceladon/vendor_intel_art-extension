@@ -42,12 +42,12 @@ class AliasCheck {
   AliasKind Alias(HInstruction* x, HInstruction* y);
 
  /**
-  * @brief Could this instruction potential alias another instruction?
+  * @brief Could this instruction potentially alias another instruction?
   * @param insn Instruction to check.
   * @returns 'true' if this is a potentially aliasing instruction.
   */
-  bool HasSideEffects(HInstruction* insn) {
-    return insn->GetSideEffects().HasSideEffects() || insn->IsMonitorOperation();
+  bool HasWriteSideEffects(HInstruction* insn) {
+    return insn->DoesAnyWrite() || insn->IsMonitorOperation();
   }
 
  private:
