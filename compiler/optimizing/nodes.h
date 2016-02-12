@@ -1561,6 +1561,10 @@ class SideEffects : public ValueObject {
     return (flags_ & kAllChangeBits);
   }
 
+  bool HasSideEffectsExcludingGC() const {
+    return ((flags_ & ~(1ULL << kCanTriggerGCBit)) & kAllChangeBits);
+  }
+
   bool HasDependencies() const {
     return (flags_ & kAllDependOnBits);
   }

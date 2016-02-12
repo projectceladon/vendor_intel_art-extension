@@ -19,6 +19,7 @@
  * and approved by Intel in writing.
  */
 
+#include "aur.h"
 #include "base/dumpable.h"
 #include "base/timing_logger.h"
 #include "code_generator.h"
@@ -91,6 +92,7 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   { "remove_unused_loops", "loadhoist_storesink", kPassInsertAfter },
   { "loop_full_unrolling", "remove_unused_loops", kPassInsertAfter },
   { "load_store_elimination", "value_propagation_through_heap", kPassInsertBefore },
+  { "aur", "dead_code_elimination_final", kPassInsertBefore },
 };
 
 /**
@@ -332,6 +334,7 @@ void RunOptimizationsX86(HGraph* graph,
   GVNAfterFormBottomLoops* gvn_after_fbl = new (arena) GVNAfterFormBottomLoops(graph);
   // HGenerateSelects* generate_selects = new (arena) HGenerateSelects(graph, stats);
   HLoopFullUnrolling* loop_full_unrolling = new (arena) HLoopFullUnrolling(graph, driver, stats);
+  HAggressiveUseRemoverPass* aur = new (arena) HAggressiveUseRemoverPass(graph, driver, stats);
 
   HOptimization_X86* opt_array[] = {
     peeling,
@@ -352,7 +355,8 @@ void RunOptimizationsX86(HGraph* graph,
     pure_invokes_analysis,
     lhss,
     remove_unused_loops,
-    loop_full_unrolling
+    loop_full_unrolling,
+    aur,
   };
 
   // Fill verbose flags where we need it.

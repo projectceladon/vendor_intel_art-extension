@@ -165,7 +165,7 @@ void HDeadCodeElimination::RemoveDeadInstructions() {
     for (i.Advance(); !i.Done(); i.Advance()) {
       HInstruction* inst = i.Current();
       DCHECK(!inst->IsControlFlow());
-      if (!inst->HasSideEffects()
+      if (!inst->GetSideEffects().HasSideEffectsExcludingGC()
           && !inst->CanThrow()
           && !inst->IsSuspendCheck()
           && !inst->IsNativeDebugInfo()
