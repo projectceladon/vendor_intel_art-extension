@@ -593,7 +593,7 @@ CompiledMethod* ArtJniCompileMethodInternal(CompilerDriver* driver,
 }
 
 // Copy a single parameter from the managed to the JNI calling convention.
-static void CopyParameter(Assembler* jni_asm,
+NO_INLINE static void CopyParameter(Assembler* jni_asm,
                           ManagedRuntimeCallingConvention* mr_conv,
                           JniCallingConvention* jni_conv,
                           size_t frame_size, size_t out_arg_size) {
@@ -682,7 +682,7 @@ static void CopyParameter(Assembler* jni_asm,
   }
 }
 
-static void SetNativeParameter(Assembler* jni_asm,
+NO_INLINE static void SetNativeParameter(Assembler* jni_asm,
                                JniCallingConvention* jni_conv,
                                ManagedRegister in_reg) {
   if (jni_conv->IsCurrentParamOnStack()) {
