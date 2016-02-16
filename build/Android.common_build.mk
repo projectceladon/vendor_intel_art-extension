@@ -53,6 +53,10 @@ ART_CPP_EXTENSION := .cc
 
 ART_USE_TLAB := true
 
+ifneq (,$(findstring sofia,$(TARGET_BOARD_PLATFORM)))
+  art_cflags += -DSOFIA
+endif
+
 ifndef LIBART_IMG_HOST_BASE_ADDRESS
   $(error LIBART_IMG_HOST_BASE_ADDRESS unset)
 endif
