@@ -327,6 +327,10 @@ ifeq ($(ART_USE_TLAB),true)
   art_cflags += -DART_USE_TLAB=1
 endif
 
+ifneq (,$(findstring sofia,$(TARGET_BOARD_PLATFORM)))
+  art_cflags += -DSOFIA
+endif
+
 # Cflags for non-debug ART and ART tools.
 art_non_debug_cflags := \
   $(ART_NDEBUG_OPT_FLAG)
