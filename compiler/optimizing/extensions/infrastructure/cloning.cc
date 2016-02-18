@@ -151,22 +151,22 @@ HEnvironment* HInstructionCloner::CloneEnvironment(HEnvironment* env, HInstructi
   DCHECK_EQ(cloning_enabled_, true);
 
   HEnvironment* env_clone_base = nullptr;
-  HEnvironment* env_clone_parent = nullptr;
+  HEnvironment* env_clone;
 
-  while (env != nullptr) {
-    HEnvironment* env_clone = new (arena_) HEnvironment(arena_, env->Size(),
+  for (HEnvironment* env_clone_prev = nullptr;
+       env != nullptr;
+       env_clone_prev = env_clone, env = env->GetParent()) {
+    env_clone = new (arena_) HEnvironment(arena_, env->Size(),
         env->GetDexFile(), env->GetMethodIdx(), env->GetDexPc(),
         env->GetInvokeType(), clone);
 
-    if (env_clone_parent != nullptr) {
-      env_clone->SetParent(env_clone_parent);
+    if (env_clone_prev != nullptr) {
+      env_clone_prev->SetParent(env_clone);
     } else {
       // This case is hit only if this is the first environment being cloned.
       // This means that the newly created environment is the base.
       env_clone_base = env_clone;
     }
-    // Now set the current clone as parent to use in next iteration.
-    env_clone_parent = env_clone;
 
     for (size_t i = 0; i < env->Size(); i++) {
       HInstruction* instruction = env->GetInstructionAt(i);
@@ -185,8 +185,6 @@ HEnvironment* HInstructionCloner::CloneEnvironment(HEnvironment* env, HInstructi
         instruction->AddEnvUseAt(env_clone, i, arena_);
       }
     }
-
-    env = env->GetParent();
   }
 
   DCHECK(env_clone_base != nullptr);
