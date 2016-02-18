@@ -284,4 +284,45 @@ namespace art {
     return PrettyMethod(target_method.dex_method_index,
                         *target_method.dex_file);
   }
+
+  void DumpBasicBlock(const char* name, HBasicBlock* block) {
+    if (block == nullptr) {
+      LOG(INFO) << "Block " << name << " is null";
+      return;
+    }
+
+    LOG(INFO) << "---- " << name << "(" << block->GetBlockId() << ") ----";
+    for (HInstructionIterator phi_it(block->GetPhis());
+         !phi_it.Done();
+         phi_it.Advance()) {
+      LOG(INFO) << "\t" << phi_it.Current();
+    }
+
+    LOG(INFO) << "\t   ---";
+
+    for (HInstructionIterator inst_it(block->GetInstructions());
+                          !inst_it.Done();
+                          inst_it.Advance()) {
+      LOG(INFO) << "\t" << inst_it.Current();
+    }
+    LOG(INFO) << "-----------";
+  }
+
+  void DumpLoop(HLoopInformation_X86* loop) {
+    LOG(INFO) << "Loop " << loop->GetHeader()->GetBlockId();
+    LOG(INFO) << "Pre-header " << loop->GetPreHeader()->GetBlockId();
+    LOG(INFO) << "Header " << loop->GetHeader()->GetBlockId();
+    for (HBasicBlock* back_block : loop->GetBackEdges()) {
+      LOG(INFO) << "BackEdge " << back_block->GetBlockId();
+    }
+    LOG(INFO) << "Exit " << loop->GetExitBlock()->GetBlockId();
+
+    DumpBasicBlock("Pre-header", loop->GetPreHeader());
+
+    for (HBlocksInLoopIterator bb_it(*loop); !bb_it.Done(); bb_it.Advance()) {
+      DumpBasicBlock("In-loop", bb_it.Current());
+    }
+
+    DumpBasicBlock("Exit", loop->GetExitBlock());
+  }
 }  // namespace art

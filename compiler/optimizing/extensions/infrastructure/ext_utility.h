@@ -165,5 +165,18 @@ class HInstruction;
    * @return Called method name as string.
    */
   std::string CalledMethodName(HInvokeStaticOrDirect* call);
+
+  /**
+   * @brief Dumps a basic block to logcat. For debugging purposes only!
+   * @param name The name of a block being dumped (to distinguish them).
+   * @param block The block to dump.
+   */
+  void DumpBasicBlock(const char* name, HBasicBlock* block);
+
+  /**
+   * @brief Dumps a loop to logcat. For debugging purposes only!
+   * @param loop The loop to dump.
+   */
+  void DumpLoop(HLoopInformation_X86* loop);
 }  // namespace art
 #endif  // COMPILER_OPTIMIZING_EXTENSIONS_INFRASTRUCTURE_EXT_UTILITIES_H
