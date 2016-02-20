@@ -801,7 +801,7 @@ class RosAlloc {
 
   // Used to acquire a new/reused run for a size bracket. Used when a
   // thread-local or current run gets full.
-  Run* RefillRun(Thread* self, size_t idx) REQUIRES(!lock_);
+  Run* RefillRun(size_t idx) REQUIRES(!lock_);
 
   // The internal of non-bulk Free().
   size_t FreeInternal(Thread* self, void* ptr) REQUIRES(!lock_);
@@ -812,7 +812,7 @@ class RosAlloc {
       REQUIRES(!lock_);
 
   // Revoke a run by adding it to non_full_runs_ or freeing the pages.
-  void RevokeRun(Thread* self, size_t idx, Run* run) REQUIRES(!lock_);
+  bool RevokeRun(Thread* self, size_t idx, Run* run) REQUIRES(!lock_);
 
   // Revoke the current runs which share an index with the thread local runs.
   void RevokeThreadUnsafeCurrentRuns() REQUIRES(!lock_);
