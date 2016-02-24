@@ -23,7 +23,11 @@
 #include "nodes.h"
 #include "optimization_x86.h"
 
+#include <vector>
+
 namespace art {
+
+typedef std::vector<HInvokeStaticOrDirect*> ResolvedInvokes;
 
 class HPureInvokesAnalysis : public HOptimization_X86 {
  public:
@@ -42,7 +46,9 @@ class HPureInvokesAnalysis : public HOptimization_X86 {
    * @param hoisting_candidates The vector where candidates for hoisting are accumulated.
    * @return true, if we found at least one candidate for hoisting.
    */
-  bool ProcessPureInvokes(ArenaVector<HInvokeStaticOrDirect*>& hoisting_candidates);
+  bool ProcessPureInvokes(ResolvedInvokes& hoisting_candidates);
+
+  bool HoistPureInvokes(ResolvedInvokes& hoisting_candidates);
 
   /**
    * @brief Checks whether the result of the instuction can be null.

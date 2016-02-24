@@ -29,17 +29,12 @@ void HPureInvokesAnalysis::Run() {
     return;
   }
   PRINT_PASS_OSTREAM_MESSAGE(this, "Start " << GetMethodName(graph_));
-  ArenaAllocator* arena = graph_->GetArena();
-  ArenaVector<HInvokeStaticOrDirect*> hoisting_candidates(arena->Adapter(kArenaAllocMisc));
+  ResolvedInvokes hoisting_candidates;
 
   if (ProcessPureInvokes(hoisting_candidates)) {
     PRINT_PASS_OSTREAM_MESSAGE(this, "Found " << hoisting_candidates.size()
-                               << " candidates for pure invoke hoisting");
-    // TODO: Not implemented yet. We can hoist a pure invoke from its loop if:
-    // 1. The loop is innermost;
-    // 2. The object for which the method is invoke is defined outside the loop;
-    // 3. All its args are invariant;
-    // 4. No non-pure method is called for the object in the loop.
+                                     << " invoke candidates for hoisting");
+    HoistPureInvokes(hoisting_candidates);
   } else {
     PRINT_PASS_MESSAGE(this, "Found no candidates for pure invokes hoisting");
   }
@@ -79,16 +74,92 @@ bool HPureInvokesAnalysis::IsPureMethodInvoke(HInvokeStaticOrDirect* call) {
   // The whitelist contains known pure methods.
   const char* whitelist[] = {
     // String methods.
+    "bool java.lang.String.isEmpty()",
+    "int java.lang.String.indexOf(int)",
+    "int java.lang.String.indexOf(int, int)",
     "int java.lang.String.indexOf(java.lang.String)",
     "int java.lang.String.indexOf(java.lang.String, int)",
+    "int java.lang.String.lastIndexOf(int)",
+    "int java.lang.String.lastIndexOf(int, int)",
+    "int java.lang.String.lastIndexOf(java.lang.String)",
+    "int java.lang.String.lastIndexOf(java.lang.String, int)",
     "int java.lang.String.length()",
     "java.lang.String java.lang.String.toString()",
     // StringBuffer methods.
-    "java.lang.String java.lang.StringBuffer.length()",
+    "bool java.lang.StringBuffer.isEmpty()",
+    "int java.lang.StringBuffer.indexOf(int)",
+    "int java.lang.StringBuffer.indexOf(int, int)",
+    "int java.lang.StringBuffer.indexOf(java.lang.String)",
+    "int java.lang.StringBuffer.indexOf(java.lang.String, int)",
+    "int java.lang.StringBuffer.lastIndexOf(int)",
+    "int java.lang.StringBuffer.lastIndexOf(int, int)",
+    "int java.lang.StringBuffer.lastIndexOf(java.lang.String)",
+    "int java.lang.StringBuffer.lastIndexOf(java.lang.String, int)",
+    "int java.lang.StringBuffer.length()",
     "java.lang.String java.lang.StringBuffer.toString()",
     // StringBuilder methods.
-    "java.lang.String java.lang.StringBuilder.length()",
+    "bool java.lang.StringBuilder.isEmpty()",
+    "int java.lang.StringBuilder.indexOf(int)",
+    "int java.lang.StringBuilder.indexOf(int, int)",
+    "int java.lang.StringBuilder.indexOf(java.lang.String)",
+    "int java.lang.StringBuilder.indexOf(java.lang.String, int)",
+    "int java.lang.StringBuilder.lastIndexOf(int)",
+    "int java.lang.StringBuilder.lastIndexOf(int, int)",
+    "int java.lang.StringBuilder.lastIndexOf(java.lang.String)",
+    "int java.lang.StringBuilder.lastIndexOf(java.lang.String, int)",
+    "int java.lang.StringBuilder.length()",
     "java.lang.String java.lang.StringBuilder.toString()",
+    // Math methods.
+    "int java.lang.Math.abs(int)",
+    "long java.lang.Math.abs(long)",
+    "float java.lang.Math.abs(float)",
+    "double java.lang.Math.abs(double)",
+    "double java.lang.Math.asin(double)",
+    "double java.lang.Math.acos(double)",
+    "double java.lang.Math.atan(double)",
+    "double java.lang.Math.atan2(double, double)",
+    "double java.lang.Math.cbrt(double)",
+    "double java.lang.Math.ceil(double)",
+    "double java.lang.Math.copySign(double, double)",
+    "double java.lang.Math.cos(double)",
+    "double java.lang.Math.cosh(double)",
+    "double java.lang.Math.exp(double)",
+    "double java.lang.Math.expm1(double)",
+    "double java.lang.Math.floor(double)",
+    "int java.lang.Math.getExponent(double)",
+    "int java.lang.Math.getExponent(float)",
+    "double java.lang.Math.hypot(double, double)",
+    "double java.lang.Math.log(double)",
+    "double java.lang.Math.log10(double)",
+    "double java.lang.Math.max(double, double)",
+    "float java.lang.Math.max(float, float)",
+    "int java.lang.Math.max(int, int)",
+    "long java.lang.Math.max(long, long)",
+    "double java.lang.Math.min(double, double)",
+    "float java.lang.Math.min(float, float)",
+    "int java.lang.Math.min(int, int)",
+    "long java.lang.Math.min(long, long)",
+    "double java.lang.Math.nextAfter(double, double)",
+    "float java.lang.Math.nextAfter(float, double)",
+    "double java.lang.Math.nextUp(double)",
+    "float java.lang.Math.nextUp(float)",
+    "double java.lang.Math.pow(double, double)",
+    "double java.lang.Math.rint(double)",
+    "long java.lang.Math.round(double)",
+    "int java.lang.Math.round(float)",
+    "double java.lang.Math.scalb(double, int)",
+    "float java.lang.Math.scalb(float, int)",
+    "double java.lang.Math.signum(double)",
+    "float java.lang.Math.signum(float)",
+    "double java.lang.Math.sin(double)",
+    "double java.lang.Math.sinh(double)",
+    "double java.lang.Math.sqrt(double)",
+    "double java.lang.Math.tan(double)",
+    "double java.lang.Math.tanh(double)",
+    "double java.lang.Math.toDigrees(double)",
+    "double java.lang.Math.toRadians(double)",
+    "double java.lang.Math.ulp(double)",
+    "float java.lang.Math.ulp(float)",
   };
   const size_t len = arraysize(whitelist);
   const std::string method_name = PrettyMethod(target_method.dex_method_index,
@@ -138,12 +209,14 @@ bool HPureInvokesAnalysis::IsInvokeThatCanReturnNull(HInvokeStaticOrDirect* call
   return true;
 }
 
-bool HPureInvokesAnalysis::ProcessPureInvokes(ArenaVector<HInvokeStaticOrDirect*>&
-                                              hoisting_candidates) {
+bool HPureInvokesAnalysis::ProcessPureInvokes(ResolvedInvokes& hoisting_candidates) {
   DCHECK(hoisting_candidates.empty());
   for (HPostOrderIterator block_iter(*graph_); !block_iter.Done(); block_iter.Advance()) {
     HBasicBlock* block = block_iter.Current();
-    bool block_is_in_loop = block->IsInLoop();
+    auto loop = LOOPINFO_TO_LOOPINFO_X86(block->GetLoopInformation());
+    bool can_hoist_from_block = loop != nullptr &&
+                                loop->IsInner() &&
+                                loop->IsBottomTested();
 
     for (HBackwardInstructionIterator insn_iter(block->GetInstructions());
          !insn_iter.Done(); insn_iter.Advance()) {
@@ -151,11 +224,15 @@ bool HPureInvokesAnalysis::ProcessPureInvokes(ArenaVector<HInvokeStaticOrDirect*
       // Paranoid.
       DCHECK(insn != nullptr);
 
-      if (insn->IsNullCheck() && !insn->HasUses() && !CanReturnNull(insn->InputAt(0))) {
-        PRINT_PASS_OSTREAM_MESSAGE(this, "Eliminated unused nullcheck " << insn
-                                   << " because its argument is guaranteed to be not null");
-        MaybeRecordStat(MethodCompilationStat::kIntelUselessNullCheckDeleted);
-        block->RemoveInstruction(insn);
+      if (insn->IsNullCheck()) {
+        if (!insn->HasEnvironmentUses() && !CanReturnNull(insn->InputAt(0))) {
+          insn->ReplaceWith(insn->InputAt(0));
+          PRINT_PASS_OSTREAM_MESSAGE(this, "Eliminated nullcheck " << insn
+                                           << " because its argument is guaranteed to be not null");
+          MaybeRecordStat(MethodCompilationStat::kIntelUselessNullCheckDeleted);
+          block->RemoveInstruction(insn);
+        }
+        continue;
       }
 
       auto call = insn->AsInvokeStaticOrDirect();
@@ -163,7 +240,6 @@ bool HPureInvokesAnalysis::ProcessPureInvokes(ArenaVector<HInvokeStaticOrDirect*
         // We are interested in static/direct invokes only.
         continue;
       }
-
       if (!IsPureMethodInvoke(call)) {
         // We can optimize away only invokes with no side effects.
         continue;
@@ -171,14 +247,16 @@ bool HPureInvokesAnalysis::ProcessPureInvokes(ArenaVector<HInvokeStaticOrDirect*
 
       if (call->IsStatic()) {
         // For static pure invoke, it is enough to check that the result is unused.
-        // TODO Check carefully do we have problems with class init before adding
-        // static methods to the pure list.
-        if (!insn->HasUses()) {
+        if (!call->HasUses()) {
           PRINT_PASS_OSTREAM_MESSAGE(this, "Eliminated static invoke " << call
-                                     << " of pure method "
-                                     << CalledMethodName(call));
+                                           << " of pure method "
+                                           << CalledMethodName(call));
           MaybeRecordStat(MethodCompilationStat::kIntelPureStaticCallDeleted);
           block->RemoveInstruction(call);
+        } else if (can_hoist_from_block) {
+          PRINT_PASS_OSTREAM_MESSAGE(this, "Found candidate for pure static"
+                                           << " invoke hoisting: " << call);
+          hoisting_candidates.push_back(call);
         }
       } else {
         // The argument should not be null to prove that this invoke cannot throw
@@ -188,16 +266,17 @@ bool HPureInvokesAnalysis::ProcessPureInvokes(ArenaVector<HInvokeStaticOrDirect*
           continue;
         }
 
-        if (!insn->HasUses()) {
+        if (!call->HasUses()) {
           PRINT_PASS_OSTREAM_MESSAGE(this, "Eliminated direct invoke " << call
-                                     << " of pure method "
-                                     << CalledMethodName(call)
-                                     << " because it is called for not-null object "
-                                     << callee_object);
+                                           << " of pure method "
+                                           << CalledMethodName(call)
+                                           << " because it is called for not-null object "
+                                           << callee_object);
           MaybeRecordStat(MethodCompilationStat::kIntelPureDirectCallDeleted);
           block->RemoveInstruction(call);
-        } else if (block_is_in_loop) {
-          PRINT_PASS_OSTREAM_MESSAGE(this, "Found candidate for pure invoke hoisting: " << call);
+        } else if (can_hoist_from_block) {
+          PRINT_PASS_OSTREAM_MESSAGE(this, "Found candidate for pure direct"
+                                           << " invoke hoisting: " << call);
           // This invoke is a potential candidate for hoisting.
           hoisting_candidates.push_back(call);
         }
@@ -206,6 +285,11 @@ bool HPureInvokesAnalysis::ProcessPureInvokes(ArenaVector<HInvokeStaticOrDirect*
   }
 
   return !hoisting_candidates.empty();
+}
+
+bool HPureInvokesAnalysis::HoistPureInvokes(ResolvedInvokes& hoisting_candidates) {
+  DCHECK(!hoisting_candidates.empty());
+  return false;
 }
 
 }  // namespace art
