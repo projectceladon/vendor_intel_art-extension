@@ -62,12 +62,6 @@ void HLoopFullUnrolling::Run() {
 bool HLoopFullUnrolling::Gate(HLoopUnrolling* loop_unrolling) const {
   DCHECK(loop_unrolling != nullptr);
 
-  // Get the user option for max unrolled instructions limit.
-  static PassOption<bool> pass_enabled(this, driver_, "Enabled", false);
-  if (pass_enabled.GetValue() == false) {
-    return false;
-  }
-
   static PassOption<int64_t> max_unrolled(this, driver_,
     "MaxInstructionsUnrolled", kDefaultMaxInstructionsUnrolled);
   if (!loop_unrolling->Gate(max_unrolled.GetValue())) {
