@@ -485,6 +485,8 @@ class HLoopInformation_X86 : public HLoopInformation {
     return graph_;
   }
 
+  void SetGraph(HGraph* graph) { graph_ = graph; }
+
   /**
     * @brief Returns the phi input that is either inside or outside of the loop.
     * @param phi A phi node that must have 2 inputs, and that must be in a loop.
