@@ -166,11 +166,32 @@ class ProfilingInfo {
         (current_inline_uses_ > 0);
   }
 
+  struct BBCounts {
+    uint32_t    dex_pc_;
+    uint32_t    count_;
+  };
+
+  uint32_t GetNumBBs() const { return number_of_bb_counts_; }
+
+  BBCounts* GetBBCounts() {
+    // BB counts start after inline cache.
+    void* end_of_cache = &cache_[number_of_inline_caches_];
+    BBCounts* counts = reinterpret_cast<BBCounts*>(end_of_cache);
+    return counts;
+  }
+
+  void IncrementBBCount(uint32_t dex_pc);
+
  private:
-  ProfilingInfo(ArtMethod* method, const std::vector<uint32_t>& entries);
+  ProfilingInfo(ArtMethod* method,
+                const std::vector<uint32_t>& entries,
+                const std::vector<uint32_t>& dex_pcs);
 
   // Number of instructions we are profiling in the ArtMethod.
   const uint32_t number_of_inline_caches_;
+
+  // Number of DexPC/count BBCounts.
+  const uint32_t number_of_bb_counts_;
 
   // Method this profiling info is for.
   ArtMethod* const method_;

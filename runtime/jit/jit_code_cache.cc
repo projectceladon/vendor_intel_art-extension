@@ -821,6 +821,7 @@ OatQuickMethodHeader* JitCodeCache::LookupOsrMethodHeader(ArtMethod* method) {
 ProfilingInfo* JitCodeCache::AddProfilingInfo(Thread* self,
                                               ArtMethod* method,
                                               const std::vector<uint32_t>& entries,
+                                              const std::vector<uint32_t>& dex_pcs,
                                               bool retry_allocation)
     // No thread safety analysis as we are using TryLock/Unlock explicitly.
     NO_THREAD_SAFETY_ANALYSIS {
@@ -829,19 +830,19 @@ ProfilingInfo* JitCodeCache::AddProfilingInfo(Thread* self,
     // If we are allocating for the interpreter, just try to lock, to avoid
     // lock contention with the JIT.
     if (lock_.ExclusiveTryLock(self)) {
-      info = AddProfilingInfoInternal(self, method, entries);
+      info = AddProfilingInfoInternal(self, method, entries, dex_pcs);
       lock_.ExclusiveUnlock(self);
     }
   } else {
     {
       MutexLock mu(self, lock_);
-      info = AddProfilingInfoInternal(self, method, entries);
+      info = AddProfilingInfoInternal(self, method, entries, dex_pcs);
     }
 
     if (info == nullptr) {
       GarbageCollectCache(self);
       MutexLock mu(self, lock_);
-      info = AddProfilingInfoInternal(self, method, entries);
+      info = AddProfilingInfoInternal(self, method, entries, dex_pcs);
     }
   }
   return info;
@@ -849,9 +850,11 @@ ProfilingInfo* JitCodeCache::AddProfilingInfo(Thread* self,
 
 ProfilingInfo* JitCodeCache::AddProfilingInfoInternal(Thread* self ATTRIBUTE_UNUSED,
                                                       ArtMethod* method,
-                                                      const std::vector<uint32_t>& entries) {
+                                                      const std::vector<uint32_t>& entries,
+                                                      const std::vector<uint32_t>& dex_pcs) {
   size_t profile_info_size = RoundUp(
-      sizeof(ProfilingInfo) + sizeof(InlineCache) * entries.size(),
+      sizeof(ProfilingInfo) + sizeof(InlineCache) * entries.size() +
+          sizeof(ProfilingInfo::BBCounts) * dex_pcs.size(),
       sizeof(void*));
 
   // Check whether some other thread has concurrently created it.
@@ -864,7 +867,7 @@ ProfilingInfo* JitCodeCache::AddProfilingInfoInternal(Thread* self ATTRIBUTE_UNU
   if (data == nullptr) {
     return nullptr;
   }
-  info = new (data) ProfilingInfo(method, entries);
+  info = new (data) ProfilingInfo(method, entries, dex_pcs);
 
   // Make sure other threads see the data in the profiling info object before the
   // store in the ArtMethod's ProfilingInfo pointer.

@@ -18,6 +18,7 @@
 
 #include "art_method-inl.h"
 #include "dex_instruction.h"
+#include "dex_instruction-inl.h"
 #include "jit/jit.h"
 #include "jit/jit_code_cache.h"
 #include "scoped_thread_state_change.h"
@@ -25,8 +26,11 @@
 
 namespace art {
 
-ProfilingInfo::ProfilingInfo(ArtMethod* method, const std::vector<uint32_t>& entries)
+ProfilingInfo::ProfilingInfo(ArtMethod* method, 
+                const std::vector<uint32_t>& entries,
+                const std::vector<uint32_t>& dex_pcs)
       : number_of_inline_caches_(entries.size()),
+        number_of_bb_counts_(dex_pcs.size()),
         method_(method),
         is_method_being_compiled_(false),
         is_osr_method_being_compiled_(false),
@@ -35,6 +39,11 @@ ProfilingInfo::ProfilingInfo(ArtMethod* method, const std::vector<uint32_t>& ent
   memset(&cache_, 0, number_of_inline_caches_ * sizeof(InlineCache));
   for (size_t i = 0; i < number_of_inline_caches_; ++i) {
     cache_[i].dex_pc_ = entries[i];
+  }
+  BBCounts* counts = GetBBCounts();
+  for (size_t i = 0; i < number_of_bb_counts_; ++i) {
+    counts[i].dex_pc_ = dex_pcs[i];
+    counts[i].count_ = 0;
   }
   if (method->IsCopied()) {
     // GetHoldingClassOfCopiedMethod is expensive, but creating a profiling info for a copied method
@@ -58,6 +67,9 @@ bool ProfilingInfo::Create(Thread* self, ArtMethod* method, bool retry_allocatio
 
   uint32_t dex_pc = 0;
   std::vector<uint32_t> entries;
+  std::set<uint32_t> dex_pc_bb_starts;
+  // Method entry starts a block.
+  dex_pc_bb_starts.insert(0);
   while (code_ptr < code_end) {
     const Instruction& instruction = *Instruction::At(code_ptr);
     switch (instruction.Opcode()) {
@@ -70,6 +82,56 @@ bool ProfilingInfo::Create(Thread* self, ArtMethod* method, bool retry_allocatio
         entries.push_back(dex_pc);
         break;
 
+      case Instruction::GOTO:
+      case Instruction::GOTO_16:
+      case Instruction::GOTO_32:
+        dex_pc_bb_starts.insert(dex_pc + instruction.GetTargetOffset());
+        break;
+
+      case Instruction::IF_EQ:
+      case Instruction::IF_NE:
+      case Instruction::IF_GT:
+      case Instruction::IF_GE:
+      case Instruction::IF_LT:
+      case Instruction::IF_LE:
+      case Instruction::IF_EQZ:
+      case Instruction::IF_NEZ:
+      case Instruction::IF_GTZ:
+      case Instruction::IF_GEZ:
+      case Instruction::IF_LTZ:
+      case Instruction::IF_LEZ:
+        // Need fall-through and target.
+        dex_pc_bb_starts.insert(dex_pc + instruction.SizeInCodeUnits());
+        dex_pc_bb_starts.insert(dex_pc + instruction.GetTargetOffset());
+        break;
+
+      case Instruction::PACKED_SWITCH: {
+        const uint16_t* switch_data =
+            reinterpret_cast<const uint16_t*>(&instruction) + instruction.VRegB_31t();
+        uint16_t size = switch_data[1];
+        // After the switch.
+        dex_pc_bb_starts.insert(dex_pc + 3);
+        const int32_t* targets = reinterpret_cast<const int32_t*>(&switch_data[4]);
+        for (uint32_t i = 0; i < size; i++) {
+          dex_pc_bb_starts.insert(dex_pc + targets[i]);
+        }
+        }
+        break;
+
+      case Instruction::SPARSE_SWITCH: {
+        const uint16_t* switch_data =
+            reinterpret_cast<const uint16_t*>(&instruction) + instruction.VRegB_31t();
+        uint16_t size = switch_data[1];
+        // After the switch.
+        dex_pc_bb_starts.insert(dex_pc + 3);
+        const int32_t* keys = reinterpret_cast<const int32_t*>(&switch_data[2]);
+        const int32_t* switch_entries = keys + size;
+        for (uint32_t i = 0; i < size; i++) {
+          dex_pc_bb_starts.insert(dex_pc + switch_entries[i]);
+        }
+        }
+        break;
+
       default:
         break;
     }
@@ -77,12 +139,29 @@ bool ProfilingInfo::Create(Thread* self, ArtMethod* method, bool retry_allocatio
     code_ptr += instruction.SizeInCodeUnits();
   }
 
+  // Add in catch clauses.
+  if (code_item.tries_size_ > 0) {
+    const DexFile::TryItem* tries = DexFile::GetTryItems(code_item, 0);
+    for (uint32_t i = 0, e = code_item.tries_size_; i < e; i++) {
+      const DexFile::TryItem* try_item = &tries[i];
+      for (CatchHandlerIterator it(code_item, *try_item); it.HasNext(); it.Next()) {
+        dex_pc_bb_starts.insert(it.GetHandlerAddress());
+      }
+    }
+  }
+
+  // Create the list of BB targets from the set.
+  std::vector<uint32_t> dex_pcs;
+  for (auto i : dex_pc_bb_starts) {
+    dex_pcs.push_back(i);
+  }
+
   // We always create a `ProfilingInfo` object, even if there is no instruction we are
   // interested in. The JIT code cache internally uses it.
 
   // Allocate the `ProfilingInfo` object int the JIT's data space.
   jit::JitCodeCache* code_cache = Runtime::Current()->GetJit()->GetCodeCache();
-  return code_cache->AddProfilingInfo(self, method, entries, retry_allocation) != nullptr;
+  return code_cache->AddProfilingInfo(self, method, entries, dex_pcs, retry_allocation) != nullptr;
 }
 
 InlineCache* ProfilingInfo::GetInlineCache(uint32_t dex_pc) {
@@ -130,6 +209,22 @@ void ProfilingInfo::AddInvokeInfo(uint32_t dex_pc, mirror::Class* cls) {
   }
   // Unsuccessfull - cache is full, making it megamorphic. We do not DCHECK it though,
   // as the garbage collector might clear the entries concurrently.
+}
+
+void ProfilingInfo::IncrementBBCount(uint32_t dex_pc) {
+  BBCounts* counts = GetBBCounts();
+
+  // Linear search for now.
+  // TODO: replace with binary search if needed.
+  for (size_t i = 0; i < number_of_bb_counts_; i++) {
+    if (counts[i].dex_pc_ == dex_pc) {
+      if (counts[i].count_ != std::numeric_limits<uint32_t>::max()) {
+        counts[i].count_++;
+      }
+      return;
+    }
+  }
+  DCHECK(false) << "Unable to locate BB Dex PC: 0x" << std::hex << dex_pc;
 }
 
 }  // namespace art
