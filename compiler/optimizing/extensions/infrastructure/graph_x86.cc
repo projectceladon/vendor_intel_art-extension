@@ -82,6 +82,39 @@ void HGraph_X86::DeleteBlock(HBasicBlock* block) {
   }
 }
 
+void HGraph_X86::CreateLinkBetweenBlocks(HBasicBlock* existing_block,
+                                         HBasicBlock* block_being_added,
+                                         bool add_as_dominator,
+                                         bool add_after) {
+  if (add_after) {
+    existing_block->AddSuccessor(block_being_added);
+  } else {
+    block_being_added->AddSuccessor(existing_block);
+  }
+
+  if (add_as_dominator) {
+    if (add_after) {
+      // Fix the domination information.
+      block_being_added->SetDominator(existing_block);
+      existing_block->AddDominatedBlock(block_being_added);
+    } else {
+      // Fix the domination information.
+      existing_block->SetDominator(block_being_added);
+      block_being_added->AddDominatedBlock(existing_block);
+    }
+  }
+
+  // Fix reverse post ordering.
+  size_t index = IndexOfElement(reverse_post_order_, existing_block);
+  MakeRoomFor(&reverse_post_order_, 1, index);
+  if (add_after) {
+    reverse_post_order_[index + 1] = block_being_added;
+  } else {
+    reverse_post_order_[index] = block_being_added;
+    reverse_post_order_[index + 1] = existing_block;
+  }
+}
+
 void HGraph_X86::SplitCriticalEdgeAndUpdateLoopInformation(HBasicBlock* from, HBasicBlock* to) {
   // Remember index, to find a new added splitter.
   size_t index = to->GetPredecessorIndexOf(from);

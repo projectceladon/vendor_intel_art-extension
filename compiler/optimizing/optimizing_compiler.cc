@@ -662,7 +662,13 @@ static void RunOptimizations(HGraph* graph,
     for (size_t i = 0; i < arraysize(optimizations2); ++i) {
       opt_list.push_back(optimizations2[i]);
     }
-    RunOptimizationsX86(graph, driver, stats, opt_list, pass_observer);
+    RunOptimizationsX86(graph,
+                        driver,
+                        stats,
+                        opt_list,
+                        dex_compilation_unit,
+                        pass_observer,
+                        handles);
   }
 
   RunArchOptimizations(driver->GetInstructionSet(), graph, codegen, stats, pass_observer);

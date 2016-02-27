@@ -24,8 +24,10 @@
 #include "base/timing_logger.h"
 #include "code_generator.h"
 #include "constant_calculation_sinking.h"
+#include "devirtualization.h"
 #include "ext_utility.h"
 #include "driver/compiler_driver.h"
+#include "ext_utility.h"
 #include "form_bottom_loops.h"
 #include "find_ivs.h"
 #include "generate_selects.h"
@@ -46,6 +48,7 @@
 #include "remove_suspend.h"
 #include "remove_unused_loops.h"
 #include "scoped_thread_state_change.h"
+#include "speculation_pass.h"
 #include "thread.h"
 #include "trivial_loop_evaluator.h"
 #include "value_propagation_through_heap.h"
@@ -95,6 +98,8 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   { "loop_full_unrolling", "remove_unused_loops", kPassInsertAfter },
   { "load_store_elimination", "value_propagation_through_heap", kPassInsertBefore },
   { "aur", "remove_unused_loops", kPassInsertBefore },
+  // TODO We should insert a second sharpening pass right after inliner.
+  { "devirtualization", "sharpening", kPassInsertBefore },
 };
 
 /**
@@ -311,7 +316,9 @@ void RunOptimizationsX86(HGraph* graph,
                          CompilerDriver* driver,
                          OptimizingCompilerStats* stats,
                          ArenaVector<HOptimization*>& opt_list,
-                         PassObserver* pass_observer) {
+                         const DexCompilationUnit& dex_compilation_unit,
+                         PassObserver* pass_observer,
+                         StackHandleScopeCollection* handles) {
   // Create the array for the opts.
   ArenaAllocator* arena = graph->GetArena();
   HLoopFormation* loop_formation = new (arena) HLoopFormation(graph);
@@ -338,6 +345,11 @@ void RunOptimizationsX86(HGraph* graph,
   HLoopFullUnrolling* loop_full_unrolling = new (arena) HLoopFullUnrolling(graph, driver, stats);
   HAggressiveUseRemoverPass* aur = new (arena) HAggressiveUseRemoverPass(graph, driver, stats);
   HPhiCleanup* phi_cleanup = new (arena) HPhiCleanup(graph, stats);
+  HDevirtualization* devirtualization = new (arena) HDevirtualization(graph,
+                                                                      dex_compilation_unit,
+                                                                      driver,
+                                                                      handles,
+                                                                      stats);
 
   HOptimization_X86* opt_array[] = {
     peeling,
@@ -361,6 +373,7 @@ void RunOptimizationsX86(HGraph* graph,
     remove_unused_loops,
     loop_full_unrolling,
     aur,
+    devirtualization,
   };
 
   // Fill verbose flags where we need it.

@@ -377,6 +377,108 @@ class HX86IncrementExecutionCount : public HExpression<1> {
   DISALLOW_COPY_AND_ASSIGN(HX86IncrementExecutionCount);
 };
 
+class HSpeculationGuard : public HCondition {
+ public:
+  explicit HSpeculationGuard(HInstruction* left,
+                             HInstruction* right,
+                             uint32_t dex_pc = kNoDexPc) :
+      HCondition(left, right, dex_pc) {
+  }
+  virtual ~HSpeculationGuard() {}
+
+  // Speculative guards can be moved anywhere in the code as long
+  // as they are still guarding the desired control path.
+  virtual bool CanBeMoved() const { return true; }
+
+  virtual HConstant* Evaluate(HIntConstant* x ATTRIBUTE_UNUSED,
+                              HIntConstant* y ATTRIBUTE_UNUSED) const OVERRIDE {
+    VLOG(compiler) << DebugName() << " is not defined for the (int, int) case.";
+    return nullptr;
+  }
+  virtual HConstant* Evaluate(HLongConstant* x ATTRIBUTE_UNUSED,
+                              HLongConstant* y ATTRIBUTE_UNUSED) const OVERRIDE {
+    VLOG(compiler) << DebugName() << " is not defined for the (long, long) case.";
+    return nullptr;
+  }
+  virtual HConstant* Evaluate(HFloatConstant* x ATTRIBUTE_UNUSED,
+                              HFloatConstant* y ATTRIBUTE_UNUSED) const OVERRIDE {
+    VLOG(compiler) << DebugName() << " is not defined for the (float, float) case.";
+    return nullptr;
+  }
+  virtual HConstant* Evaluate(HDoubleConstant* x ATTRIBUTE_UNUSED,
+                              HDoubleConstant* y ATTRIBUTE_UNUSED) const OVERRIDE {
+    VLOG(compiler) << DebugName() << " is not defined for the (double, double) case.";
+    return nullptr;
+  }
+
+  virtual IfCondition GetConditionForFailedGuard() const = 0;
+
+  virtual IfCondition GetCondition() const OVERRIDE {
+    // In general, we want the true case to failed guard. We do this
+    // so that the "fallthrough" case is the success of guard.
+    return GetConditionForFailedGuard();
+  }
+
+  virtual IfCondition GetOppositeCondition() const OVERRIDE {
+    switch (GetCondition()) {
+      case kCondEQ: return kCondNE;
+      case kCondNE: return kCondEQ;
+      case kCondLT: return kCondGE;
+      case kCondLE: return kCondGT;
+      case kCondGT: return kCondLE;
+      case kCondGE: return kCondLT;
+      default: UNIMPLEMENTED(FATAL) << "Unhandled condition.";
+    }
+    // This is unreachable.
+    return kCondEQ;
+  }
+
+  DECLARE_INSTRUCTION(SpeculationGuard);
+
+ private:
+  DISALLOW_COPY_AND_ASSIGN(HSpeculationGuard);
+};
+
+class HDevirtGuard : public HSpeculationGuard {
+ public:
+  HDevirtGuard(HLoadClass* predicted_class,
+               HInstruction* object_class,
+               uint32_t dex_pc = kNoDexPc) :
+      HSpeculationGuard(predicted_class, object_class, dex_pc) {
+  }
+
+  HInstruction* GetInstance() {
+    return InputAt(1);
+  }
+
+  HLoadClass* GetPredictedClass() {
+    return InputAt(0)->AsLoadClass();
+  }
+
+  IfCondition GetConditionForFailedGuard() const OVERRIDE {
+    // If the classes are not equal, this means we failed the guard.
+    return kCondNE;
+  }
+
+  DECLARE_INSTRUCTION(DevirtGuard);
+
+ private:
+  DISALLOW_COPY_AND_ASSIGN(HDevirtGuard);
+};
+
+class HTrap : public HTemplateInstruction<0> {
+ public:
+  explicit HTrap(uint32_t dex_pc = kNoDexPc)
+      : HTemplateInstruction(SideEffects::None(), dex_pc) {}
+
+  bool IsControlFlow() const OVERRIDE { return true; }
+
+  DECLARE_INSTRUCTION(Trap);
+
+ private:
+  DISALLOW_COPY_AND_ASSIGN(HTrap);
+};
+
 }  // namespace art
 
 #endif  // ART_COMPILER_OPTIMIZING_NODES_X86_H_

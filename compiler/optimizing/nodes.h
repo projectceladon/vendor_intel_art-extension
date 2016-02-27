@@ -1340,7 +1340,9 @@ class HLoopInformationOutwardIterator : public ValueObject {
   M(MulRHSMemory, InstructionRHSMemory)                                 \
   M(SubRHSMemory, InstructionRHSMemory)                                 \
   M(X86IncrementExecutionCount, Instruction)                            \
-  M(X86ReturnExecutionCountTable, Instruction)
+  M(X86ReturnExecutionCountTable, Instruction)                          \
+  M(DevirtGuard, SpeculationGuard)                                      \
+  M(Trap, Instruction)
 #else
 #define FOR_EACH_CONCRETE_INSTRUCTION_X86_COMMON(M)
 #endif
@@ -1372,7 +1374,8 @@ class HLoopInformationOutwardIterator : public ValueObject {
   M(Constant, Instruction)                                              \
   M(UnaryOperation, Instruction)                                        \
   M(BinaryOperation, Instruction)                                       \
-  M(Invoke, Instruction)
+  M(Invoke, Instruction)                                                \
+  M(SpeculationGuard, Condition)
 
 #define FOR_EACH_INSTRUCTION(M)                                         \
   FOR_EACH_CONCRETE_INSTRUCTION(M)                                      \

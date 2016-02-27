@@ -84,6 +84,10 @@ enum MethodCompilationStat {
   kIntelRemovedDeadInstructionViaAUR,
   kIntelRemovedDeadReferenceViaAUR,
   kIntelPhiNodeEliminated,
+  kIntelDevirtualized,
+  kIntelDevirtualizationConsideration,
+  kIntelSpeculationHoisted,
+  kIntelSpeculationEliminated,
   kLastStat
 };
 
@@ -181,6 +185,10 @@ class OptimizingCompilerStats {
       case kIntelRemovedDeadInstructionViaAUR: return "kIntelRemovedDeadInstructionViaAUR";
       case kIntelRemovedDeadReferenceViaAUR: return "kIntelRemovedDeadReferenceViaAUR";
       case kIntelPhiNodeEliminated: return "kIntelPhiNodeEliminated";
+      case kIntelDevirtualized: return "IntelDevirtualized";
+      case kIntelDevirtualizationConsideration: return "IntelConsideredForDevirtualization";
+      case kIntelSpeculationHoisted: return "IntelSpeculationHoisted";
+      case kIntelSpeculationEliminated: return "IntelSpeculationEliminated";
       default: LOG(FATAL) << "invalid stat";
     }
     return "OptStat#" + name;

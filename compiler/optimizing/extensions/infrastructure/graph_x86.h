@@ -92,6 +92,22 @@ class HGraph_X86 : public HGraph {
    */
   void DeleteBlock(HBasicBlock* block);
 
+  /**
+   * @brief Used to update the links between two blocks when one is added
+   * that follows an existing one unconditionally.
+   * @details Updates successor/predecessor info, updates domination information,
+   * and maintains the ordering information.
+   * @param existing_block The block that is already in the graph.
+   * @param block_being_added The new block being added to follow existing_block.
+   * @param add_as_dominator Whether the block being added is dominated by the exist block.
+   * @param add_after Whether the block being added is before or after. When false, it means it
+   * is being added as a predecessor.
+   */
+  void CreateLinkBetweenBlocks(HBasicBlock* existing_block,
+                               HBasicBlock* block_being_added,
+                               bool add_as_dominator,
+                               bool add_after);
+
   void Dump();
 
 #ifndef NDEBUG

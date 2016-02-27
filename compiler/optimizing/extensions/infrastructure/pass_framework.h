@@ -57,7 +57,9 @@ void RunOptimizationsX86(HGraph* graph,
                          CompilerDriver* driver,
                          OptimizingCompilerStats* stats,
                          ArenaVector<HOptimization*>& opt_list,
-                         PassObserver* pass_observer);
+                         const DexCompilationUnit& dex_compilation_unit,
+                         PassObserver* pass_observer,
+                         StackHandleScopeCollection* handles);
 
 class RunOptWithPassScope {
  public:

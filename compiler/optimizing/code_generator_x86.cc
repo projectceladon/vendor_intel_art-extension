@@ -1836,6 +1836,22 @@ void InstructionCodeGeneratorX86::VisitAboveOrEqual(HAboveOrEqual* comp) {
   HandleCondition(comp);
 }
 
+void LocationsBuilderX86::VisitDevirtGuard(HDevirtGuard* guard) {
+  VisitCondition(guard);
+}
+
+void InstructionCodeGeneratorX86::VisitDevirtGuard(HDevirtGuard* guard) {
+  VisitCondition(guard);
+}
+
+void LocationsBuilderX86::VisitTrap(HTrap* trap) {
+  trap->SetLocations(nullptr);
+}
+
+void InstructionCodeGeneratorX86::VisitTrap(HTrap* trap ATTRIBUTE_UNUSED) {
+  __ int3();
+}
+
 void LocationsBuilderX86::VisitIntConstant(HIntConstant* constant) {
   LocationSummary* locations =
       new (GetGraph()->GetArena()) LocationSummary(constant, LocationSummary::kNoCall);

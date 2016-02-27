@@ -503,6 +503,11 @@ class HGraphVisualizerPrinter : public HGraphDelegateVisitor {
       StartAttributeStream() << inputs;
     }
     instruction->Accept(this);
+    if (instruction->GetDexPc() != kNoDexPc) {
+      output_.setf(std::ios::hex, std::ios::basefield);
+      output_ << " dex_pc:0x" << instruction->GetDexPc();
+      output_.unsetf(std::ios::hex);
+    }
     if (instruction->HasEnvironment()) {
       StringList envs;
       for (HEnvironment* environment = instruction->GetEnvironment();

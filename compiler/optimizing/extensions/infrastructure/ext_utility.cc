@@ -23,6 +23,7 @@
 #include "ext_utility.h"
 #include "nodes.h"
 #include "optimization.h"
+#include "speculation.h"
 #include <sstream>
 #include "utils.h"
 
@@ -45,7 +46,8 @@ namespace art {
 
   std::ostream& operator<<(std::ostream& os, HInstruction* instruction) {
     os << GetTypeId(instruction->GetType()) << instruction->GetId() << " ";
-    os << instruction->DebugName();
+    os << instruction->DebugName() << "@0x";
+    os << std::hex << instruction->GetDexPc() << std::dec << " ";
     switch (instruction->GetKind()) {
       case HInstruction::kIntConstant:
         os << ' ' << instruction->AsIntConstant()->GetValue();
@@ -70,6 +72,42 @@ namespace art {
       os << ']';
     }
     return os;
+  }
+
+  std::ostream& operator<<(std::ostream& os, const SpeculationRecoveryApproach& recovery) {
+    switch (recovery) {
+      case kRecoveryAny:
+        return os << "any";
+      case kRecoveryNotNeeded:
+        return os << "not-needed";
+      case kRecoveryDeopt:
+        return os << "deopt";
+      case kRecoveryCodeVersioning:
+        return os << "code-versioning";
+      case kRecoveryFault:
+        return os << "fault";
+      case kRecoveryCodeVersioningWithCounting:
+        return os << "code-versioning-counting";
+      default:
+        break;
+    }
+    return os << "unknown";
+  }
+
+  std::ostream& operator<<(std::ostream& os, const VersioningApproach& versioning) {
+    switch (versioning) {
+      case kVersioningAny:
+        return os << "any";
+      case kVersioningLocal:
+        return os << "local";
+      case kVersioningRange:
+        return os << "range";
+      case kVersioningLoop:
+        return os << "loop";
+      default:
+        break;
+    }
+    return os << "unknown";
   }
 
   IfCondition NegateCondition(IfCondition cond) {

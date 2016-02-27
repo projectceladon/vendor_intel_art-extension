@@ -980,6 +980,7 @@ void HInstructionList::InsertInstructionBefore(HInstruction* instruction, HInstr
     cursor->previous_ = instruction;
     instruction->next_ = cursor;
     first_instruction_ = instruction;
+    instruction->previous_ = nullptr;
   } else {
     instruction->previous_ = cursor->previous_;
     instruction->next_ = cursor;
@@ -994,6 +995,7 @@ void HInstructionList::InsertInstructionAfter(HInstruction* instruction, HInstru
     cursor->next_ = instruction;
     instruction->previous_ = cursor;
     last_instruction_ = instruction;
+    instruction->next_ = nullptr;
   } else {
     instruction->next_ = cursor->next_;
     instruction->previous_ = cursor;
