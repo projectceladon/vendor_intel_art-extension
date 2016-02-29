@@ -41,6 +41,7 @@
 #include "optimizing_compiler_stats.h"
 #include "pass_framework.h"
 #include "peeling.h"
+#include "phi_cleanup.h"
 #include "pure_invokes_analysis.h"
 #include "remove_suspend.h"
 #include "remove_unused_loops.h"
@@ -80,7 +81,8 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   { "form_bottom_loops", "load_store_elimination", kPassInsertAfter },
   { "loop_formation_before_bottom_loops", "form_bottom_loops", kPassInsertBefore },
   { "GVN_after_form_bottom_loops", "form_bottom_loops", kPassInsertAfter },
-  { "value_propagation_through_heap", "GVN_after_form_bottom_loops", kPassInsertAfter },
+  { "phi_cleanup", "GVN_after_form_bottom_loops", kPassInsertAfter },
+  { "value_propagation_through_heap", "phi_cleanup", kPassInsertAfter },
   { "loop_formation", "value_propagation_through_heap", kPassInsertAfter },
   { "find_ivs", "loop_formation", kPassInsertAfter },
   { "trivial_loop_evaluator", "find_ivs", kPassInsertAfter },
@@ -335,6 +337,7 @@ void RunOptimizationsX86(HGraph* graph,
   // HGenerateSelects* generate_selects = new (arena) HGenerateSelects(graph, stats);
   HLoopFullUnrolling* loop_full_unrolling = new (arena) HLoopFullUnrolling(graph, driver, stats);
   HAggressiveUseRemoverPass* aur = new (arena) HAggressiveUseRemoverPass(graph, driver, stats);
+  HPhiCleanup* phi_cleanup = new (arena) HPhiCleanup(graph, stats);
 
   HOptimization_X86* opt_array[] = {
     peeling,
@@ -343,6 +346,7 @@ void RunOptimizationsX86(HGraph* graph,
     form_bottom_loops,
     formation_before_bottom_loops,
     gvn_after_fbl,
+    phi_cleanup,
     value_propagation_through_heap,
     loop_formation,
     find_ivs,
