@@ -622,6 +622,8 @@ struct CmdlineType<LogVerbosity> : CmdlineTypeParser<LogVerbosity> {
         log_verbosity.image = true;
       } else if (verbose_options[j] == "systrace-locks") {
         log_verbosity.systrace_lock_logging = true;
+      } else if (verbose_options[j] == "exact") {
+        log_verbosity.exact_profiler = true;
       } else {
         return Result::Usage(std::string("Unknown -verbose option ") + verbose_options[j]);
       }

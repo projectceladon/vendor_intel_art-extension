@@ -50,6 +50,7 @@ LIBART_COMMON_SRC_FILES := \
   dex_file_verifier.cc \
   dex_instruction.cc \
   elf_file.cc \
+  ext_profiling.cc \
   fault_handler.cc \
   gc/allocation_record.cc \
   gc/allocator/dlmalloc.cc \

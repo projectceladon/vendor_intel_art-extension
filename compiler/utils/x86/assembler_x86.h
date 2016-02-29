@@ -763,6 +763,9 @@ class X86Assembler FINAL : public Assembler {
     }
   }
 
+  // Generate code to increment the Exact Profiling counter for the method.
+  virtual void IncrementMethodCounter() OVERRIDE;
+
   // Add a double to the constant area, returning the offset into
   // the constant area where the literal resides.
   size_t AddDouble(double v) { return constant_area_.AddDouble(v); }

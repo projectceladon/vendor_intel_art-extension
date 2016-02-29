@@ -338,6 +338,45 @@ class HAddLHSMemory : public HInstructionLHSMemory {
   DISALLOW_COPY_AND_ASSIGN(HAddLHSMemory);
 };
 
+// Return the address of the execution counters for this method.
+class HX86ReturnExecutionCountTable : public HExpression<1> {
+ public:
+  HX86ReturnExecutionCountTable(bool is_64bit,
+                                HCurrentMethod* current_method,
+                                uint32_t dex_pc = kNoDexPc)
+      : HExpression(is_64bit ? Primitive::kPrimLong : Primitive::kPrimInt,
+                    SideEffects::None(),
+                    dex_pc) {
+    SetRawInputAt(0, current_method);
+  }
+
+  DECLARE_INSTRUCTION(X86ReturnExecutionCountTable);
+
+ private:
+  DISALLOW_COPY_AND_ASSIGN(HX86ReturnExecutionCountTable);
+};
+
+// Increment the counter for the given block number.
+class HX86IncrementExecutionCount : public HExpression<1> {
+ public:
+  HX86IncrementExecutionCount(uint32_t block_number,
+                              HX86ReturnExecutionCountTable* count_table,
+                              uint32_t dex_pc = kNoDexPc)
+      : HExpression(Primitive::kPrimVoid, SideEffects::AllWritesAndReads(), dex_pc),
+        block_number_(block_number) {
+    SetRawInputAt(0, count_table);
+  }
+
+  uint32_t GetBlockNumber() const { return block_number_; }
+
+  DECLARE_INSTRUCTION(X86IncrementExecutionCount);
+
+ private:
+  const uint32_t block_number_;
+
+  DISALLOW_COPY_AND_ASSIGN(HX86IncrementExecutionCount);
+};
+
 }  // namespace art
 
 #endif  // ART_COMPILER_OPTIMIZING_NODES_X86_H_

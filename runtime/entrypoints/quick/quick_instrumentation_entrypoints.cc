@@ -17,6 +17,7 @@
 #include "art_method-inl.h"
 #include "callee_save_frame.h"
 #include "entrypoints/runtime_asm_entrypoints.h"
+#include "ext_profiling.h"
 #include "instrumentation.h"
 #include "mirror/object-inl.h"
 #include "runtime.h"
@@ -68,6 +69,26 @@ extern "C" TwoWordReturn artInstrumentationMethodExitFromCode(Thread* self, ArtM
   TwoWordReturn return_or_deoptimize_pc = instrumentation->PopInstrumentationStackFrame(
       self, return_pc, gpr_result, fpr_result);
   return return_or_deoptimize_pc;
+}
+
+extern "C" uint64_t* art_quick_return_profiling_buffer(art::ArtMethod* method, art::Thread* self)
+    SHARED_REQUIRES(Locks::mutator_lock_) {
+  Runtime::ProfileBuffersMap& prof_counters = Runtime::Current()->GetProfileBuffers();
+  // Handle Proxies properly.
+  method = method->GetInterfaceMethodIfProxy(sizeof(void*));
+  uint32_t method_idx = method->GetDexMethodIndex();
+  const DexFile* dex_file = method->GetDexFile();
+  std::pair<const DexFile*, uint32_t> method_ref(dex_file, method_idx);
+  MutexLock mu_prof(self, *Locks::profiler_lock_);
+  auto it = prof_counters.find(method_ref);
+  if (it == prof_counters.end()) {
+    LOG(INFO)  << "Entries in counters: " << prof_counters.size();
+    LOG(INFO)  << "Method*: " << method << ", idx = " << method_idx
+            << ", dex_file = " << dex_file << ", location = " << dex_file->GetLocation()
+            << ", dex_file checksum = 0x" << std::hex << dex_file->GetHeader().checksum_;
+    LOG(FATAL) << "Failed to locate counters for method: " << PrettyMethod(method, true);
+  }
+  return it->second->counts;
 }
 
 }  // namespace art

@@ -25,6 +25,7 @@
 #include "base/systrace.h"
 #include "class_linker.h"
 #include "dex_file-inl.h"
+#include "ext_profiling.h"
 #include "gc/scoped_gc_critical_section.h"
 #include "gc/space/image_space.h"
 #include "handle_scope-inl.h"
@@ -687,6 +688,19 @@ std::vector<std::unique_ptr<const DexFile>> OatFileManager::OpenDexFilesFromOat(
     }
     if (dex_files.empty()) {
       error_msgs->push_back("Failed to open dex files from " + source_oat_file->GetLocation());
+    } else {
+      ExactProfileFile* exact_profiling =
+          ExactProfiler::GetProfileFile(*source_oat_file, false, true);
+      if (exact_profiling != nullptr) {
+        WriterMutexLock mu(Thread::Current(), *Locks::mutator_lock_);
+        MutexLock mu_prof(Thread::Current(), *Locks::profiler_lock_);
+        Runtime::DexProfilersMap& dex_profile_map = Runtime::Current()->GetDexProfilers();
+        for (uint32_t i = 0, e = dex_files.size(); i < e; i++) {
+          dex_profile_map.Overwrite(dex_files[i].get(),
+                                    Runtime::ProfilerIndexPair(exact_profiling, i));
+        }
+        Runtime::Current()->GetProfilers().Overwrite(source_oat_file, exact_profiling);
+      }
     }
   }
 

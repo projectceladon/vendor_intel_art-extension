@@ -2410,6 +2410,19 @@ void X86Assembler::ExceptionPoll(ManagedRegister /*scratch*/, size_t stack_adjus
   j(kNotEqual, slow->Entry());
 }
 
+void X86Assembler::IncrementMethodCounter() {
+  addl(ESP, Immediate(-8));
+  fs()->pushl(Address::Absolute(Thread::SelfOffset<4>()));
+  // Method* is in EAX already.
+  pushl(EAX);
+  fs()->call(Address::Absolute(QUICK_ENTRYPOINT_OFFSET(4, pReturnProfilingBuffer)));
+  addl(ESP, Immediate(16));
+  addl(Address(EAX, 0), Immediate(1));
+  adcl(Address(EAX, 4), Immediate(0));
+  // Restore EAX from the top of the stack.
+  movl(EAX, Address(ESP, 0));
+}
+
 void X86ExceptionSlowPath::Emit(Assembler *sasm) {
   X86Assembler* sp_asm = down_cast<X86Assembler*>(sasm);
 #define __ sp_asm->

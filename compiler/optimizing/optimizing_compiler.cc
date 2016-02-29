@@ -58,6 +58,7 @@
 #include "driver/compiler_options.h"
 #include "driver/dex_compilation_unit.h"
 #include "elf_writer_quick.h"
+#include "ext_profiling.h"
 #include "graph_checker.h"
 #include "graph_visualizer.h"
 #include "gvn.h"
@@ -88,6 +89,9 @@
 
 #include "graph_x86.h"
 #include "pass_framework.h"
+
+// TODO: Move to pass framework when all optimizations processed by RunOptimizationsX86.
+#include "insert_profiling.h"
 
 namespace art {
 
@@ -597,6 +601,15 @@ static void RunOptimizations(HGraph* graph,
       graph, stats, "instruction_simplifier_before_codegen");
   IntrinsicsRecognizer* intrinsics = new (arena) IntrinsicsRecognizer(graph, driver, stats);
 
+  // TODO: Move to pass framework when all optimizations processed by RunOptimizationsX86.
+  {
+    HInsertProfiling insert_profiling(graph, driver, stats);
+    HOptimization* add_profiling[] = {
+      &insert_profiling,
+    };
+    RunOptimizations(add_profiling, arraysize(add_profiling), pass_observer);
+  }
+
   HOptimization* optimizations1[] = {
     intrinsics,
     sharpening,
@@ -869,6 +882,15 @@ CodeGenerator* OptimizingCompiler::TryCompile(ArenaAllocator* arena,
                      dex_compilation_unit,
                      &pass_observer,
                      &handles);
+
+    ExactProfiler* ep = compiler_driver->GetExactProfiler();
+    if (ep != nullptr) {
+      int num_profiled_blocks = GRAPH_TO_GRAPH_X86(graph)->GetNumProfiledBlocks();
+      if (num_profiled_blocks > 0) {
+        // We may be using the profile without generating a new one.
+        ep->RegisterMethod(graph->GetDexFile(), graph->GetMethodIdx(), num_profiled_blocks);
+      }
+    }
 
     codegen->Compile(code_allocator);
     pass_observer.DumpDisassembly();

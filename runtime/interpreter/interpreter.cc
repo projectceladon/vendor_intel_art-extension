@@ -19,6 +19,7 @@
 #include <limits>
 
 #include "common_throws.h"
+#include "ext_profiling.h"
 #include "interpreter_common.h"
 #include "mirror/string-inl.h"
 #include "scoped_thread_state_change.h"
@@ -282,6 +283,17 @@ static inline JValue Execute(
     if (UNLIKELY(instrumentation->HasMethodEntryListeners())) {
       instrumentation->MethodEnterEvent(self, shadow_frame.GetThisObject(code_item->ins_size_),
                                         method, 0);
+    }
+
+    Runtime::ProfileBuffersMap& profile_counters = Runtime::Current()->GetProfileBuffers();
+    if (UNLIKELY(!profile_counters.empty())) {
+      uint32_t method_idx = method->GetDexMethodIndex();
+      const DexFile* dex_file = method->GetDexFile();
+      std::pair<const DexFile*, uint32_t> method_ref(dex_file, method_idx);
+      auto it = profile_counters.find(method_ref);
+      if (it != profile_counters.end()) {
+        it->second->counts[0]++;
+      }
     }
 
     if (!stay_in_interpreter) {

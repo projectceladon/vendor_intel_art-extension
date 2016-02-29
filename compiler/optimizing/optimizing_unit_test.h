@@ -22,6 +22,7 @@
 #include "common_compiler_test.h"
 #include "dex_file.h"
 #include "dex_instruction.h"
+#include "graph_x86.h"
 #include "handle_scope-inl.h"
 #include "scoped_thread_state_change.h"
 #include "ssa_builder.h"
@@ -75,9 +76,7 @@ void RemoveSuspendChecks(HGraph* graph) {
 }
 
 inline HGraph* CreateGraph(ArenaAllocator* allocator) {
-  return new (allocator) HGraph(
-      allocator, *reinterpret_cast<DexFile*>(allocator->Alloc(sizeof(DexFile))), -1, false,
-      kRuntimeISA);
+  return CreateGraph_X86_for_test(allocator);
 }
 
 // Create a control-flow graph from Dex instructions.

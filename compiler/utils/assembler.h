@@ -509,6 +509,9 @@ class Assembler : public DeletableArenaObject<kArenaAllocAssembler> {
   virtual void Bind(Label* label) = 0;
   virtual void Jump(Label* label) = 0;
 
+  // Generate code to increment the Exact Profiling counter for the method.
+  virtual void IncrementMethodCounter() {}
+
   virtual ~Assembler() {}
 
   /**

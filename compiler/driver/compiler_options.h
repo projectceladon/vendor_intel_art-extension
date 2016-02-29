@@ -31,6 +31,12 @@ namespace art {
 
 class CompilerOptions FINAL {
  public:
+  enum ProfilingCounts {
+    kProfilingNone = 0,         // No method or basic block counting.
+    kProfilingMethod = 1,       // Collect Method counts.
+    kProfilingBasicBlocks = 2,  // Collect Basic Block counts.
+  };
+
   // Guide heuristics to determine whether to compile method if profile data not available.
   static const CompilerFilter::Filter kDefaultCompilerFilter = CompilerFilter::kSpeed;
   static const size_t kDefaultHugeMethodThreshold = 10000;
@@ -74,12 +80,17 @@ class CompilerOptions FINAL {
                   bool implicit_so_checks,
                   bool implicit_suspend_checks,
                   bool compile_pic,
+                  ProfilingCounts profiling_counts_,
                   const std::vector<std::string>* verbose_methods,
                   std::ostream* init_failure_output,
                   bool abort_on_hard_verifier_failure,
                   const std::string& dump_cfg_file_name,
                   bool dump_cfg_append,
                   bool force_determinism);
+
+  ProfilingCounts GetProfilingCounts() const {
+    return profiling_counts_;
+  }
 
   CompilerFilter::Filter GetCompilerFilter() const {
     return compiler_filter_;
@@ -310,6 +321,7 @@ class CompilerOptions FINAL {
   bool implicit_so_checks_;
   bool implicit_suspend_checks_;
   bool compile_pic_;
+  ProfilingCounts profiling_counts_ = kProfilingNone;
 
   // Vector of methods to have verbose output enabled for.
   const std::vector<std::string>* verbose_methods_;

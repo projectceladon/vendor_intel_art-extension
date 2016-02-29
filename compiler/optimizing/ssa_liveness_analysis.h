@@ -1272,7 +1272,8 @@ class SsaLivenessAnalysis : public ValueObject {
       HInstruction* instruction = GetInstructionFromSsaIndex(idx);
       DCHECK(instruction->GetBlock()->IsEntryBlock()) << instruction->DebugName();
       DCHECK(!instruction->IsParameterValue());
-      DCHECK(instruction->IsCurrentMethod() || instruction->IsConstant())
+      DCHECK(instruction->IsCurrentMethod() || instruction->IsConstant() ||
+                 instruction->IsX86ReturnExecutionCountTable())
           << instruction->DebugName();
     }
   }

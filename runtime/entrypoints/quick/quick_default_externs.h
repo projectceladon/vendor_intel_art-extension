@@ -122,4 +122,7 @@ extern "C" void art_quick_throw_no_such_method(int32_t method_idx);
 extern "C" void art_quick_throw_null_pointer_exception();
 extern "C" void art_quick_throw_stack_overflow(void*);
 
+// Profiling entrypoints.
+extern "C" uint64_t* art_quick_return_profiling_buffer(art::ArtMethod*, art::Thread*);
+
 #endif  // ART_RUNTIME_ENTRYPOINTS_QUICK_QUICK_DEFAULT_EXTERNS_H_

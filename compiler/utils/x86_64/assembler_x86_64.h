@@ -822,6 +822,9 @@ class X86_64Assembler FINAL : public Assembler {
   // and branch to a ExceptionSlowPath if it is.
   void ExceptionPoll(ManagedRegister scratch, size_t stack_adjust) OVERRIDE;
 
+  // Generate code to increment the Exact Profiling counter for the method.
+  virtual void IncrementMethodCounter() OVERRIDE;
+
   // Add a double to the constant area, returning the offset into
   // the constant area where the literal resides.
   size_t AddDouble(double v) { return constant_area_.AddDouble(v); }

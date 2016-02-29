@@ -83,6 +83,9 @@ void InitEntryPoints(JniEntryPoints* jpoints, QuickEntryPoints* qpoints) {
   // JNI
   qpoints->pJniMethodStartFromCode = JniMethodStartFromCode;
   qpoints->pJniMethodStartSynchronizedFromCode = JniMethodStartSynchronizedFromCode;
+
+  // Profiling
+  qpoints->pReturnProfilingBuffer = art_quick_return_profiling_buffer;
 };
 
 }  // namespace art

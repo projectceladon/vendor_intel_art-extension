@@ -3197,6 +3197,15 @@ void X86_64Assembler::ExceptionPoll(ManagedRegister /*scratch*/, size_t stack_ad
   j(kNotEqual, slow->Entry());
 }
 
+void X86_64Assembler::IncrementMethodCounter() {
+  // Method* is in RDI already.
+  gs()->movq(CpuRegister(RSI), Address::Absolute(Thread::SelfOffset<8>(), true));
+  gs()->call(Address::Absolute(QUICK_ENTRYPOINT_OFFSET(8, pReturnProfilingBuffer), true));
+  addq(Address(CpuRegister(RAX), 0), Immediate(1));
+  // Restore RDI from the top of the stack.
+  movq(CpuRegister(RDI), Address(CpuRegister(RSP), 0));
+}
+
 void X86_64ExceptionSlowPath::Emit(Assembler *sasm) {
   X86_64Assembler* sp_asm = down_cast<X86_64Assembler*>(sasm);
 #define __ sp_asm->

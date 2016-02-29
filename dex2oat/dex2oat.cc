@@ -58,6 +58,7 @@
 #include "elf_file.h"
 #include "elf_writer.h"
 #include "elf_writer_quick.h"
+#include "ext_profiling.h"
 #include "gc/space/image_space.h"
 #include "gc/space/space-inl.h"
 #include "image_writer.h"
@@ -892,6 +893,7 @@ class Dex2Oat FINAL {
     }
 
     compiler_options_->verbose_methods_ = verbose_methods_.empty() ? nullptr : &verbose_methods_;
+    compiler_options_->profiling_counts_ = profiling_counts_;
 
     if (!IsBootImage() && multi_image_) {
       Usage("--multi-image can only be used when creating boot images");
@@ -1198,9 +1200,25 @@ class Dex2Oat FINAL {
           Usage("Cannot use --force-determinism with read barriers or non-CMS garbage collector");
         }
         force_determinism_ = true;
+      } else if (option.starts_with("--profile=")) {
+        StringPiece prof_str = option.substr(strlen("--profile=")).data();
+        if (prof_str == "method") {
+          profiling_counts_ = CompilerOptions::kProfilingMethod;
+        } else if (prof_str == "block") {
+          profiling_counts_ = CompilerOptions::kProfilingBasicBlocks;
+        } else if (prof_str == "none") {
+          profiling_counts_ = CompilerOptions::kProfilingNone;
+        } else {
+          Usage("Unknown profile option: %s", prof_str.data());
+        }
       } else if (!compiler_options_->ParseCompilerOption(option, Usage)) {
         Usage("Unknown argument %s", option.data());
       }
+    }
+
+    // Only support profiling for boot.oat.
+    if (image_classes_filename_ == nullptr) {
+      profiling_counts_ = CompilerOptions::kProfilingNone;
     }
 
     ProcessOptions(parser_options.get());
@@ -1352,6 +1370,15 @@ class Dex2Oat FINAL {
     CreateOatWriters();
     if (!AddDexFileSources()) {
       return false;
+    }
+
+    if (compiler_options_->GetProfilingCounts() != CompilerOptions::kProfilingNone) {
+      std::string oat_file_name = oat_location_;
+      if (oat_file_name.empty()) {
+        oat_file_name = oat_filenames_[0];
+      }
+      exact_profiler_.reset(new ExactProfiler(oat_file_name));
+      key_value_store_->Put("profile", exact_profiler_->GetRelativeProfileFileName());
     }
 
     if (IsBootImage() && image_filenames_.size() > 1) {
@@ -1608,7 +1635,9 @@ class Dex2Oat FINAL {
                                      dump_passes_,
                                      compiler_phases_timings_.get(),
                                      swap_fd_,
-                                     profile_compilation_info_.get()));
+                                     profile_compilation_info_.get(),
+                                     exact_profiler_.get()));
+
     driver_->SetDexFilesForOatFile(dex_files_);
     driver_->CompileAll(class_loader_, dex_files_, timings_);
   }
@@ -1964,6 +1993,14 @@ class Dex2Oat FINAL {
     }
 
     return success;
+  }
+
+  int WriteProfileFile() {
+    if (exact_profiler_.get() == nullptr) {
+      return EXIT_SUCCESS;
+    }
+
+    return exact_profiler_->WriteProfileFile(false) ? EXIT_SUCCESS : EXIT_FAILURE;
   }
 
  private:
@@ -2554,6 +2591,9 @@ class Dex2Oat FINAL {
 
   // See CompilerOptions.force_determinism_.
   bool force_determinism_;
+  std::unique_ptr<ExactProfiler> exact_profiler_;
+  CompilerOptions::ProfilingCounts profiling_counts_ = CompilerOptions::kProfilingNone;
+  std::unique_ptr<ExactProfileFile> existing_profile_;
 
   DISALLOW_IMPLICIT_CONSTRUCTORS(Dex2Oat);
 };
@@ -2709,6 +2749,11 @@ static int dex2oat(int argc, char** argv) {
     result = CompileImage(*dex2oat);
   } else {
     result = CompileApp(*dex2oat);
+  }
+
+  // If needed, create the profile.
+  if (result == EXIT_SUCCESS) {
+    result = dex2oat->WriteProfileFile();
   }
 
   dex2oat->Shutdown();

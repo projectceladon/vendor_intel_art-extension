@@ -78,13 +78,16 @@ class ClassLinker;
 class Closure;
 class CompilerCallbacks;
 class DexFile;
+struct ExactProfileFile;
 class InternTable;
 class JavaVMExt;
 class LinearAlloc;
 class MonitorList;
 class MonitorPool;
 class NullPointerHandler;
+class OatFile;
 class OatFileManager;
+struct OneMethod;
 struct RuntimeArgumentMap;
 class SignalCatcher;
 class StackOverflowHandler;
@@ -670,7 +673,27 @@ class Runtime {
     return enable_gcprofile_;
   }
 
+  typedef SafeMap<const OatFile*, ExactProfileFile*> ProfilersMap;
+  ProfilersMap& GetProfilers() SHARED_REQUIRES(Locks::mutator_lock_) {
+    return profiles_;
+  }
+
+  typedef SafeMap<std::pair<const DexFile*, uint32_t>, OneMethod*> ProfileBuffersMap;
+  ProfileBuffersMap& GetProfileBuffers() SHARED_REQUIRES(Locks::mutator_lock_) {
+    return profile_counters_;
+  }
+
+  typedef std::pair<ExactProfileFile*, uint32_t> ProfilerIndexPair;
+  typedef SafeMap<const DexFile*, ProfilerIndexPair> DexProfilersMap;
+  DexProfilersMap& GetDexProfilers() SHARED_REQUIRES(Locks::mutator_lock_) {
+    return dex_profiles_;
+  }
+
  private:
+  ProfilersMap& GetProfilersUnlocked() {
+    return profiles_;
+  }
+
   static void InitPlatformSignalHandlers();
 
   Runtime();
@@ -923,6 +946,15 @@ class Runtime {
 
     DISALLOW_COPY_AND_ASSIGN(EnvSnapshot);
   } env_snapshot_;
+
+  // Map from an OAT file to the information about the counters for that OAT.
+  ProfilersMap profiles_ GUARDED_BY(Locks::mutator_lock_);
+
+  // Map from an ART Method* to the counter area for that method.
+  ProfileBuffersMap profile_counters_ GUARDED_BY(Locks::mutator_lock_);
+
+  // Map from DexFile* to pair<ExactProfileFile*, index>
+  DexProfilersMap dex_profiles_ GUARDED_BY(Locks::mutator_lock_);
 
   DISALLOW_COPY_AND_ASSIGN(Runtime);
 };

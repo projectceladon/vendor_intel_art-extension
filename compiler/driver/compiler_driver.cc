@@ -370,7 +370,8 @@ CompilerDriver::CompilerDriver(
     bool dump_passes,
     CumulativeLogger* timer,
     int swap_fd,
-    const ProfileCompilationInfo* profile_compilation_info)
+    const ProfileCompilationInfo* profile_compilation_info,
+    ExactProfiler* exact_profiler)
     : compiler_options_(compiler_options),
       verification_results_(verification_results),
       method_inliner_map_(method_inliner_map),
@@ -402,7 +403,8 @@ CompilerDriver::CompilerDriver(
       max_arena_alloc_(0),
       dex_to_dex_references_lock_("dex-to-dex references lock"),
       dex_to_dex_references_(),
-      current_dex_to_dex_methods_(nullptr) {
+      current_dex_to_dex_methods_(nullptr),
+      exact_profiler_(exact_profiler) {
   DCHECK(compiler_options_ != nullptr);
   DCHECK(method_inliner_map_ != nullptr);
 

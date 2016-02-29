@@ -167,7 +167,8 @@
   V(ReadBarrierSlow, mirror::Object*, mirror::Object*, mirror::Object*, uint32_t) \
   V(ReadBarrierForRootSlow, mirror::Object*, GcRoot<mirror::Object>*) \
   V(JniMethodStartFromCode, void, Thread*) \
-  V(JniMethodStartSynchronizedFromCode, void, jobject, Thread*)
+  V(JniMethodStartSynchronizedFromCode, void, jobject, Thread*) \
+  V(ReturnProfilingBuffer, uint64_t*, ArtMethod*, Thread*)
 
 #endif  // ART_RUNTIME_ENTRYPOINTS_QUICK_QUICK_ENTRYPOINTS_LIST_H_
 #undef ART_RUNTIME_ENTRYPOINTS_QUICK_QUICK_ENTRYPOINTS_LIST_H_   // #define is only for lint.

@@ -146,12 +146,33 @@ class HGraph_X86 : public HGraph {
    */
   void MoveInstructionBefore(HInstruction* instr, HInstruction* cursor);
 
+  /**
+   * @brief How many blocks have exact profiling block increments?
+   * @return Returns The number of blocks with exact profile bumps.
+   */
+  int GetNumProfiledBlocks() const {
+    return num_profiled_blocks_;
+  }
+
+  /**
+   * @brief Set the number of blocks with profiling increments.
+   * @param val Number of blocks.
+   */
+  void SetNumProfiledBlocks(int val) {
+    num_profiled_blocks_ = val;
+  }
+
  protected:
 #ifndef NDEBUG
   uint32_t down_cast_checker_;
 #endif
 
   HLoopInformation_X86* loop_information_;
+
+  /**
+   * @brief Used to record the maximum block number that contains exact profiling.
+   */
+  int num_profiled_blocks_ = 0;
 };
 
 /**

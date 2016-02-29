@@ -118,6 +118,11 @@ CompiledMethod* ArtJniCompileMethodInternal(CompilerDriver* driver,
   __ BuildFrame(frame_size, mr_conv->MethodRegister(), callee_save_regs, mr_conv->EntrySpills());
   DCHECK_EQ(jni_asm->cfi().GetCurrentCFAOffset(), static_cast<int>(frame_size));
 
+  // 1.5. Increment profiling counter if needed.
+  if (driver->GetCompilerOptions().GetProfilingCounts() != CompilerOptions::kProfilingNone) {
+    __ IncrementMethodCounter();
+  }
+
   // 2. Set up the HandleScope
   mr_conv->ResetIterator(FrameOffset(frame_size));
   main_jni_conv->ResetIterator(FrameOffset(0));

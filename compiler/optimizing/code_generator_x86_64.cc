@@ -7271,6 +7271,45 @@ void InstructionCodeGeneratorX86_64::VisitDivRHSMemory(HDivRHSMemory* div) {
   codegen_->MaybeRecordImplicitNullCheck(div);
 }
 
+void LocationsBuilderX86_64::VisitX86ReturnExecutionCountTable(
+      HX86ReturnExecutionCountTable* instr) {
+  LocationSummary* locations =
+      new (GetGraph()->GetArena()) LocationSummary(instr, LocationSummary::kCall);
+  InvokeRuntimeCallingConvention calling_convention;
+  // Pass ArtMethod* in argument register 0.
+  locations->SetInAt(0, Location::RegisterLocation(calling_convention.GetRegisterAt(0)));
+  // Pass Thread* in argument register 1.
+  locations->AddTemp(Location::RegisterLocation(calling_convention.GetRegisterAt(1)));
+  // Value returned in RAX
+  locations->SetOut(Location::RegisterLocation(RAX));
+}
+
+void InstructionCodeGeneratorX86_64::VisitX86ReturnExecutionCountTable(
+      HX86ReturnExecutionCountTable* instr) {
+  LocationSummary* locations = instr->GetLocations();
+  __ gs()->movq(locations->GetTemp(0).AsRegister<CpuRegister>(),
+                Address::Absolute(Thread::SelfOffset<8>(), true));
+  __ gs()->call(
+      Address::Absolute(QUICK_ENTRYPOINT_OFFSET(kX86_64WordSize, pReturnProfilingBuffer), true));
+}
+
+void LocationsBuilderX86_64::VisitX86IncrementExecutionCount(
+      HX86IncrementExecutionCount* instr) {
+  LocationSummary* locations =
+      new (GetGraph()->GetArena()) LocationSummary(instr, LocationSummary::kNoCall);
+  locations->SetInAt(0, Location::RequiresRegister());
+}
+
+void InstructionCodeGeneratorX86_64::VisitX86IncrementExecutionCount(
+      HX86IncrementExecutionCount* instr) {
+  LocationSummary* locations = instr->GetLocations();
+  CpuRegister count_array = locations->InAt(0).AsRegister<CpuRegister>();
+
+  // Increment the count corresponding to the index.  Don't worry about locking,
+  // as we don't care if we lose a couple of increments.
+  __ addq(Address(count_array, instr->GetBlockNumber() * sizeof(uint64_t)), Immediate(1));
+}
+
 /**
  * Class to handle late fixup of offsets into constant area.
  */

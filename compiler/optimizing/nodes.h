@@ -1338,7 +1338,9 @@ class HLoopInformationOutwardIterator : public ValueObject {
   M(AddRHSMemory, InstructionRHSMemory)                                 \
   M(DivRHSMemory, InstructionRHSMemory)                                 \
   M(MulRHSMemory, InstructionRHSMemory)                                 \
-  M(SubRHSMemory, InstructionRHSMemory)
+  M(SubRHSMemory, InstructionRHSMemory)                                 \
+  M(X86IncrementExecutionCount, Instruction)                            \
+  M(X86ReturnExecutionCountTable, Instruction)
 #else
 #define FOR_EACH_CONCRETE_INSTRUCTION_X86_COMMON(M)
 #endif

@@ -7771,6 +7771,46 @@ void InstructionCodeGeneratorX86::VisitDivRHSMemory(HDivRHSMemory* div) {
   codegen_->MaybeRecordImplicitNullCheck(div);
 }
 
+void LocationsBuilderX86::VisitX86ReturnExecutionCountTable(
+      HX86ReturnExecutionCountTable* instr) {
+  LocationSummary* locations =
+      new (GetGraph()->GetArena()) LocationSummary(instr, LocationSummary::kCall);
+  locations->SetInAt(0, Location::RequiresRegister());
+
+  // Value returned in EAX
+  locations->SetOut(Location::RegisterLocation(EAX));
+}
+
+void InstructionCodeGeneratorX86::VisitX86ReturnExecutionCountTable(
+      HX86ReturnExecutionCountTable* instr) {
+  LocationSummary* locations = instr->GetLocations();
+  __ addl(ESP, Immediate(-8));
+  // Push Thread::self.
+  __ fs()->pushl(Address::Absolute(Thread::SelfOffset<4>()));
+  // Push the Method*.
+  __ pushl(locations->InAt(0).AsRegister<Register>());
+  __ fs()->call(Address::Absolute(QUICK_ENTRYPOINT_OFFSET(kX86WordSize, pReturnProfilingBuffer)));
+  __ addl(ESP, Immediate(16));
+}
+
+void LocationsBuilderX86::VisitX86IncrementExecutionCount(HX86IncrementExecutionCount* instr) {
+  LocationSummary* locations =
+      new (GetGraph()->GetArena()) LocationSummary(instr, LocationSummary::kNoCall);
+  locations->SetInAt(0, Location::RequiresRegister());
+}
+
+void InstructionCodeGeneratorX86::VisitX86IncrementExecutionCount(
+      HX86IncrementExecutionCount* instr) {
+  LocationSummary* locations = instr->GetLocations();
+  Register count_array = locations->InAt(0).AsRegister<Register>();
+
+  // Increment the count corresponding to the index.  Don't worry about locking,
+  // as we don't care if we lose a couple of increments.
+  uint32_t offset = instr->GetBlockNumber() * sizeof(uint64_t);
+  __ addl(Address(count_array, offset), Immediate(1));
+  __ adcl(Address(count_array, offset + 4), Immediate(0));
+}
+
 /**
  * Class to handle late fixup of offsets into constant area.
  */

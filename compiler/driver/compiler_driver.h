@@ -58,6 +58,7 @@ class CompiledMethod;
 class CompilerOptions;
 class DexCompilationUnit;
 class DexFileToMethodInlinerMap;
+class ExactProfiler;
 struct InlineIGetIPutData;
 class InstructionSetFeatures;
 class ParallelCompilationManager;
@@ -102,7 +103,8 @@ class CompilerDriver {
                  bool dump_passes,
                  CumulativeLogger* timer,
                  int swap_fd,
-                 const ProfileCompilationInfo* profile_compilation_info);
+                 const ProfileCompilationInfo* profile_compilation_info,
+                 ExactProfiler* exact_profiler_ = nullptr);
 
   ~CompilerDriver();
 
@@ -483,6 +485,10 @@ class CompilerDriver {
     return current_dex_to_dex_methods_;
   }
 
+  ExactProfiler* GetExactProfiler() const {
+    return exact_profiler_;
+  }
+
  private:
   // Return whether the declaring class of `resolved_member` is
   // available to `referrer_class` for read or write access using two
@@ -720,7 +726,10 @@ class CompilerDriver {
   // indexes for dex-to-dex compilation in the current dex file.
   const BitVector* current_dex_to_dex_methods_;
 
+  ExactProfiler* exact_profiler_;
+
   friend class CompileClassVisitor;
+
   DISALLOW_COPY_AND_ASSIGN(CompilerDriver);
 };
 

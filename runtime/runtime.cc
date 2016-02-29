@@ -68,6 +68,7 @@
 #include "elf_file.h"
 #include "entrypoints/runtime_asm_entrypoints.h"
 #include "experimental_flags.h"
+#include "ext_profiling.h"
 #include "fault_handler.h"
 #include "gc/accounting/card_table-inl.h"
 #include "gc/heap.h"
@@ -292,6 +293,11 @@ Runtime::~Runtime() {
   if (attach_shutdown_thread) {
     DetachCurrentThread();
     self = nullptr;
+  }
+
+  if (profiles_.size() != 0) {
+    ExactProfiler::StopProfileSaver();
+    ExactProfiler::UpdateProfileFiles(GetProfilersUnlocked());
   }
 
   // Make sure to let the GC complete if it is running.
@@ -777,6 +783,12 @@ void Runtime::InitNonZygoteOrPostFork(
     // Note that when running ART standalone (not zygote, nor zygote fork),
     // the jit may have already been created.
     CreateJit();
+  }
+
+  // Exact profiling - Start the background Profile Saver.
+  // TODO: target only?
+  if (GetProfilersUnlocked().size() != 0) {
+    ExactProfiler::StartProfileSaver();
   }
 
   StartSignalCatcher();

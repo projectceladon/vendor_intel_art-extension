@@ -48,6 +48,7 @@
 #include "entrypoints/entrypoint_utils.h"
 #include "entrypoints/runtime_asm_entrypoints.h"
 #include "experimental_flags.h"
+#include "ext_profiling.h"
 #include "gc_root-inl.h"
 #include "gc/accounting/card_table-inl.h"
 #include "gc/accounting/heap_bitmap-inl.h"
@@ -1608,6 +1609,10 @@ bool ClassLinker::AddImageSpace(
     return false;
   }
 
+  std::unique_ptr<ExactProfileFile> exact_profiling(
+      ExactProfiler::GetProfileFile(*oat_file, true, true));
+  Runtime::DexProfilersMap& dex_profile_map = Runtime::Current()->GetDexProfilers();
+
   StackHandleScope<1> hs2(self);
   MutableHandle<mirror::DexCache> h_dex_cache(hs2.NewHandle<mirror::DexCache>(nullptr));
   for (int32_t i = 0; i < dex_caches->GetLength(); i++) {
@@ -1627,6 +1632,17 @@ bool ClassLinker::AddImageSpace(
                                                              error_msg);
     if (dex_file == nullptr) {
       return false;
+    }
+
+    if (exact_profiling.get() != nullptr) {
+      // Allocate the counters for the dex file.
+      MutexLock mu_prof(self, *Locks::profiler_lock_);
+      ExactProfiler::AllocateProfileCounters(exact_profiling.get(), i, dex_file_location,
+                                             dex_file.get(),
+                                             h_dex_cache->GetResolvedMethods(),
+                                             h_dex_cache->NumResolvedMethods());
+      // Remember this mapping for later.
+      dex_profile_map.Put(dex_file.get(), Runtime::ProfilerIndexPair(exact_profiling.get(), i));
     }
 
     if (app_image) {
@@ -1655,6 +1671,11 @@ bool ClassLinker::AddImageSpace(
       AppendToBootClassPath(*dex_file.get(), h_dex_cache);
     }
     out_dex_files->push_back(std::move(dex_file));
+  }
+
+  if (exact_profiling.get() != nullptr) {
+    // Remember the mapping for later use.
+    Runtime::Current()->GetProfilers().Put(oat_file, exact_profiling.release());
   }
 
   if (app_image) {
@@ -3030,6 +3051,14 @@ void ClassLinker::LoadClassMembers(Thread* self,
     // Note: We cannot have thread suspension until the field and method arrays are setup or else
     // Class::VisitFieldRoots may miss some fields or methods.
     ScopedAssertNoThreadSuspension nts(self, __FUNCTION__);
+    // Does this dex_file have exact profiling?
+    ExactProfileFile* exact_profile = nullptr;
+    Runtime::DexProfilersMap& dex_profiles = Runtime::Current()->GetDexProfilers();
+    auto exact_it = dex_profiles.find(&dex_file);
+    if (exact_it != dex_profiles.end()) {
+      exact_profile = exact_it->second.first;
+    }
+
     // Load static fields.
     // We allow duplicate definitions of the same field in a class_data_item
     // but ignore the repeated indexes here, b/21868015.
@@ -3106,6 +3135,11 @@ void ClassLinker::LoadClassMembers(Thread* self,
         last_dex_method_index = it_method_index;
         last_class_def_method_index = class_def_method_index;
       }
+      if (exact_profile != nullptr) {
+        MutexLock mu_prof(Thread::Current(), *Locks::profiler_lock_);
+        ExactProfiler::AllocateProfileCounters(method, exact_profile, &dex_file,
+                                               exact_it->second.second, it.GetMemberIndex());
+      }
       class_def_method_index++;
     }
     for (size_t i = 0; it.HasNextVirtualMethod(); i++, it.Next()) {
@@ -3113,6 +3147,11 @@ void ClassLinker::LoadClassMembers(Thread* self,
       LoadMethod(self, dex_file, it, klass, method);
       DCHECK_EQ(class_def_method_index, it.NumDirectMethods() + i);
       LinkCode(method, oat_class, class_def_method_index);
+      if (exact_profile != nullptr) {
+        MutexLock mu_prof(Thread::Current(), *Locks::profiler_lock_);
+        ExactProfiler::AllocateProfileCounters(method, exact_profile, &dex_file,
+                                               exact_it->second.second, it.GetMemberIndex());
+      }
       class_def_method_index++;
     }
     DCHECK(!it.HasNext());
