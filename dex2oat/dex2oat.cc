@@ -159,6 +159,8 @@ static std::string StrippedCommandLine() {
   return Join(command, ' ');
 }
 
+static constexpr size_t kDefaultAllDexFileMax = 0x7FFFFFFF;
+
 static void UsageErrorV(const char* fmt, va_list ap) {
   std::string error;
   StringAppendV(&error, fmt, ap);
@@ -274,6 +276,11 @@ NO_RETURN static void Usage(const char* fmt, ...) {
   UsageError("      verify-profile requires a --profile(-fd) to also be passed in.");
   UsageError("      Example: --compiler-filter=everything");
   UsageError("      Default: speed");
+  UsageError("");
+  UsageError("  --all-dex-file-max=<dex-file-size>: threshold size for all");
+  UsageError("      dex files for compiler filter tuning.");
+  UsageError("      Example: --all-dex-file-max=%d", kDefaultAllDexFileMax);
+  UsageError("      Default: %d", kDefaultAllDexFileMax);
   UsageError("");
   UsageError("  --huge-method-max=<method-instruction-count>: threshold size for a huge");
   UsageError("      method for compiler filter tuning.");
@@ -551,6 +558,7 @@ class Dex2Oat FINAL {
       app_image_fd_(kInvalidFd),
       profile_file_fd_(kInvalidFd),
       timings_(timings),
+      all_dex_file_max_(kDefaultAllDexFileMax),
       force_determinism_(false)
       {}
 
@@ -586,6 +594,10 @@ class Dex2Oat FINAL {
     bool requested_specific_compiler = false;
     std::string error_msg;
   };
+
+  void ParseAllDexFileMax(const StringPiece& option) {
+    ParseUintOption(option, "--all-dex-file-max", &all_dex_file_max_, Usage);
+  }
 
   void ParseZipFd(const StringPiece& option) {
     ParseUintOption(option, "--zip-fd", &zip_fd_, Usage);
@@ -1179,6 +1191,8 @@ class Dex2Oat FINAL {
         multi_image_ = true;
       } else if (option.starts_with("--no-inline-from=")) {
         no_inline_from_string_ = option.substr(strlen("--no-inline-from=")).data();
+      } else if (option.starts_with("--all-dex-file-max=")) {
+        ParseAllDexFileMax(option);
       } else if (option == "--force-determinism") {
         if (!SupportsDeterministicCompilation()) {
           Usage("Cannot use --force-determinism with read barriers or non-CMS garbage collector");
@@ -1509,7 +1523,9 @@ class Dex2Oat FINAL {
 
     // Ensure that the dex caches stay live since we don't want class unloading
     // to occur during compilation.
+    size_t dex_files_size = 0;
     for (const auto& dex_file : dex_files_) {
+      dex_files_size += dex_file->GetHeader().file_size_;
       ScopedObjectAccess soa(self);
       dex_caches_.push_back(soa.AddLocalReference<jobject>(
           class_linker->RegisterDexFile(*dex_file,
@@ -1797,6 +1813,14 @@ class Dex2Oat FINAL {
         oat_writer.reset();
         elf_writer.reset();
       }
+    }
+
+    // For large apps, we don't compile.
+    if (!IsBootImage() &&
+        compiler_options_->IsCompilationEnabled() &&
+        dex_files_size > all_dex_file_max_) {
+      compiler_options_->SetCompilerFilter(CompilerFilter::kInterpretOnly);
+      LOG(INFO) << "App is over compilation threshold.";
     }
 
     return true;
@@ -2520,6 +2544,7 @@ class Dex2Oat FINAL {
   int profile_file_fd_;
   std::unique_ptr<ProfileCompilationInfo> profile_compilation_info_;
   TimingLogger* timings_;
+  size_t all_dex_file_max_;
   std::unique_ptr<CumulativeLogger> compiler_phases_timings_;
   std::vector<std::vector<const DexFile*>> dex_files_per_oat_file_;
   std::unordered_map<const DexFile*, size_t> dex_file_oat_index_map_;
