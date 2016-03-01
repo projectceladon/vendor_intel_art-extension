@@ -70,27 +70,27 @@ struct HCustomPassPlacement {
  * @brief Static array holding information about custom placements.
  */
 static HCustomPassPlacement kPassCustomPlacement[] = {
-  { "loop_formation", "GVN_after_form_bottom_loops", kPassInsertAfter },
-  { "find_ivs", "loop_formation", kPassInsertAfter },
-  { "remove_loop_suspend_checks", "find_ivs", kPassInsertAfter},
-  { "remove_unused_loops", "remove_loop_suspend_checks", kPassInsertAfter },
-  { "loadhoist_storesink", "remove_unused_loops", kPassInsertBefore},
   { "loop_peeling", "select_generator", kPassInsertBefore },
   { "loop_formation_before_peeling", "loop_peeling", kPassInsertBefore },
-  { "constant_calculation_sinking", "find_ivs", kPassInsertAfter},
-  { "load_store_elimination", "instruction_simplifier_after_bce", kPassInsertAfter },
-  { "form_bottom_loops", "load_store_elimination", kPassInsertAfter },
   // FIXME: this pass is disabled and should be eliminated
   // completely because Google has implemented a similar
   // optimization, called "select_generator".
   // { "generate_selects", "boolean_simplifier", kPassInsertAfter },
+  { "form_bottom_loops", "load_store_elimination", kPassInsertAfter },
+  { "loop_formation_before_bottom_loops", "form_bottom_loops", kPassInsertBefore },
   { "GVN_after_form_bottom_loops", "form_bottom_loops", kPassInsertAfter },
   { "value_propagation_through_heap", "GVN_after_form_bottom_loops", kPassInsertAfter },
-  { "loop_formation_before_bottom_loops", "form_bottom_loops", kPassInsertBefore },
-  { "pure_invokes_analysis", "loop_peeling", kPassInsertAfter },
-  { "non_temporal_move", "trivial_loop_evaluator", kPassInsertAfter},
-  { "trivial_loop_evaluator", "find_ivs", kPassInsertAfter},
-  { "loop_full_unrolling", "constant_calculation_sinking", kPassInsertAfter},
+  { "loop_formation", "value_propagation_through_heap", kPassInsertAfter },
+  { "find_ivs", "loop_formation", kPassInsertAfter },
+  { "trivial_loop_evaluator", "find_ivs", kPassInsertAfter },
+  { "non_temporal_move", "trivial_loop_evaluator", kPassInsertAfter },
+  { "constant_calculation_sinking", "non_temporal_move", kPassInsertAfter },
+  { "remove_loop_suspend_checks", "constant_calculation_sinking", kPassInsertAfter },
+  { "pure_invokes_analysis", "remove_loop_suspend_checks", kPassInsertAfter },
+  { "loadhoist_storesink", "pure_invokes_analysis", kPassInsertAfter },
+  { "remove_unused_loops", "loadhoist_storesink", kPassInsertAfter },
+  { "loop_full_unrolling", "remove_unused_loops", kPassInsertAfter },
+  { "load_store_elimination", "value_propagation_through_heap", kPassInsertBefore },
 };
 
 /**
@@ -334,24 +334,24 @@ void RunOptimizationsX86(HGraph* graph,
   HLoopFullUnrolling* loop_full_unrolling = new (arena) HLoopFullUnrolling(graph, driver, stats);
 
   HOptimization_X86* opt_array[] = {
+    peeling,
+    formation_before_peeling,
+    // &generate_selects
     form_bottom_loops,
-    gvn_after_fbl,
     formation_before_bottom_loops,
+    gvn_after_fbl,
+    value_propagation_through_heap,
     loop_formation,
     find_ivs,
-    remove_suspends,
-    ccs,
-    remove_unused_loops,
-    lhss,
-    peeling,
-    pure_invokes_analysis,
-    formation_before_peeling,
     tle,
 #ifndef SOFIA
     non_temporal_move,
 #endif
-    // &generate_selects
-    value_propagation_through_heap,
+    ccs,
+    remove_suspends,
+    pure_invokes_analysis,
+    lhss,
+    remove_unused_loops,
     loop_full_unrolling
   };
 
