@@ -182,7 +182,13 @@ void ProfilingInfo::AddInvokeInfo(uint32_t dex_pc, mirror::Class* cls) {
   for (size_t i = 0; i < InlineCache::kIndividualCacheSize; ++i) {
     mirror::Class* existing = cache->classes_[i].Read();
     if (existing == cls) {
-      // Receiver type is already in the cache, nothing else to do.
+      // Receiver type is already in the cache, increment count.
+      uint32_t new_count = cache->class_counts_[i] + 1;
+
+      // Let us not overflow.
+      if (new_count != 0) {
+        cache->class_counts_[i] = new_count;
+      }
       return;
     } else if (existing == nullptr) {
       // Cache entry is empty, try to put `cls` in it.
@@ -203,6 +209,7 @@ void ProfilingInfo::AddInvokeInfo(uint32_t dex_pc, mirror::Class* cls) {
         if (!holding_class_.IsNull()) {
           Runtime::Current()->GetHeap()->WriteBarrierEveryFieldOf(holding_class_.Read());
         }
+        cache->class_counts_[i] = 1;
         return;
       }
     }
@@ -225,6 +232,35 @@ void ProfilingInfo::IncrementBBCount(uint32_t dex_pc) {
     }
   }
   DCHECK(false) << "Unable to locate BB Dex PC: 0x" << std::hex << dex_pc;
+}
+
+void ProfilingInfo::LogInformation() {
+  VLOG(jit) << "\tLogging information for method";
+  VLOG(jit) << "\tBB counts:";
+
+  BBCounts* counts = GetBBCounts();
+  for (uint32_t i = 0; i < number_of_bb_counts_; i++) {
+    VLOG(jit) << "\t\t" << i << ": " << counts[i].dex_pc_ << " , " << counts[i].count_;
+  }
+
+  if (number_of_inline_caches_ > 0) {
+    VLOG(jit) << "\tInline cache information and counts";
+    for (uint32_t i = 0; i < number_of_inline_caches_; i++) {
+      const InlineCache& class_info = cache_[i];
+
+      VLOG(jit) << "\t\t" << i << " from dex : " << class_info.dex_pc_;
+      VLOG(jit) << "\t\t\tMonomorphic: actual: " << class_info.IsActualMonomorphic() << " ; basic: " << class_info.IsMonomorphic();
+      VLOG(jit) << "\t\t\tPolymorphic: actual: " << class_info.IsActualPolymorphic() << " ; basic: " << class_info.IsPolymorphic();
+      VLOG(jit) << "\t\t\tMegamorphic: " << class_info.IsMegamorphic();
+      VLOG(jit) << "\t\t\tCounts for each class info: ";
+
+      for (int j = 0; j < InlineCache::kIndividualCacheSize; j++) {
+        if (class_info.class_counts_[j] != 0 ) {
+          VLOG(jit) << "\t\t\t" << j << ": " << class_info.class_counts_[j];
+        }
+      }
+    }
+  }
 }
 
 }  // namespace art

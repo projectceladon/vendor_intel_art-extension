@@ -563,6 +563,11 @@ class JitCompileTask FINAL : public Task {
   void Run(Thread* self) OVERRIDE {
     ScopedObjectAccess soa(self);
     if (kind_ == kCompile) {
+      if (VLOG_IS_ON(jit)) {
+        ProfilingInfo* info = method_->GetProfilingInfo(sizeof(void*));
+        DCHECK(info != nullptr);
+        info->LogInformation();
+      }
       Runtime::Current()->GetJit()->CompileMethod(method_, self, /* osr */ false);
     } else if (kind_ == kCompileOsr) {
       Runtime::Current()->GetJit()->CompileMethod(method_, self, /* osr */ true);

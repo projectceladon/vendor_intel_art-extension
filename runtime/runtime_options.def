@@ -108,6 +108,8 @@ RUNTIME_OPTIONS_KEY (unsigned int,        MethodTraceFileSize,            10 * M
 RUNTIME_OPTIONS_KEY (Unit,                MethodTraceStreaming)
 RUNTIME_OPTIONS_KEY (TraceClockSource,    ProfileClock,                   kDefaultTraceClockSource)  // -Xprofile:
 RUNTIME_OPTIONS_KEY (TestProfilerOptions, ProfilerOpts)  // -Xenable-profiler, -Xprofile-*
+RUNTIME_OPTIONS_KEY (bool,                ProfileCallCounts,            false)
+RUNTIME_OPTIONS_KEY (double,              ProfileCallCountRatio,        0.05)
 RUNTIME_OPTIONS_KEY (std::string,         Compiler)
 RUNTIME_OPTIONS_KEY (std::vector<std::string>, \
                                           CompilerOptions)  // -Xcompiler-option ...

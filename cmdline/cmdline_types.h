@@ -651,6 +651,10 @@ struct TestProfilerOptions {
   double backoff_coefficient_;
   // Whether the profile should start upon app startup or be delayed by some random offset.
   bool start_immediately_;
+  // Do we want to capture the call counts for virtual calls?
+  bool call_counts_ = false;
+  // The profile count ratio to determine whether it is effectively monomorphic.
+  double call_count_ratio_ = 0.05;
   // Top K% of samples that are considered relevant when deciding if the app should be recompiled.
   double top_k_threshold_;
   // How much the top K% samples needs to change in order for the app to be recompiled.
@@ -812,6 +816,17 @@ struct CmdlineType<TestProfilerOptions> : CmdlineTypeParser<TestProfilerOptions>
     } else if (option == "start-immediately") {
       existing.start_immediately_ = true;
       return Result::SuccessNoValue();
+    } else if (option == "call-counts") {
+      existing.call_counts_ = true;
+      return Result::SuccessNoValue();
+    } else if (StartsWith(option, "call-count-ratio:")) {
+      CmdlineType<double> type_parser;
+
+      return ParseIntoRangeCheck(existing,
+                                 &TestProfilerOptions::call_count_ratio_,
+                                 type_parser.Parse(suffix),
+                                 0.0,
+                                 1.0);
     } else if (StartsWith(option, "top-k-threshold:")) {
       CmdlineType<double> type_parser;
 

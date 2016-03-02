@@ -745,6 +745,8 @@ void ParsedOptions::Usage(const char* fmt, ...) {
   UsageMessage(stream, "  -Xprofile-top-k-change-threshold:doublevalue\n");
   UsageMessage(stream, "  -Xprofile-type:{method,stack}\n");
   UsageMessage(stream, "  -Xprofile-max-stack-depth:integervalue\n");
+  UsageMessage(stream, "  -Xprofile-call-counts\n");
+  UsageMessage(stream, "  -Xprofile-call-count-ratio:doublevalue\n");
   UsageMessage(stream, "  -Xcompiler:filename\n");
   UsageMessage(stream, "  -Xcompiler-option dex2oat-option\n");
   UsageMessage(stream, "  -Ximage-compiler-option dex2oat-option\n");

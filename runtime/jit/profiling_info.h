@@ -21,6 +21,7 @@
 
 #include "base/macros.h"
 #include "gc_root.h"
+#include "runtime.h"
 
 namespace art {
 
@@ -39,9 +40,54 @@ class Class;
 // Once the classes_ array is full, we consider the INVOKE to be megamorphic.
 class InlineCache {
  public:
-  bool IsMonomorphic() const {
+  // So we are going to use IsEffectivelyMonomorphic to:
+  //   - If we have a polymorphic but heavily skewed, we will say it is monomorphic.
+  bool IsEffectivelyMonomorphic() const {
+    // First is it polymorphic?
+    //   Use the actual polymorphic call because the IsPolymorphic calls this method ;-).
+    if (IsActualPolymorphic()) {
+      // Ok is it skewed towards one single target?
+      //   What we are trying to do here is see if the maximum is really bigger
+      //    than all of the others.
+      // Get the maximum.
+      const uint32_t* max_ptr = std::max_element(class_counts_,
+                                                 class_counts_ + kIndividualCacheSize);
+      const uint32_t max = *max_ptr;
+
+      static Runtime* runtime = Runtime::Current();
+      static double ratio = runtime != nullptr ?
+        runtime->GetProfilerOptions().GetProfileCallCountRatio() : 0.05;
+
+      // Count how many are more than a third of max, we will count the max of course, so we get 1
+      //    at least.
+      // 1/4 is arbitrary but fast to do, we will tweak tune this later.
+      size_t res = std::count_if(class_counts_, class_counts_ + kIndividualCacheSize,
+                                  [=](int val) {
+                                     return (((double) val) / max) > ratio;
+                                    });
+
+      // If we have only 1, we are skewed, suppose we are only at one.
+      return res == 1;
+    }
+
+    // Is it actually really monomorphic?
+    return IsActualMonomorphic();
+  }
+
+  bool IsActualMonomorphic() const {
     DCHECK_GE(kIndividualCacheSize, 2);
     return !classes_[0].IsNull() && classes_[1].IsNull();
+  }
+
+  bool IsMonomorphic() const {
+    DCHECK_GE(kIndividualCacheSize, 2);
+    Runtime* runtime = Runtime::Current();
+
+    if (runtime != nullptr && runtime->GetProfilerOptions().UseProfileCallCounts()) {
+      return IsEffectivelyMonomorphic();
+    } else {
+      return IsActualMonomorphic();
+    }
   }
 
   bool IsMegamorphic() const {
@@ -57,6 +103,19 @@ class InlineCache {
     // Note that we cannot ensure the inline cache is actually monomorphic
     // at this point, as other threads may have updated it.
     DCHECK(!classes_[0].IsNull());
+
+    Runtime* runtime = Runtime::Current();
+
+    if (runtime != nullptr && runtime->GetProfilerOptions().UseProfileCallCounts()) {
+      if (IsEffectivelyMonomorphic()) {
+        // Get the maximum.
+        const uint32_t* max_ptr = std::max_element(class_counts_,
+                                    class_counts_ + kIndividualCacheSize);
+        const uint32_t idx = max_ptr - class_counts_;
+        return classes_[idx].Read();
+      }
+    }
+
     return classes_[0].Read();
   }
 
@@ -64,7 +123,8 @@ class InlineCache {
     return classes_[0].IsNull();
   }
 
-  bool IsPolymorphic() const {
+  // Returns is it actually polymorphic, disregarding counts.
+  bool IsActualPolymorphic() const {
     DCHECK_GE(kIndividualCacheSize, 3);
     return !classes_[1].IsNull() && classes_[kIndividualCacheSize - 1].IsNull();
   }
@@ -73,11 +133,36 @@ class InlineCache {
     return classes_[i].Read();
   }
 
+  // Is it polymorphic, looking at counts potentially.
+  bool IsPolymorphic() const {
+    DCHECK_GE(kIndividualCacheSize, 3);
+    Runtime* runtime = Runtime::Current();
+    if (runtime != nullptr && runtime->GetProfilerOptions().UseProfileCallCounts()) {
+      // First check if it is almost monomorphic.
+      if (IsEffectivelyMonomorphic()) {
+        return false;
+      }
+    }
+    return IsActualPolymorphic();
+  }
+
+  const uint32_t* GetClassCounts() const {
+    return class_counts_;
+  }
+
   static constexpr uint16_t kIndividualCacheSize = 5;
 
  private:
   uint32_t dex_pc_;
   GcRoot<mirror::Class> classes_[kIndividualCacheSize];
+
+  // Two notes:
+  //   First, to reduce code changes, we are keeping the classes_ and
+  //      class_counts_ arrays separate.
+  //      This also makes the system easier to copy into the profile file most likely.
+  //   Second, we are using uint32_t and not atomic because this should be fine.
+  //      Were there a data race, we'd lose a few counts, nothing to be worried about.
+  uint32_t class_counts_[kIndividualCacheSize];
 
   friend class ProfilingInfo;
 
@@ -181,6 +266,8 @@ class ProfilingInfo {
   }
 
   void IncrementBBCount(uint32_t dex_pc);
+
+  void LogInformation();
 
  private:
   ProfilingInfo(ArtMethod* method,

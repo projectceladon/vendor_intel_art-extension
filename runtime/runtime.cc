@@ -1304,6 +1304,8 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
         profiler_options.interval_us_,
         profiler_options.backoff_coefficient_,
         profiler_options.start_immediately_,
+        profiler_options.call_counts_,
+        profiler_options.call_count_ratio_,
         profiler_options.top_k_threshold_,
         profiler_options.top_k_change_threshold_,
         profiler_options.profile_type_,

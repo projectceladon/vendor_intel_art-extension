@@ -59,6 +59,8 @@ class ProfilerOptions {
                  uint32_t interval_us,
                  double backoff_coefficient,
                  bool start_immediately,
+                 bool profile_call_counts,
+                 double profile_call_count_ratio,
                  double top_k_threshold,
                  double top_k_change_threshold,
                  ProfileDataType profile_type,
@@ -69,6 +71,8 @@ class ProfilerOptions {
     interval_us_(interval_us),
     backoff_coefficient_(backoff_coefficient),
     start_immediately_(start_immediately),
+    profile_call_counts_(profile_call_counts),
+    profile_call_count_ratio_(profile_call_count_ratio),
     top_k_threshold_(top_k_threshold),
     top_k_change_threshold_(top_k_change_threshold),
     profile_type_(profile_type),
@@ -100,6 +104,14 @@ class ProfilerOptions {
 
   double GetTopKThreshold() const {
     return top_k_threshold_;
+  }
+
+  bool UseProfileCallCounts() const {
+    return profile_call_counts_;
+  }
+
+  double GetProfileCallCountRatio() const {
+    return profile_call_count_ratio_;
   }
 
   double GetTopKChangeThreshold() const {
@@ -143,6 +155,10 @@ class ProfilerOptions {
   double backoff_coefficient_;
   // Whether the profile should start upon app startup or be delayed by some random offset.
   bool start_immediately_;
+  // Do we want to capture the call counts for virtual calls?
+  bool profile_call_counts_ = false;
+  // The profile count ratio to determine whether it is monomorphic.
+  double profile_call_count_ratio_ = 0.05;
   // Top K% of samples that are considered relevant when deciding if the app should be recompiled.
   double top_k_threshold_;
   // How much the top K% samples needs to change in order for the app to be recompiled.
