@@ -16,8 +16,15 @@
 # the Materials, either expressly, by implication, inducement, estoppel or
 # otherwise. Any license under such intellectual property rights must be express
 
-# This file is empty because art-extension gets built by doing mm in art with
+# This file is mostly empty because art-extension gets built by doing mm in art with
 # VENDOR_ART_PATH defined. By having this file empty here, it prevents the
 # Android build system from skipping this folder and going straight into the
 # other folders which have makefiles. If this occurs, the build will fail because
 # multiple targets with same name will be added.
+
+# Support for profdump (not present in ART)
+ifneq ($(VENDOR_ART_PATH),)
+ifneq ($(VENDOR_ART_PATH),art)
+  include $(VENDOR_ART_PATH)/profdump/Android.mk
+endif
+endif
