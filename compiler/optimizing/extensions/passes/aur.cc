@@ -89,6 +89,39 @@ static void RemoveEnvAsUser(HInstruction* candidate,
   }
 }
 
+static void RemovePhi(HPhi* phi, OptimizingCompilerStats* const stats) {
+  bool used_in_deopt = false;
+  for (HUseIterator<HEnvironment*> use_it(phi->GetEnvUses());
+                                   !use_it.Done();
+                                   use_it.Advance()) {
+    auto use = use_it.Current();
+    HEnvironment* env_user = use->GetUser();
+    // We can only remove the Phi if it is not used for Deoptimize.
+    if (env_user->GetHolder()->IsDeoptimize()) {
+      used_in_deopt = true;
+    } else {
+      size_t index = use->GetIndex();
+      env_user->RemoveAsUserOfInput(index);
+      env_user->SetRawEnvAt(index, nullptr);
+    }
+  }
+
+  if (!used_in_deopt) {
+    phi->GetBlock()->RemovePhi(phi);
+    if (stats != nullptr) {
+      stats->RecordStat(MethodCompilationStat::kRemovedDeadInstruction);
+      // This stat is a lower estimate since we do not actively remove instructions
+      // that were caused to be dead from the current removal.
+      stats->RecordStat(MethodCompilationStat::kIntelRemovedDeadInstructionViaAUR);
+      if (phi->GetType() == Primitive::kPrimNot) {
+        // We also count reference removals since those are great for GC
+        // since the root set becomes smaller.
+        stats->RecordStat(MethodCompilationStat::kIntelRemovedDeadReferenceViaAUR);
+      }
+    }
+  }
+}
+
 class AggressiveEnvUseRemover : public HGraphVisitor {
  public:
   AggressiveEnvUseRemover(HGraph* graph,
@@ -120,6 +153,8 @@ class AggressiveEnvUseRemover : public HGraphVisitor {
   void VisitNewInstance(HNewInstance* instr) OVERRIDE { HandlePotentialGC(instr); }
   void VisitArraySet(HArraySet* instr) OVERRIDE { HandlePotentialGC(instr); }
 
+  void VisitPhi(HPhi* phi) OVERRIDE { HandlePhi(phi); }
+
   // Debuggable applications need to support full-stack deopt. But non-debuggable
   // applications do not need to - this is because only last frame can get deoptimized
   // via HDeoptimize. However, tests which do not understand this constraint and walk
@@ -147,17 +182,27 @@ class AggressiveEnvUseRemover : public HGraphVisitor {
   }
 
   void VisitBasicBlock(HBasicBlock* block) OVERRIDE {
-    // Only instructions need visited.
     HBackwardInstructionIterator it(block->GetInstructions());
     DCHECK(it.Current()->IsControlFlow());
     for (it.Advance(); !it.Done(); it.Advance()) {
       it.Current()->Accept(this);
+    }
+
+    for (HBackwardInstructionIterator phi_it(block->GetPhis());
+         !phi_it.Done(); phi_it.Advance()) {
+      phi_it.Current()->Accept(this);
     }
   }
 
  private:
   bool IsInTryBlock(HInstruction* instr) {
     return instr->GetBlock()->IsTryBlock();
+  }
+
+  void HandlePhi(HPhi* phi) {
+    if (!phi->HasNonEnvironmentUses()) {
+      RemovePhi(phi, stats_);
+    }
   }
 
   void HandleCaller(HInstruction* instr, bool may_trigger_gc) {

@@ -92,7 +92,7 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   { "remove_unused_loops", "loadhoist_storesink", kPassInsertAfter },
   { "loop_full_unrolling", "remove_unused_loops", kPassInsertAfter },
   { "load_store_elimination", "value_propagation_through_heap", kPassInsertBefore },
-  { "aur", "dead_code_elimination_final", kPassInsertBefore },
+  { "aur", "remove_unused_loops", kPassInsertBefore },
 };
 
 /**
