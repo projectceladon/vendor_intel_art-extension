@@ -408,6 +408,7 @@ void HInstructionCloner::VisitEqual(HEqual* instr) {
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HEqual* clone = new (arena_) HEqual(lhs, rhs);
+    clone->SetBias(instr->GetBias());
     orig_to_clone_.Overwrite(instr, clone);
   }
 }
@@ -428,6 +429,7 @@ void HInstructionCloner::VisitGreaterThan(HGreaterThan* instr) {
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HGreaterThan* clone = new (arena_) HGreaterThan(lhs, rhs);
+    clone->SetBias(instr->GetBias());
     orig_to_clone_.Overwrite(instr, clone);
   }
 }
@@ -439,6 +441,7 @@ void HInstructionCloner::VisitGreaterThanOrEqual(HGreaterThanOrEqual* instr) {
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HGreaterThanOrEqual* clone = new (arena_) HGreaterThanOrEqual(lhs, rhs);
+    clone->SetBias(instr->GetBias());
     orig_to_clone_.Overwrite(instr, clone);
   }
 }
@@ -519,6 +522,7 @@ void HInstructionCloner::VisitLessThan(HLessThan* instr) {
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HLessThan* clone = new (arena_) HLessThan(lhs, rhs);
+    clone->SetBias(instr->GetBias());
     orig_to_clone_.Overwrite(instr, clone);
   }
 }
@@ -530,6 +534,7 @@ void HInstructionCloner::VisitLessThanOrEqual(HLessThanOrEqual* instr) {
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HLessThanOrEqual* clone = new (arena_) HLessThanOrEqual(lhs, rhs);
+    clone->SetBias(instr->GetBias());
     orig_to_clone_.Overwrite(instr, clone);
   }
 }
@@ -596,6 +601,7 @@ void HInstructionCloner::VisitNotEqual(HNotEqual* instr) {
     HInstruction* lhs, *rhs;
     GetInputsForBinary(instr, &lhs, &rhs);
     HNotEqual* clone = new (arena_) HNotEqual(lhs, rhs);
+    clone->SetBias(instr->GetBias());
     orig_to_clone_.Overwrite(instr, clone);
   }
 }
