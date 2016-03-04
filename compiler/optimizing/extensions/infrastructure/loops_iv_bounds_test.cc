@@ -35,16 +35,14 @@
 #include "gtest/gtest.h"
 
 namespace art {
+  class LoopIVBoundTest : public CommonCompilerTest {};
+
   static void TestIVBounds(const uint16_t* data, ArenaAllocator* allocator,
                            int nbr_ivs,
                            int lower, int upper,
                            int inc) {
     // Build the graph.
-    HGraph_X86* graph = CreateGraph_X86_for_test(allocator);
-    HGraphBuilder builder(graph);
-    const DexFile::CodeItem* item = reinterpret_cast<const DexFile::CodeItem*>(data);
-    builder.BuildGraph(*item);
-    TransformToSsa(graph);
+    HGraph_X86* graph = CreateX86CFG(allocator, data);
 
     // Loop formation is needed to get loop hierarchy in place.
     HLoopFormation formation(graph);
@@ -71,11 +69,7 @@ namespace art {
                            int lower, int upper,
                            float inc) {
     // Build the graph.
-    HGraph_X86* graph = CreateGraph_X86_for_test(allocator);
-    HGraphBuilder builder(graph);
-    const DexFile::CodeItem* item = reinterpret_cast<const DexFile::CodeItem*>(data);
-    builder.BuildGraph(*item);
-    TransformToSsa(graph);
+    HGraph_X86* graph = CreateX86CFG(allocator, data, Primitive::kPrimFloat);
 
     // Loop formation is needed to get loop hierarchy in place.
     HLoopFormation formation(graph);
@@ -97,7 +91,7 @@ namespace art {
     ASSERT_EQ(static_cast<int>(list.size()), nbr_ivs);
   }
 
-  TEST(LoopIVBoundTest, Simple) {
+  TEST_F(LoopIVBoundTest, Simple) {
     /*
      *  Simple for loop:
      *  int result = 0;
@@ -122,7 +116,7 @@ namespace art {
     TestIVBounds(data, &allocator, 1, 0, 1024, 1);
   }
 
-  TEST(LoopIVBoundTest, SimpleDoWhile) {
+  TEST_F(LoopIVBoundTest, SimpleDoWhile) {
     /*
      *  Simple while loop:
      *  int result = 0;
@@ -148,7 +142,7 @@ namespace art {
     TestIVBounds(data, &allocator, 1, 0, 42, 2);
   }
 
-  TEST(LoopIVBoundTest, SimpleDoWhileIncBeforeUse) {
+  TEST_F(LoopIVBoundTest, SimpleDoWhileIncBeforeUse) {
     /*
      *  Simple while loop:
      *  int result = 0;
@@ -174,7 +168,7 @@ namespace art {
     TestIVBounds(data, &allocator, 1, 0, 126, 4);
   }
 
-  TEST(LoopIVBoundTest, Two) {
+  TEST_F(LoopIVBoundTest, Two) {
     /*
      *  Two IVs for loop:
      *  int result = 0;
@@ -203,7 +197,7 @@ namespace art {
     TestIVBounds(data, &allocator, 2, 0, 1024, 1);
   }
 
-  TEST(LoopIVBoundTest, TwoDoWhile) {
+  TEST_F(LoopIVBoundTest, TwoDoWhile) {
     /*
      *  Simple while loop:
      *  int result = 0;
@@ -232,7 +226,7 @@ namespace art {
   }
 
   // Now do floating point ones.
-  TEST(LoopIVBoundTest, FloatSimple) {
+  TEST_F(LoopIVBoundTest, FloatSimple) {
     /*
      *  Simple for loop:
      *  float result = 0;
@@ -259,7 +253,7 @@ namespace art {
     TestFPIVBounds(data, &allocator, 1, 0.0, 1024.0, 1.0);
   }
 
-  TEST(LoopIVBoundTest, FloatSimpleDoWhile) {
+  TEST_F(LoopIVBoundTest, FloatSimpleDoWhile) {
     /*
      *  Simple while loop:
      *  float result = 0;
@@ -287,7 +281,7 @@ namespace art {
     TestFPIVBounds(data, &allocator, 1, 0.0, 42.0, 1.0);
   }
 
-  TEST(LoopIVBoundTest, FloatSimpleDoWhileIncBeforeUse) {
+  TEST_F(LoopIVBoundTest, FloatSimpleDoWhileIncBeforeUse) {
     /*
      *  Simple while loop:
      *  float result = 0;
@@ -315,7 +309,7 @@ namespace art {
     TestFPIVBounds(data, &allocator, 1, 0.0, 126.0, 1.0);
   }
 
-  TEST(LoopIVBoundTest, FloatTwo) {
+  TEST_F(LoopIVBoundTest, FloatTwo) {
     /*
      *  Two IVs for loop:
      *  float result = 0;
@@ -346,7 +340,7 @@ namespace art {
     TestFPIVBounds(data, &allocator, 2, 0.0, 1024.0, 1.0);
   }
 
-  TEST(LoopIVBoundTest, FloatTwoDoWhile) {
+  TEST_F(LoopIVBoundTest, FloatTwoDoWhile) {
     /*
      *  Simple while loop:
      *  float result = 0;

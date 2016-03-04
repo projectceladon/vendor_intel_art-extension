@@ -155,15 +155,14 @@ class HGraph_X86 : public HGraph {
 };
 
 /**
- * @brief Helper function to create a HGraph_X86 for use in standalone tests.
+ * @brief Helper function to create a control flow graph using HGraph_X86 for
+ * use in standalone tests.
  * @param allocator ArenaAllocator to use to allocate the HGraph_X86.
  * @returns the newly created HGraph_X86.
  */
-inline HGraph_X86* CreateGraph_X86_for_test(ArenaAllocator* allocator) {
-  return new (allocator) HGraph_X86(
-      allocator, *reinterpret_cast<DexFile*>(allocator->Alloc(sizeof(DexFile))), -1,
-      false, kRuntimeISA);
-}
+HGraph_X86* CreateX86CFG(ArenaAllocator* allocator,
+                         const uint16_t* data,
+                         Primitive::Type return_type = Primitive::kPrimInt);
 }  // namespace art
 
 #endif  // ART_OPT_INFRASTRUCTURE_GRAPH_X86_H_

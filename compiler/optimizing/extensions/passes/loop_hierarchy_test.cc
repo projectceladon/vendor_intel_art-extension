@@ -30,17 +30,11 @@
 
 namespace art {
 
+class LoopHierarchyTest : public CommonCompilerTest {};
+
 static HGraph* TestCode(const uint16_t* data, ArenaAllocator* allocator) {
   // Build the graph.
-  HGraph_X86* graph = CreateGraph_X86_for_test(allocator);
-  HGraphBuilder builder(graph);
-  const DexFile::CodeItem* item = reinterpret_cast<const DexFile::CodeItem*>(data);
-  builder.BuildGraph(*item);
-  graph->BuildDominatorTree();
-  /* FIXME: AnalyzeLoops() invokes Populate() which fails on DCHECK:
-     DCHECK_EQ(blocks_.NumSetBits(), 0u) << "Loop information has already been populated";
-  */
-  graph->AnalyzeLoops();
+  HGraph_X86* graph = CreateX86CFG(allocator, data, Primitive::kPrimVoid);
 
   // Run our pass.
   HLoopFormation formation(graph);
@@ -82,7 +76,7 @@ static void TestLoop(HGraph* graph,
   ASSERT_EQ(info->GetDepth(), depth);
 }
 
-TEST(LoopHierarchyTest, Loop1) {
+TEST_F(LoopHierarchyTest, Loop1) {
   // Simple loop with one preheader and one back edge.
   // var a = 0;
   // while (a == a) {
@@ -103,7 +97,7 @@ TEST(LoopHierarchyTest, Loop1) {
   TestLoop(graph, 2, 0, true, false, false);
 }
 
-TEST(LoopHierarchyTest, InnerLoop) {
+TEST_F(LoopHierarchyTest, InnerLoop) {
   const uint16_t data[] = ONE_REGISTER_CODE_ITEM(
     Instruction::CONST_4 | 0 | 0,
     Instruction::IF_EQ, 6,
@@ -120,7 +114,7 @@ TEST(LoopHierarchyTest, InnerLoop) {
   TestLoop(graph, 3, 1, true, false, true);
 }
 
-TEST(LoopHierarchyTest, TwoLoops) {
+TEST_F(LoopHierarchyTest, TwoLoops) {
   const uint16_t data[] = ONE_REGISTER_CODE_ITEM(
     Instruction::CONST_4 | 0 | 0,
     Instruction::IF_EQ, 3,
@@ -137,7 +131,7 @@ TEST(LoopHierarchyTest, TwoLoops) {
   TestLoop(graph, 4, 0, true, true, false, std::numeric_limits<uint32_t>::max(), 2);
 }
 
-TEST(LoopHierarchyTest, NestedSibling) {
+TEST_F(LoopHierarchyTest, NestedSibling) {
   /**
    * Complicated test with a bit of everything here:
    * for () {
@@ -191,7 +185,7 @@ TEST(LoopHierarchyTest, NestedSibling) {
   TestLoop(graph, 1, 0, false, false, false);
 }
 
-TEST(LoopHierarchyTest, DoWhileLoop) {
+TEST_F(LoopHierarchyTest, DoWhileLoop) {
   const uint16_t data[] = ONE_REGISTER_CODE_ITEM(
     Instruction::CONST_4 | 0 | 0,
     Instruction::GOTO | 0x0100,

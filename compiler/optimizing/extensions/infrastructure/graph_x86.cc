@@ -19,10 +19,14 @@
  * and approved by Intel in writing.
  */
 
-#include "ext_utility.h"
 #include "graph_x86.h"
+
+#include "builder.h"
+#include "ext_utility.h"
 #include "loop_iterators.h"
 #include "pretty_printer.h"
+#include "ssa_builder.h"
+#include "scoped_thread_state_change.h"
 
 namespace art {
 
@@ -128,6 +132,21 @@ void HGraph_X86::MoveInstructionBefore(HInstruction* instr, HInstruction* cursor
   DCHECK(!instr->IsControlFlow());
   instr->SetBlock(to_block);
   to_block->instructions_.InsertInstructionBefore(instr, cursor);
+}
+
+HGraph_X86* CreateX86CFG(ArenaAllocator* allocator,
+                         const uint16_t* data,
+                         Primitive::Type return_type) {
+  DexFile* df = reinterpret_cast<DexFile*>(allocator->Alloc(sizeof(DexFile)));
+  HGraph_X86* graph = new (allocator) HGraph_X86(allocator, *df, -1, false, kRuntimeISA);
+  {
+    ScopedObjectAccess soa(Thread::Current());
+    StackHandleScopeCollection handles(soa.Self());
+    const DexFile::CodeItem* item = reinterpret_cast<const DexFile::CodeItem*>(data);
+    HGraphBuilder builder(graph, *item, &handles, return_type);
+    bool graph_built = (builder.BuildGraph() == kAnalysisSuccess);
+    return graph_built ? graph : nullptr;
+  }
 }
 
 }  // namespace art

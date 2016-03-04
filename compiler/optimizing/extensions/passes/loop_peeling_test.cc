@@ -34,13 +34,11 @@
 
 namespace art {
 
+class LoopPeelingTest : public CommonCompilerTest {};
+
 static void TestPeeling(const uint16_t* data, ArenaAllocator* allocator, size_t num_peeled_blocks) {
   // Build the graph.
-  HGraph_X86* graph = CreateGraph_X86_for_test(allocator);
-  HGraphBuilder builder(graph);
-  const DexFile::CodeItem* item = reinterpret_cast<const DexFile::CodeItem*>(data);
-  builder.BuildGraph(*item);
-  TransformToSsa(graph);
+  HGraph_X86* graph = CreateX86CFG(allocator, data);
 
   // Loop formation is needed to get loop hierarchy in place for peeling.
   HLoopFormation formation(graph);
@@ -57,7 +55,7 @@ static void TestPeeling(const uint16_t* data, ArenaAllocator* allocator, size_t 
   }
 }
 
-TEST(LoopPeelingTest, ForLoop) {
+TEST_F(LoopPeelingTest, ForLoop) {
   /*
    *  Simple for loop:
    *  int result = 0;
