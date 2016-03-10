@@ -709,10 +709,6 @@ class MarkSweep::MarkStackTask : public Task {
 
     void VisitRoot(mirror::CompressedReference<mirror::Object>* root) const
         SHARED_REQUIRES(Locks::mutator_lock_) {
-      if (kCheckLocks) {
-        Locks::mutator_lock_->AssertSharedHeld(Thread::Current());
-        Locks::heap_bitmap_lock_->AssertExclusiveHeld(Thread::Current());
-      }
       Mark(root->AsMirrorPtr());
     }
 
