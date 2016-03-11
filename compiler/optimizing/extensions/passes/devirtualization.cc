@@ -24,6 +24,14 @@
 
 namespace art {
 
+bool HDevirtualization::Gate() {
+  if (graph_->GetArtMethod() == nullptr) {
+    // We need to have art_method_ to work.
+    return false;
+  }
+  return HSpeculationPass::Gate();
+}
+
 HDevirtualization::~HDevirtualization() {
   if (kIsDebugBuild) {
     for (auto it : imprecise_predictions_) {
@@ -246,7 +254,7 @@ HSpeculationGuard* HDevirtualization::InsertSpeculationGuard(HInstruction* instr
   class_getter->SetSideEffects(SideEffects::None());
 
   // Now create a load class for the prediction.
-  bool is_referrer = is_referrer = (type.Get() == graph_->GetArtMethod()->GetDeclaringClass());
+  bool is_referrer = (type.Get() == graph_->GetArtMethod()->GetDeclaringClass());
   HLoadClass* prediction = new (graph_->GetArena()) HLoadClass(graph_->GetCurrentMethod(),
                                                                class_index,
                                                                *compilation_unit_.GetDexFile(),

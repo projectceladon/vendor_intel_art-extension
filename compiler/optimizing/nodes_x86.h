@@ -433,6 +433,8 @@ class HSpeculationGuard : public HCondition {
     return kCondEQ;
   }
 
+  bool IsControlFlow() const OVERRIDE { return false; }
+
   DECLARE_INSTRUCTION(SpeculationGuard);
 
  private:

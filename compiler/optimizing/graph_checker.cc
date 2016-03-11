@@ -923,7 +923,7 @@ void GraphChecker::VisitCondition(HCondition* op) {
         Primitive::PrettyDescriptor(lhs->GetType()),
         Primitive::PrettyDescriptor(rhs->GetType())));
   }
-  if (!op->IsEqual() && !op->IsNotEqual()) {
+  if (!op->IsEqual() && !op->IsNotEqual() && !op->IsDevirtGuard()) {
     if ((lhs->GetType() == Primitive::kPrimNot)) {
       AddError(StringPrintf(
           "Condition %s %d uses an object as left-hand side input.",

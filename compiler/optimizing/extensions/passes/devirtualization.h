@@ -47,6 +47,7 @@ class HDevirtualization : public HSpeculationPass {
 
  protected:
   // For explanation on each of these methods, see HSpeculationPass.
+  bool Gate() OVERRIDE;
   bool IsCandidate(HInstruction* instr) OVERRIDE;
   bool HasPrediction(HInstruction* instr, bool update) OVERRIDE;
   uint64_t GetMaxCost() OVERRIDE;

@@ -35,64 +35,92 @@ bool HSpeculationPass::Gate() {
   return true;
 }
 
-void HSpeculationPass::GroupCandidates(std::multimap<HInstruction*, HInstruction*>& candidates) {
-  // Now walk through the candidates to consolidate the ones that can use same prediction.
-  for (auto it = candidates.begin(); it != candidates.end(); it++) {
-    // We want to iterate through all remaining candidates to see if any match, so
-    // get the next element that follows.
-    auto it2 = it;
-    it2++;
-    // Iterate through all elements that follow.
-    for (; it2 != candidates.end(); it2++) {
-      HInstruction* key = it->first;
-      HInstruction* same_candidate = it2->second;
+void HSpeculationPass::GroupCandidatesNoOrdering(CandidatesMap& candidates_grouped,
+                           const std::vector<HInstruction*>* candidates) {
+  DCHECK(candidates != nullptr);
 
-      // Skip elements with same key (having same key means that it has
-      // already been proven they are the same).
-      if (key == it2->first) {
+  if (candidates->size() == 1) {
+    std::vector<HInstruction*> v;
+    candidates_grouped.insert(std::make_pair((*candidates)[0], v));
+    return;
+  }
+
+  std::set<HInstruction*> handled_candidates;
+  for (const auto& it: *candidates) {
+    std::vector<HInstruction*> vec;
+    if (handled_candidates.find(it) != handled_candidates.end()) {
+      continue;
+    }
+    handled_candidates.insert(it);
+    for (const auto& it2: *candidates) {
+      if (it == it2) {
         continue;
       }
+      if (handled_candidates.find(it2) != handled_candidates.end()) {
+        continue;
+      }
+      if (IsPredictionSame(it, it2)) {
+        vec.push_back(it2);
+        handled_candidates.insert(it2);
+      }
+    }
+    candidates_grouped.insert(std::make_pair(it, vec));
+  }
+}
 
-      // Now check if these two candidates have same prediction.
-      // The comparison is done between key and non-key intentionally.
-      if (IsPredictionSame(key, same_candidate)) {
-        // The candidates are the same - but can they use same prediction?
-        // Well that depends if one dominates the other.
-        if (key->GetBlock()->Dominates(same_candidate->GetBlock())) {
-          // Erase the candidate we found.
-          candidates.erase(it2);
-          candidates.insert(std::make_pair(key, same_candidate));
-          // For safety, reset the iterators so we can restart from beginning.
-          it = candidates.begin();
-          it2 = it;
+void HSpeculationPass::GroupCandidatesWithOrdering(CandidatesMap& candidates_grouped,
+                           const std::vector<HInstruction*>* candidates) {
+  DCHECK(candidates != nullptr);
 
-          PRINT_PASS_OSTREAM_MESSAGE(this, "Found same prediction for " <<
-                                     key << " and " << same_candidate);
-        } else if (same_candidate->GetBlock()->Dominates(key->GetBlock())) {
-          // Seems that the candidate actually dominates. Erase the "key" instead.
-          candidates.erase(it);
-          candidates.insert(std::make_pair(same_candidate, key));
+  if (candidates->size() == 1) {
+    std::vector<HInstruction*> v;
+    candidates_grouped.insert(std::make_pair((*candidates)[0], v));
+    return;
+  }
 
-          // Fix all the cases which used the old key since they will need to use the
-          // new key. What this means is that anything that this dominated,
-          // our new entry will also dominate.
-          for (auto it3 = candidates.find(key);
-               it3 != candidates.end();
-               it3 = candidates.find(key)) {
-            HInstruction* value = it3->second;
-            candidates.erase(it3);
-            candidates.insert(std::make_pair(same_candidate, value));
+  std::set<HInstruction*> handled_candidates;
+  for (const auto it: *candidates) {
+    std::vector<HInstruction*> vec;
+    HInstruction* top = it;
+    if (handled_candidates.find(it) != handled_candidates.end()) {
+      continue;
+    }
+
+    for (const auto it2: *candidates) {
+      if (top == it2) {
+        continue;
+      }
+      if (handled_candidates.find(it2) != handled_candidates.end()) {
+        continue;
+      }
+      if (IsPredictionSame(top, it2)) {
+        if (top->GetBlock()->Dominates(it2->GetBlock())) {
+          // If candidates share one block, put them in id number order.
+          if (top->GetBlock()->GetBlockId() == it2->GetBlock()->GetBlockId()) {
+            if (top->GetId() < it2->GetId()) {
+              // If this is a root element, delete it from root.
+              if (candidates_grouped.find(it2) != candidates_grouped.end()) {
+                candidates_grouped.erase(it2);
+              }
+              vec.push_back(it2);
+              handled_candidates.insert(it2);
+            }
+          } else {
+            // If this is a root element, delete it from root.
+            if (candidates_grouped.find(it2) != candidates_grouped.end()) {
+              candidates_grouped.erase(it2);
+            }
+            vec.push_back(it2);
+            handled_candidates.insert(it2);
           }
-
-          // For safety, reset the iterators so we can restart from beginning.
-          it = candidates.begin();
-          it2 = it;
-
-          PRINT_PASS_OSTREAM_MESSAGE(this, "Found same prediction for " <<
-                                     same_candidate << " and " << key);
+        } else if (it2->GetBlock()->Dominates(top->GetBlock())) {
+          vec.push_back(top);
+          handled_candidates.insert(top);
+          top = it2;
         }
       }
     }
+    candidates_grouped.insert(std::make_pair(top, vec));
   }
 }
 
@@ -112,11 +140,96 @@ bool HSpeculationPass::HandleDeopt(HInstruction* candidate) {
   return true;
 }
 
+void HSpeculationPass::CodeVersioningHelper(HInstruction* candidate,
+                                            HInstructionCloner& cloner,
+                                            HSpeculationGuard* guard,
+                                            bool needs_trap) {
+  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+
+  HBasicBlock* pre_block = candidate->GetBlock();
+  HBasicBlock* post_block = pre_block->SplitBeforeForInlining(candidate);
+  graph_->AddBlock(post_block);
+  HBasicBlock* fail_block = graph->CreateNewBasicBlock(candidate->GetDexPc());
+  HBasicBlock* success_block = graph->CreateNewBasicBlock(candidate->GetDexPc());
+
+  // Add control flow instruction which uses the result of guard.
+  HIf* hif = new (graph->GetArena()) HIf(guard, candidate->GetDexPc());
+  pre_block->AddInstruction(hif);
+
+  graph->CreateLinkBetweenBlocks(pre_block, fail_block, true, true);
+  graph->CreateLinkBetweenBlocks(pre_block, success_block, true, true);
+
+  if (needs_trap) {
+    HTrap* trap = new (graph->GetArena()) HTrap(candidate->GetDexPc());
+    fail_block->AddInstruction(trap);
+    HBasicBlock* exit_block = graph->GetExitBlock();
+    // Compute dominator for exit block since it is no longer valid.
+    HBasicBlock* common_dominator = CommonDominator::ForPair(fail_block, exit_block);
+    exit_block->GetDominator()->RemoveDominatedBlock(exit_block);
+    common_dominator->AddDominatedBlock(exit_block);
+    exit_block->SetDominator(common_dominator);
+    // Create link between the two blocks.
+    fail_block->AddSuccessor(exit_block);
+  } else {
+    // Add a goto to the end of the success block.
+    HGoto* got = new (graph->GetArena()) HGoto(candidate->GetDexPc());
+    success_block->AddInstruction(got);
+    // Move the candidate into our new block.
+    graph->MoveInstructionBefore(candidate, got);
+
+    // Duplicate the success block now.
+    for (HInstructionIterator inst_it(success_block->GetInstructions());
+         !inst_it.Done();
+         inst_it.Advance()) {
+      HInstruction* insn = inst_it.Current();
+      insn->Accept(&cloner);
+      DCHECK(cloner.AllOkay());
+      HInstruction* clone = cloner.GetClone(insn);
+      fail_block->AddInstruction(clone);
+    }
+
+    // Link the two blocks to the rest of graph.
+    DCHECK_NE(success_block, post_block);
+    DCHECK_NE(fail_block, post_block);
+    graph->CreateLinkBetweenBlocks(fail_block, post_block, false, true);
+    success_block->AddSuccessor(post_block);
+    post_block->SetDominator(pre_block);
+    pre_block->AddDominatedBlock(post_block);
+
+    // Create a phi node to represent the final result.
+    if (candidate->GetType() != Primitive::kPrimVoid) {
+      HPhi* phi = new (graph->GetArena()) HPhi(graph->GetArena(), kNoRegNumber, 0,
+                                               HPhi::ToPhiType(candidate->GetType()),
+                                               candidate->GetDexPc());
+      post_block->AddPhi(phi);
+      candidate->ReplaceWith(phi);
+      phi->AddInput(cloner.GetClone(candidate));
+      phi->AddInput(candidate);
+    }
+  }
+
+  // Fix loop and try-catch information.
+  graph_->UpdateLoopAndTryInformationOfNewBlock(
+      post_block, pre_block, /* replace_if_back_edge */ true);
+
+  graph_->UpdateLoopAndTryInformationOfNewBlock(
+      fail_block, pre_block, /* replace_if_back_edge */ false);
+
+  graph_->UpdateLoopAndTryInformationOfNewBlock(
+      success_block, pre_block, /* replace_if_back_edge */ false);
+
+  PRINT_PASS_OSTREAM_MESSAGE(this, "Successfully handled " << candidate << " via code versioning.");
+}
+
 bool HSpeculationPass::HandleCodeVersioning(HInstruction* candidate,
+                                            std::vector<HInstruction*>* similar_candidates,
                                             HInstructionCloner& cloner,
                                             bool with_counting ATTRIBUTE_UNUSED,
                                             bool needs_trap,
                                             VersioningApproach versioning) {
+  DCHECK(candidate != nullptr);
+  DCHECK(similar_candidates != nullptr);
+
   if (versioning == kVersioningLoop || versioning == kVersioningRange) {
     // TODO Add support for these versioning schemes when interesting.
     PRINT_PASS_OSTREAM_MESSAGE(this, "Failed to handle " << candidate << " because versioning " <<
@@ -126,90 +239,32 @@ bool HSpeculationPass::HandleCodeVersioning(HInstruction* candidate,
     // We treat the any versioning as local versioning so we do not bloat code.
 
     // First try to insert the guard. If we fail, we must reject this case.
-    HSpeculationGuard* guard = InsertSpeculationGuard(candidate, candidate);
+    HInstruction* cursor = candidate;
+
+    // If we handle unsorted candidates, we should put all guards to entry block.
+    if (no_ordering_) {
+      HBasicBlock* entry_bb = graph_->GetEntryBlock();
+      cursor = entry_bb->GetFirstInstruction();
+    }
+
+    HSpeculationGuard* guard =
+        InsertSpeculationGuard(candidate, cursor);
     if (guard == nullptr) {
       PRINT_PASS_OSTREAM_MESSAGE(this, "Failed to handle " << candidate << " because guard "
                                  "insertion failed.");
       return false;
     }
 
-    HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
-    HBasicBlock* pre_block = guard->GetBlock();
-    HBasicBlock* post_block = pre_block->SplitBefore(candidate);
-    graph_->AddBlock(post_block);
-    HBasicBlock* fail_block = graph->CreateNewBasicBlock(candidate->GetDexPc());
-    HBasicBlock* success_block = needs_trap ? post_block :
-        graph->CreateNewBasicBlock(candidate->GetDexPc());
+    // Now we add control flow instructions which use the result of
+    // the guard.
 
-    // Add control flow instruction which uses the result of guard.
-    HIf* hif = new (graph->GetArena()) HIf(guard, candidate->GetDexPc());
-    pre_block->AddInstruction(hif);
+    // Handle first candidate in the list.
+    CodeVersioningHelper(candidate, cloner, guard, needs_trap);
 
-    graph->CreateLinkBetweenBlocks(pre_block, fail_block, true, true);
-    graph->CreateLinkBetweenBlocks(pre_block, success_block, true, true);
-
-    if (needs_trap) {
-      HTrap* trap = new (graph->GetArena()) HTrap(candidate->GetDexPc());
-      fail_block->AddInstruction(trap);
-      HBasicBlock* exit_block = graph->GetExitBlock();
-      // Compute dominator for exit block since it is no longer valid.
-      HBasicBlock* common_dominator = CommonDominator::ForPair(fail_block, exit_block);
-      exit_block->GetDominator()->RemoveDominatedBlock(exit_block);
-      common_dominator->AddDominatedBlock(exit_block);
-      exit_block->SetDominator(common_dominator);
-      // Create link between the two blocks.
-      fail_block->AddSuccessor(exit_block);
-    } else {
-      // Add a goto to the end of the success block.
-      HGoto* got = new (graph->GetArena()) HGoto(candidate->GetDexPc());
-      success_block->AddInstruction(got);
-      // Move the candidate into our new block.
-      graph->MoveInstructionBefore(candidate, got);
-
-      // Duplicate the success block now.
-      for (HInstructionIterator inst_it(success_block->GetInstructions());
-           !inst_it.Done();
-           inst_it.Advance()) {
-        HInstruction* insn = inst_it.Current();
-        insn->Accept(&cloner);
-        DCHECK(cloner.AllOkay());
-        HInstruction* clone = cloner.GetClone(insn);
-        fail_block->AddInstruction(clone);
-      }
-
-      // Link the two blocks to the rest of graph.
-      DCHECK_NE(success_block, post_block);
-      DCHECK_NE(fail_block, post_block);
-      graph->CreateLinkBetweenBlocks(fail_block, post_block, false, true);
-      success_block->AddSuccessor(post_block);
-      post_block->SetDominator(pre_block);
-      pre_block->AddDominatedBlock(post_block);
-
-      // Create a phi node to represent the final result.
-      if (candidate->GetType() != Primitive::kPrimVoid) {
-        HPhi* phi = new (graph->GetArena()) HPhi(graph->GetArena(), kNoRegNumber, 0,
-                                                 HPhi::ToPhiType(candidate->GetType()),
-                                                 candidate->GetDexPc());
-        post_block->AddPhi(phi);
-        candidate->ReplaceWith(phi);
-        phi->AddInput(cloner.GetClone(candidate));
-        phi->AddInput(candidate);
-      }
-    }
-
-    // Fix the loop information.
-    HLoopInformation_X86* loop_info =
-        LOOPINFO_TO_LOOPINFO_X86(pre_block->GetLoopInformation());
-    if (loop_info != nullptr) {
-      if (loop_info->IsBackEdge(*pre_block)) {
-        loop_info->ReplaceBackEdge(pre_block, post_block);
-      }
-      loop_info->AddToAll(success_block);
-      if (success_block != post_block) {
-        loop_info->AddToAll(post_block);
-      }
-      if (!needs_trap) {
-        loop_info->AddToAll(fail_block);
+    // Handle all other candidates.
+    if (!(*similar_candidates).empty()) {
+      for (auto it: *similar_candidates) {
+        CodeVersioningHelper(it, cloner, guard, needs_trap);
       }
     }
   }
@@ -268,11 +323,16 @@ class ScopedMessage {
 
 void HSpeculationPass::Run() {
   ScopedMessage entry_exit_marker(this);
+
+  static PassOption<bool> no_ordering(this, compiler_driver_,
+                                      "NoOrdering", kDefaultNoOrdering);
+  no_ordering_ = no_ordering.GetValue();
+
   if (!Gate()) {
     return;
   }
 
-  std::multimap<HInstruction*, HInstruction*> candidates;
+  std::vector<HInstruction*> candidates;
 
   // Walk the graph to find candidates.
   for (HReversePostOrderIterator it(*graph_); !it.Done(); it.Advance()) {
@@ -283,8 +343,9 @@ void HSpeculationPass::Run() {
       if (IsCandidate(instr)) {
         RecordFoundCandidate();
         if (HasPrediction(instr, true)) {
-          // We map each candidate as a pair to itself (since we know it can use same prediction).
-          candidates.insert(std::make_pair(instr, instr));
+          PRINT_PASS_OSTREAM_MESSAGE(this, "The following candidate has been found " << instr);
+          // Fill vector with eligible candidates.
+          candidates.push_back(instr);
         }
       }
     }
@@ -295,19 +356,37 @@ void HSpeculationPass::Run() {
     return;
   }
 
-  // If there is more than one candidate, consider if it can use same prediction.
-  static PassOption<bool> grouping_enabled(this, compiler_driver_, "EnableGrouping", false);
-  if (grouping_enabled.GetValue() && candidates.size() > 1) {
-    GroupCandidates(candidates);
+  CandidatesMap candidates_grouped;
+
+  if (no_ordering_) {
+    GroupCandidatesNoOrdering(candidates_grouped, &candidates);
+  } else {
+    GroupCandidatesWithOrdering(candidates_grouped, &candidates);
+  }
+
+  // The new map should have at least one candidate.
+  DCHECK(!candidates_grouped.empty());
+
+  // Check map has no duplicates.
+  if (kIsDebugBuild) {
+    std::set<HInstruction*> candidates_set;
+    for (auto it : candidates_grouped) {
+      DCHECK(candidates_set.find(it.first) == candidates_set.end());
+      candidates_set.insert(it.first);
+      std::vector<HInstruction*>* similar_candidates = &it.second;
+      for (auto it2 : *similar_candidates) {
+        DCHECK(candidates_set.find(it2) == candidates_set.end());
+        candidates_set.insert(it2);
+      }
+    }
   }
 
   HInstructionCloner cloner(GRAPH_TO_GRAPH_X86(graph_));
-  // TODO Add capability to use grouped candidates with the same prediction (which includes
-  // counting the appropriate stat for elimination).
-  for (auto it : candidates) {
-    // The keys are guaranteed to also appear as the second object. So only look at the
-    // second part of the pair.
-    HInstruction* candidate = it.second;
+
+  // Now choose and apply the best strategy for each candidate.
+  for (auto it : candidates_grouped) {
+    HInstruction* candidate = it.first;
+    std::vector<HInstruction*>* similar_candidates = &it.second;
     DCHECK(candidate != nullptr);
 
     SpeculationRecoveryApproach recovery = GetRecoveryMethod(candidate);
@@ -325,11 +404,17 @@ void HSpeculationPass::Run() {
     PRINT_PASS_OSTREAM_MESSAGE(this, "Trying to speculate for " << candidate <<
                                " using recovery mode " << recovery);
 
-    if (IsPredictionWorthIt(candidate, recovery)) {
+    if (IsPredictionWorthIt(candidate, recovery, similar_candidates)) {
       if (!SupportsRecoveryMethod(recovery, candidate)) {
         // Code versioning is always supported.
         recovery = kRecoveryCodeVersioning;
         DCHECK(SupportsRecoveryMethod(recovery, candidate));
+      }
+
+      if (kIsDebugBuild) {
+        for (auto similar : *similar_candidates) {
+          DCHECK(SupportsRecoveryMethod(recovery, similar));
+        }
       }
 
       bool success = false;
@@ -342,13 +427,14 @@ void HSpeculationPass::Run() {
         bool needs_trap = NeedsTrap(recovery);
         bool needs_counting = NeedsCounting(recovery);
         VersioningApproach versioning = GetVersioningApproach(candidate);
-        success = HandleCodeVersioning(candidate, cloner, needs_counting, needs_trap, versioning);
+        success = HandleCodeVersioning(candidate, similar_candidates, cloner, needs_counting, needs_trap, versioning);
       } else {
         LOG(FATAL) << "Unhandled recovery mode for speculation: " << recovery;
       }
 
       if (success) {
         bool guard_inserted = !NeedsNoRecovery(recovery);
+        size_t candidates_handled = 0;
         if (HandleSpeculation(candidate, guard_inserted)) {
           if (guard_inserted) {
             PRINT_PASS_OSTREAM_MESSAGE(this, "Successfully speculated for " << candidate <<
@@ -357,7 +443,19 @@ void HSpeculationPass::Run() {
             PRINT_PASS_OSTREAM_MESSAGE(this, "Successfully speculated for " << candidate <<
                                        " with no guard.");
           }
+          candidates_handled++;
+        }
+
+        for (auto similar : *similar_candidates) {
+          if (HandleSpeculation(similar, guard_inserted)) {
+            PRINT_PASS_OSTREAM_MESSAGE(this, "Successfully speculated for " << similar);
+            candidates_handled++;
+          }
+        }
+
+        if (candidates_handled != 0) {
           RecordSpeculation();
+          MaybeRecordStat(kIntelSpeculationEliminated, candidates_handled - 1);
         }
       }
     } else {
@@ -368,7 +466,7 @@ void HSpeculationPass::Run() {
 
 bool HSpeculationPass::IsPredictionWorthIt(HInstruction* instr,
                                            SpeculationRecoveryApproach recovery,
-                                           std::list<HInstruction*>* similar_candidates) {
+                                           std::vector<HInstruction*>* similar_candidates) {
   // Prediction is always positive if recovery is not needed.
   if (recovery == kRecoveryNotNeeded) {
     // It MUST be the case that there is no chance of mispredict if recovery is not needed.

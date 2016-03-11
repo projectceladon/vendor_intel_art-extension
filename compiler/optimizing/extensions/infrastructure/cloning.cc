@@ -466,6 +466,17 @@ void HInstructionCloner::VisitDeoptimize(HDeoptimize* instr) {
   }
 }
 
+void HInstructionCloner::VisitDevirtGuard(HDevirtGuard* instr) {
+  if (cloning_enabled_) {
+    HInstruction* lhs, *rhs;
+    GetInputsForBinary(instr, &lhs, &rhs);
+    DCHECK(lhs->IsLoadClass());
+    HLoadClass* devirt_class = lhs->AsLoadClass();
+    HDevirtGuard* clone = new (arena_) HDevirtGuard(devirt_class, rhs, instr->GetDexPc());
+    CommitClone(instr, clone);
+  }
+}
+
 void HInstructionCloner::VisitDiv(HDiv* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());

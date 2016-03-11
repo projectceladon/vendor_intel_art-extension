@@ -26,6 +26,8 @@ namespace art {
 class CompilerDriver;
 class DexCompilationUnit;
 
+typedef std::map<HInstruction*, std::vector<HInstruction*>> CandidatesMap;
+
 class HSpeculationPass : public HOptimization_X86 {
  public:
   HSpeculationPass(HGraph* graph,
@@ -35,8 +37,8 @@ class HSpeculationPass : public HOptimization_X86 {
                    OptimizingCompilerStats* stats = nullptr)
       : HOptimization_X86(graph, pass_name, stats),
         compiler_driver_(compiler_driver),
-        compilation_unit_(compilation_unit) {
-  }
+        compilation_unit_(compilation_unit),
+        no_ordering_(kDefaultNoOrdering) { }
   virtual ~HSpeculationPass() { }
 
   void Run() OVERRIDE;
@@ -162,11 +164,11 @@ class HSpeculationPass : public HOptimization_X86 {
    *  profit * correct_predict_rate - cost - cost_of_chosen_recovery_path * mispredict_rate >= 0
    * @param instr The instruction to check.
    * @param recovery The recovery schemes planned to be used.
-   * @param similar_candidates A list of similar candidates that can use same prediction.
+   * @param similar_candidates A vector of similar candidates that can use same prediction.
    */
   virtual bool IsPredictionWorthIt(HInstruction* instr,
                                    SpeculationRecoveryApproach recovery,
-                                   std::list<HInstruction*>* similar_candidates = nullptr);
+                                   std::vector<HInstruction*>* similar_candidates = nullptr);
 
   /**
    * @brief Used to determine whether two candidates might be able to use
@@ -219,17 +221,33 @@ class HSpeculationPass : public HOptimization_X86 {
   // When code versioning is done, it does not increase critical path. It is the same code
   // as before the speculation.
   static constexpr uint32_t kCostCodeVersioning = 0u;
+  // If ordering is enabled the candidates will be sorted when grouping.
+  static constexpr bool kDefaultNoOrdering = false;
 
   // Protected because it might be used in subclass.
   CompilerDriver* const compiler_driver_;
   const DexCompilationUnit& compilation_unit_;
+  bool no_ordering_;
 
  private:
   /**
    * @brief Used to create groupings of similar candidates.
-   * @param candidates The input and the output of this.
+   * This function doesn't take into account candidates dependency.
+   * @param candidates_grouped Map to put grouped instructions.
+   * @param candidates The vector of HInstructions to be grouped.
    */
-  void GroupCandidates(std::multimap<HInstruction*, HInstruction*>& candidates);
+  void GroupCandidatesNoOrdering(CandidatesMap& candidates_grouped,
+                       const std::vector<HInstruction*>* candidates);
+
+  /**
+   * @brief Used to create groupings of similar candidates.
+   * This function guarantee all candidates will be sorted by dependency
+   * order.
+   * @param candidates_grouped Map to put grouped instructions.
+   * @param candidates The vector of HInstructions to be grouped.
+   */
+  void GroupCandidatesWithOrdering(CandidatesMap& candidates_grouped,
+                       const std::vector<HInstruction*>* candidates);
 
   /**
    * @brief Used as helper to create deopt speculation technique.
@@ -241,6 +259,7 @@ class HSpeculationPass : public HOptimization_X86 {
   /**
    * @brief Used as helper to create code versioning speculation technique.
    * @param candidate The instruction being speculated with deopt.
+   * @param similar_candidates A vector of similar candidates that can use same prediction.
    * @param cloner The instruction cloner that can be used for duplication.
    * @param with_counting Whether counting of misspeculation should be done.
    * @param with_trap Whether the slow path should be a trap.
@@ -248,9 +267,22 @@ class HSpeculationPass : public HOptimization_X86 {
    * @return Returns true if successful.
    */
   bool HandleCodeVersioning(HInstruction* candidate,
+                            std::vector<HInstruction*>* similar_candidates,
                             HInstructionCloner& cloner,
                             bool with_counting = false,
                             bool with_trap = false, VersioningApproach versioning = kVersioningAny);
+
+  /**
+   * @brief Used as helper to create code versioning speculation technique.
+   * @param instr The instruction being speculated with deopt.
+   * @param cloner The instruction cloner that can be used for duplication.
+   * @param guard The speculation guard instruction.
+   * @param needs_trap Whether the slow path should be a trap.
+   */
+  void CodeVersioningHelper(HInstruction* instr,
+                            HInstructionCloner& cloner,
+                            HSpeculationGuard* guard,
+                            bool needs_trap);
 
   DISALLOW_COPY_AND_ASSIGN(HSpeculationPass);
 };

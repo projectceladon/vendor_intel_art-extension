@@ -1870,11 +1870,11 @@ void InstructionCodeGeneratorX86::VisitAboveOrEqual(HAboveOrEqual* comp) {
 }
 
 void LocationsBuilderX86::VisitDevirtGuard(HDevirtGuard* guard) {
-  VisitCondition(guard);
+  HandleCondition(guard);
 }
 
 void InstructionCodeGeneratorX86::VisitDevirtGuard(HDevirtGuard* guard) {
-  VisitCondition(guard);
+  HandleCondition(guard);
 }
 
 void LocationsBuilderX86::VisitTrap(HTrap* trap) {
