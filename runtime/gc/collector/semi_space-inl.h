@@ -105,6 +105,10 @@ inline bool SemiSpace::IsMarkedParallel(mirror::Object* obj) {
   } else if (immune_spaces_.ContainsObject(obj)) {
     // Immune objects, always consider as marked.
     return true;
+  } else if (generational_ && (promo_dest_space_->HasAddress(obj) ||
+             fallback_space_->HasAddress(obj))) {
+    DCHECK(collect_from_space_only_);
+    return true;
   }
   return false;
 }
@@ -159,7 +163,7 @@ static inline size_t CopyAvoidingDirtyingPages(void* dest, const void* src, size
   return saved_bytes;
 }
 
-// Alloc thect in the dest_space and try update the lockword.
+// Alloc the object in the dest_space and try update the lockword.
 // If the update fail, try roll back the space.
 inline mirror::Object* SemiSpace::TryInstallForwardingAddress(mirror::Object* obj,
                                                    space::ContinuousMemMapAllocSpace* dest_space,

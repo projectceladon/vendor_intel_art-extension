@@ -174,7 +174,6 @@ class Heap {
        size_t large_object_threshold,
        size_t parallel_gc_threads,
        size_t conc_gc_threads,
-       size_t first_iter_copy_size,
        bool low_memory_mode,
        size_t long_pause_threshold,
        size_t long_gc_threshold,
@@ -679,12 +678,6 @@ class Heap {
     return conc_gc_threads_;
   }
 
-  // For Parallel Copying collector.
-  // Get task size of the first iteration of copy task.
-  size_t GetFirstIterCopySize() const {
-    return first_iter_copy_size_;
-  }
-
   // Returns how many threads we should use for the current GC phase based on if we are paused,
   // whether or not we care about pauses.
   size_t GetThreadCount(bool paused) const;
@@ -1111,9 +1104,6 @@ class Heap {
 
   // How many GC threads we may use for unpaused parts of garbage collection.
   const size_t conc_gc_threads_;
-
-  // How many objects in the parallel copy task for first iteration.
-  const size_t first_iter_copy_size_;
 
   // Switches between new/old background concurrent GC triggering heuristics.
   // Corresponds to ConcurrentGCCycleStart system property added for new ART GC ergonomics

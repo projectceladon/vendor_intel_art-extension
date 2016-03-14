@@ -142,7 +142,6 @@ Heap::Heap(size_t initial_size,
            size_t large_object_threshold,
            size_t parallel_gc_threads,
            size_t conc_gc_threads,
-           size_t first_iter_copy_size,
            bool low_memory_mode,
            size_t long_pause_log_threshold,
            size_t long_gc_log_threshold,
@@ -170,7 +169,6 @@ Heap::Heap(size_t initial_size,
       pending_task_lock_(nullptr),
       parallel_gc_threads_(parallel_gc_threads),
       conc_gc_threads_(conc_gc_threads),
-      first_iter_copy_size_(first_iter_copy_size),
       concurrent_gc_cycle_start_(concurrent_gc_cycle_start),
       concurrent_gc_start_factor_(concurrent_gc_start_factor),
       low_memory_mode_(low_memory_mode),
@@ -2355,7 +2353,7 @@ void Heap::ChangeCollector(CollectorType collector_type) {
 class ZygoteCompactingCollector FINAL : public collector::SemiSpace {
  public:
   ZygoteCompactingCollector(gc::Heap* heap, bool is_running_on_memory_tool)
-      : SemiSpace(heap, false, "zygote collector"),
+      : SemiSpace(heap, false, "zygote collector", false),
         bin_live_bitmap_(nullptr),
         bin_mark_bitmap_(nullptr),
         is_running_on_memory_tool_(is_running_on_memory_tool) {}

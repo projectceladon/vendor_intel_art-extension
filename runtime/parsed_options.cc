@@ -126,9 +126,6 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
       .Define("-XX:ConcurrentGCStartFactor=_")
           .WithType<unsigned int>()
           .IntoKey(M::ConcurrentGCStartFactor)
-      .Define("-XX:FirstIterCopySize=_")
-          .WithType<unsigned int>()
-          .IntoKey(M::FirstIterCopySize)
       .Define("-Xss_")
           .WithType<Memory<1>>()
           .IntoKey(M::StackSize)
@@ -526,13 +523,6 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
     args.SetIfMissing(M::ClassPath, std::string(getenv("CLASSPATH")));
   }
 
-  // Default to number of processors minus one since the main GC thread also does work.
-  args.SetIfMissing(M::ParallelGCThreads, gc::Heap::kDefaultEnableParallelGC ?
-      static_cast<unsigned int>(sysconf(_SC_NPROCESSORS_CONF) - 1u) : 0u);
-
-  // Default Parallel copying first iteration task size is 10.
-    args.SetIfMissing(M::FirstIterCopySize, 10u);
-
   // -Xverbose:
   {
     LogVerbosity *log_verbosity = args.Get(M::Verbose);
@@ -578,11 +568,15 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
 
     args.Set(M::BackgroundGc, BackgroundGcOption { background_collector_type_ });
 
-    // If foregroud is SS/GSS, Enable Parallel GC.
+    // If foregroud is SS/GSS, Enable Parallel GC without considering kDefaultEnableParallelGC.
     if (collector_type_ == gc::kCollectorTypeGSS ||
         collector_type_ == gc::kCollectorTypeSS) {
-        args.Set(M::ParallelGCThreads,
+        args.SetIfMissing(M::ParallelGCThreads,
             static_cast<unsigned int>(sysconf(_SC_NPROCESSORS_CONF) - 1u) );
+    } else {
+      // Default to number of processors minus one since the main GC thread also does work.
+      args.SetIfMissing(M::ParallelGCThreads, gc::Heap::kDefaultEnableParallelGC ?
+          static_cast<unsigned int>(sysconf(_SC_NPROCESSORS_CONF) - 1u) : 0u);
     }
   }
 
@@ -726,7 +720,6 @@ void ParsedOptions::Usage(const char* fmt, ...) {
   UsageMessage(stream, "  -XX:+DisableExplicitGC\n");
   UsageMessage(stream, "  -XX:ParallelGCThreads=integervalue\n");
   UsageMessage(stream, "  -XX:ConcGCThreads=integervalue\n");
-  UsageMessage(stream, "  -XX:FirstIterCopySize=integervalue\n");
   UsageMessage(stream, "  -XX:MaxSpinsBeforeThinLockInflation=integervalue\n");
   UsageMessage(stream, "  -XX:LongPauseLogThreshold=integervalue\n");
   UsageMessage(stream, "  -XX:LongGCLogThreshold=integervalue\n");
