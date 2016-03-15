@@ -1373,12 +1373,15 @@ class Dex2Oat FINAL {
     }
 
     if (compiler_options_->GetProfilingCounts() != CompilerOptions::kProfilingNone) {
-      std::string oat_file_name = oat_location_;
-      if (oat_file_name.empty()) {
-        oat_file_name = oat_filenames_[0];
+      if (!oat_filenames_.empty()) {
+        // Multiple oat files.
+        for (auto& oat_file_name : oat_filenames_) {
+          exact_profilers_.emplace_back(new ExactProfiler(oat_file_name));
+        }
+      } else {
+        DCHECK(!oat_location_.empty());
+        exact_profilers_.emplace_back(new ExactProfiler(oat_location_));
       }
-      exact_profiler_.reset(new ExactProfiler(oat_file_name));
-      key_value_store_->Put("profile", exact_profiler_->GetRelativeProfileFileName());
     }
 
     if (IsBootImage() && image_filenames_.size() > 1) {
@@ -1447,6 +1450,11 @@ class Dex2Oat FINAL {
       rodata_.reserve(oat_writers_.size());
       for (size_t i = 0, size = oat_writers_.size(); i != size; ++i) {
         rodata_.push_back(elf_writers_[i]->StartRoData());
+        ExactProfiler* ep = nullptr;
+        if (!exact_profilers_.empty()) {
+          ep =  exact_profilers_[i].get();
+          key_value_store_->Overwrite("profile", ep->GetRelativeProfileFileName());
+        }
         // Unzip or copy dex files straight to the oat file.
         std::unique_ptr<MemMap> opened_dex_files_map;
         std::vector<std::unique_ptr<const DexFile>> opened_dex_files;
@@ -1464,6 +1472,10 @@ class Dex2Oat FINAL {
         if (opened_dex_files_map != nullptr) {
           opened_dex_files_maps_.push_back(std::move(opened_dex_files_map));
           for (std::unique_ptr<const DexFile>& dex_file : opened_dex_files) {
+            if (ep != nullptr) {
+              ep->SetContainsDexFile(dex_file.get());
+            }
+
             dex_file_oat_index_map_.emplace(dex_file.get(), i);
             opened_dex_files_.push_back(std::move(dex_file));
           }
@@ -1636,7 +1648,7 @@ class Dex2Oat FINAL {
                                      compiler_phases_timings_.get(),
                                      swap_fd_,
                                      profile_compilation_info_.get(),
-                                     exact_profiler_.get()));
+                                     &exact_profilers_));
 
     driver_->SetDexFilesForOatFile(dex_files_);
     driver_->CompileAll(class_loader_, dex_files_, timings_);
@@ -1996,11 +2008,13 @@ class Dex2Oat FINAL {
   }
 
   int WriteProfileFile() {
-    if (exact_profiler_.get() == nullptr) {
-      return EXIT_SUCCESS;
+    int result = EXIT_SUCCESS;
+    for (auto& exact_profile : exact_profilers_) {
+      if (!exact_profile->WriteProfileFile(false)) {
+        result = EXIT_FAILURE;
+      }
     }
-
-    return exact_profiler_->WriteProfileFile(false) ? EXIT_SUCCESS : EXIT_FAILURE;
+    return result;
   }
 
  private:
@@ -2591,7 +2605,7 @@ class Dex2Oat FINAL {
 
   // See CompilerOptions.force_determinism_.
   bool force_determinism_;
-  std::unique_ptr<ExactProfiler> exact_profiler_;
+  std::vector<std::unique_ptr<ExactProfiler>> exact_profilers_;
   CompilerOptions::ProfilingCounts profiling_counts_ = CompilerOptions::kProfilingNone;
   std::unique_ptr<ExactProfileFile> existing_profile_;
 

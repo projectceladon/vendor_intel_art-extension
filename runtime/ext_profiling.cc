@@ -21,6 +21,7 @@
 #include "base/scoped_flock.h"
 #include "base/unix_file/fd_file.h"
 #include "dex_file.h"
+#include "graph_x86.h"
 #include "mirror/object-inl.h"
 #include "thread.h"
 #include "nodes.h"
@@ -99,21 +100,38 @@ ExactProfiler::ExactProfiler(const std::string& oat_file_name)
   prof_file_name_ += ".prof";
 }
 
-void ExactProfiler::RegisterMethod(const DexFile& dex_file, int method_idx, int num_blocks) {
-  MutexLock mu(nullptr, method_lock_);
+void ExactProfiler::RegisterMethod(HGraph_X86& graph) {
+
+  if (graph.GetNumProfiledBlocks() == 0) {
+    return;
+  }
+
+  const DexFile& dex_file = graph.GetDexFile();
+  int method_idx = graph.GetMethodIdx();
 
   // Find the Dex file in info_.
+  MutexLock mu(nullptr, method_lock_);
   auto dex_it = info_.find(&dex_file);
   if (dex_it == info_.end()) {
     // First time we have seen this dex file.
-    dex_it = info_.Put(&dex_file, BlocksInMethod());
+    dex_it = info_.Put(&dex_file, PerMethodInformation());
   }
 
   // Now find the method in the dex file.
-  BlocksInMethod& method_info = dex_it->second;
+  PerMethodInformation& method_info = dex_it->second;
 
-  // Set the block count for the method.
-  method_info.Put(method_idx, num_blocks);
+  // Set the block count and invoke dex_pcs for the method.
+  ProfileInformation prof_info(graph.GetNumProfiledBlocks(), std::vector<uint16_t>());
+
+  if (graph.HasProfiledInvokesDexPcs()) {
+    ArenaVector<uint16_t>& profiled_invokes = graph.GetProfiledInvokesDexPcs();
+    std::vector<uint16_t>& dex_pcs = prof_info.second;
+    dex_pcs.reserve(profiled_invokes.size());
+    for (auto dex_pc : profiled_invokes) {
+      dex_pcs.push_back(dex_pc);
+    }
+  }
+  method_info.Put(method_idx, prof_info);
 }
 
 // Make one directory.
@@ -256,6 +274,10 @@ bool ExactProfiler::WriteProfileFile(bool update_checksum_if_needed) {
   prof_file.total_num_counters = 0;
   prof_file.total_num_methods = 0;
 
+  // Support for OAT class information for invokes.
+  prof_file.offset_to_oat_table = 0;
+  prof_file.offset_to_oat_string_table = 0;
+
   const std::vector<const OatDexFile*>& oat_dex_files = oat->GetOatDexFiles();
   prof_file.num_dex_files = oat_dex_files.size();
   prof_file.oat_checksum = oat_check_sum;
@@ -274,7 +296,7 @@ bool ExactProfiler::WriteProfileFile(bool update_checksum_if_needed) {
   std::vector<uint32_t> one_method_data;
   one_method_data.reserve(total_num_methods * 10);
   std::vector<char> name_buffer;
-  BlocksInMethod empty_method_info;
+  PerMethodInformation empty_method_info;
 
   // Process each Dex file in the OAT.
   for (auto it : oat_dex_files) {
@@ -282,7 +304,7 @@ bool ExactProfiler::WriteProfileFile(bool update_checksum_if_needed) {
     const std::string& dex_file_name = it->GetDexFileLocation();
     std::unique_ptr<const DexFile> dex_file_from_oat;
     const DexFile* df = nullptr;
-    BlocksInMethod* method_info = nullptr;
+    PerMethodInformation* method_info = nullptr;
     for (auto& it2 : info_) {
       if (it2.first->GetLocation() == dex_file_name) {
         df = it2.first;
@@ -314,23 +336,43 @@ bool ExactProfiler::WriteProfileFile(bool update_checksum_if_needed) {
     df_info.dex_checksum = it->GetDexFileLocationChecksum();
     df_info.num_methods = df->NumMethodIds();
     df_info.base_of_methods = current_offset;
+    df_info.dummy = 0;
     std::vector<uint32_t> method_offsets;
     method_offsets.reserve(df_info.num_methods);
 
     for (uint32_t i = 0; i < df_info.num_methods; i++) {
       auto method_it = method_info->find(i);
       // If we haven't seen the method, the count must be 1.
-      uint32_t count = (method_it == method_info->end()) ? 1 : method_it->second;
-      prof_file.total_num_counters += count;
+      uint32_t bb_count = 1;
+      uint32_t invoke_count = 0;
+      ProfileInformation* info = nullptr;
+      if (method_it != method_info->end()) {
+        // Found the information for this method.
+        info = &method_it->second;
+        bb_count = info->first;
+        invoke_count = info->second.size();
+      }
+      prof_file.total_num_counters += bb_count;
 
       // Generate a 'OneMethod' for this method.
-      one_method_data.push_back(count);   // num_blocks.
-      one_method_data.push_back(0);       // offset_to_method_data.
+      one_method_data.push_back(bb_count);
+      one_method_data.push_back(invoke_count);
       one_method_data.insert(one_method_data.end(),
-                             count * (sizeof(OneMethod::CountType) / sizeof(uint32_t)),
+                             bb_count * (sizeof(OneMethod::CountType) / sizeof(uint32_t)),
                              0);
+      if (invoke_count > 0) {
+        // Enter the invoke information for the method.
+        DCHECK(info != nullptr);
+        for (auto dex_pc : info->second) {
+          one_method_data.push_back(dex_pc);
+          constexpr uint32_t padding_count =
+              OneCallSite::kNumInvokeTargets * (sizeof(OneInvoke) / sizeof(uint32_t));
+          one_method_data.insert(one_method_data.end(), padding_count, 0);
+        }
+      }
+
       method_offsets.push_back(current_offset);
-      current_offset += sizeof(OneMethod) + sizeof(OneMethod::CountType) * count;
+      current_offset += OneMethod::AllocationSize(bb_count, invoke_count);
     }
     // Finish off the method index table, which lies at the end of the methods.
     one_method_data.insert(one_method_data.end(), method_offsets.begin(), method_offsets.end());
@@ -345,9 +387,24 @@ bool ExactProfiler::WriteProfileFile(bool update_checksum_if_needed) {
   VLOG(exact_profiler) << "Total number of methods = " << prof_file.total_num_methods;
 
   // Update the offsets to the name strings by the intervening space.
+  current_offset += sizeof(Magic2_);
   for (auto& it : dex_file_data) {
-    it.offset_to_dex_file_name += current_offset + sizeof(Magic2_);
+    it.offset_to_dex_file_name += current_offset;
   }
+
+  // Pad the string table to a multiple of uint32_t.
+  while ((name_buffer.size() % sizeof(uint32_t)) != 0) {
+    name_buffer.push_back('\0');
+  }
+
+  // Compute the start of the variable portion of the file.
+  uint32_t page_size = getpagesize();
+  uint32_t after_magic3 = current_offset + name_buffer.size() + sizeof(Magic3_);
+  if (after_magic3 % page_size != 0) {
+    after_magic3 += page_size - (after_magic3 % page_size);
+  }
+  DCHECK_EQ(after_magic3 % page_size, 0U);
+  prof_file.variable_start_offset = after_magic3;
 
   // Ensure that the directory is available.
   VLOG(exact_profiler) << "directory: " << prof_dir_name_;
@@ -398,10 +455,6 @@ bool ExactProfiler::WriteProfileFile(bool update_checksum_if_needed) {
   }
 
   // String table.
-  // Pad the string table to a multiple of uint32_t.
-  while ((name_buffer.size() % sizeof(uint32_t)) != 0) {
-    name_buffer.push_back('\0');
-  }
   if (!checked_write(fd, &name_buffer[0], name_buffer.size(), prof_file_name_)) {
     return false;
   }
@@ -413,8 +466,6 @@ bool ExactProfiler::WriteProfileFile(bool update_checksum_if_needed) {
                      sizeof(magic), prof_file_name_)) {
     return false;
   }
-
-  // FUTURE: Any per method information would go here.
 
   // No more to write.
   close(fd);
@@ -441,21 +492,23 @@ std::string ExactProfiler::GetRelativeProfileFileName() const {
 
 static void ZeroCounts(ExactProfileFile* hdr) {
   char *const base = reinterpret_cast<char *>(hdr);
-  OneDexFile* dex_files = reinterpret_cast<OneDexFile*>(base + sizeof(ExactProfileFile));
+  OneDexFile* dex_files = hdr->dex_info;
   for (uint32_t i = 0; i < hdr->num_dex_files; i++) {
     OneDexFile& df = dex_files[i];
     OneMethod* method_info = reinterpret_cast<OneMethod*>(base + df.base_of_methods);
 
     for (uint32_t j = 0; j < df.num_methods; j++) {
-      for (int k = 0; k < method_info->num_blocks; k++) {
+      for (uint32_t k = 0; k < method_info->num_blocks; k++) {
         method_info->counts[k] = 0;
       }
 
+      for (uint32_t k = 0; k < method_info->num_method_invokes; k++) {
+        OneCallSite* call_site = method_info->CallSiteAt(k);
+        memset(call_site->targets, '\0', sizeof(call_site->targets));
+      }
+
       // Bump to next method.
-      method_info =
-        reinterpret_cast<OneMethod*>(
-            reinterpret_cast<char *>(method_info) +
-               sizeof(OneMethod) + method_info->num_blocks * sizeof(OneMethod::CountType));
+      method_info = method_info->Next();
     }
   }
 }
@@ -584,6 +637,12 @@ ExactProfileFile* ExactProfiler::GetProfileFile(const OatFile& oat_file,
 
   // Read in the file, and confirm that we have a valid profile.
   struct stat file_info;
+  if (flock(fd, LOCK_SH) < 0) {
+    close(fd);
+    LOG(FATAL) << "Unable to flock profile file for reading: " << prof_name
+                 << ": " << strerror(errno);
+    UNREACHABLE();
+  }
   ::fstat(fd, &file_info);
   char* buffer = new char[file_info.st_size];
   if (buffer == nullptr) {
@@ -641,8 +700,261 @@ ExactProfileFile* ExactProfiler::GetProfileFile(const OatFile& oat_file,
   return prof.release();
 }
 
+class OatTableManager {
+  public:
+    /*
+     * @brief Load an OAT table from a file image.
+     * @param hdr ExactProfile image start.
+     */
+    OatTableManager(ExactProfileFile* hdr);
+
+    /*
+     * @brief Add a reference to a class to the OAT table.
+     * @param klass Class type to add.
+     * @returns an index into the oat table representing the type.
+     */
+    PersistentClassIndex AddClassType(mirror::Class* klass)
+        SHARED_REQUIRES(Locks::mutator_lock_);
+
+    /*
+     * @brief Add a string to the OAT string table.
+     * @param string String to be added.
+     * @returns an offset into the string table.
+     */
+    uint32_t AddStringLocation(const std::string& string);
+
+    /*
+     * @brief Return a string in the string table
+     * @param offset Offset into string table.
+     * @returns the string at that offset.
+     */
+    std::string GetStringLocation(uint32_t offset) {
+      return &string_table_[offset];
+    }
+
+    /*
+     * Is the OatTable empty?
+     * @returns 'true' if there is nothing in the OAT table.
+     */
+    bool IsEmpty() const {
+      return oat_map_.empty();
+    }
+
+    /*
+     * Has the OatTable been updated since initialization?
+     * @returns 'true' if something has been added to the OatTable.
+     */
+    bool Updated() const {
+      return updated_;
+    }
+
+    /*
+     * Return the vector of OneOatIndex.
+     * @returns vector of OneOatIndex.
+     */
+    const std::vector<OneOatIndex>& GetOatIndicies() const {
+      return oats_;
+    }
+
+    /*
+     * Return the string table.
+     * @returns the string table.
+     */
+    const std::vector<char>& GetStringTable() const {
+      return string_table_;
+    }
+
+  private:
+    std::map<mirror::Class*, PersistentClassIndex> class_map_;
+    std::map<const OatFile*, uint32_t> oat_map_;
+    std::vector<OneOatIndex> oats_;
+    std::vector<char> string_table_;
+    bool updated_;
+};
+
+uint32_t OatTableManager::AddStringLocation(const std::string& string) {
+  uint32_t index = string_table_.size();
+  const char* c_str = string.c_str();
+  // Ensure that the trailing NUL is included.
+  string_table_.insert(string_table_.end(), c_str, c_str + string.length() + 1);
+  return index;
+}
+
+OatTableManager::OatTableManager(ExactProfileFile* hdr)
+    : updated_(false) {
+  if (hdr->offset_to_oat_table == 0 || hdr->offset_to_oat_string_table == 0) {
+    return;
+  }
+
+  // We have some data already in the Profile file.  Read it in and populate the
+  // tables.
+  char* base = reinterpret_cast<char*>(hdr);
+  OatTable* oat_table = reinterpret_cast<OatTable*>(base + hdr->offset_to_oat_table);
+  OatLocationStringTable* oat_location_table =
+      reinterpret_cast<OatLocationStringTable*>(base + hdr->offset_to_oat_string_table);
+
+  // Copy the OneOatIndex table.
+  oats_.reserve(oat_location_table->num_string_chars * 2);
+  oats_.insert(oats_.end(),
+               &oat_table->oat_locations[0],
+               &oat_table->oat_locations[oat_table->num_oat_locations]);
+
+  // Copy the string table.
+  string_table_.reserve(oat_location_table->num_string_chars * 2);
+  string_table_.insert(string_table_.end(),
+                       &oat_location_table->strings[0],
+                       &oat_location_table->strings[oat_location_table->num_string_chars]);
+}
+
+PersistentClassIndex OatTableManager::AddClassType(mirror::Class* klass) {
+  // Have we seen this class already?
+  CHECK(klass != nullptr);
+  auto it = class_map_.find(klass);
+  if (it != class_map_.end()) {
+    return it->second;
+  }
+
+  uint16_t class_def_index = klass->GetDexClassDefIndex();
+  const DexFile& dex_file = klass->GetDexFile();
+  const OatDexFile* oat_dex_file = dex_file.GetOatDexFile();
+  CHECK(oat_dex_file != nullptr) << PrettyDescriptor(klass);
+  const OatFile* oat_file = oat_dex_file->GetOatFile();
+  CHECK(oat_file != nullptr) << PrettyDescriptor(klass);
+
+  // Can we find a match for the OAT file?
+  auto it2 = oat_map_.find(oat_file);
+  uint32_t oat_index = 0;
+  if (it2 != oat_map_.end()) {
+    oat_index = it2->second;
+  } else {
+    // Need to add it to the list.  Is it pre-loaded?
+    const std::string& oat_location = oat_file->GetLocation();
+    uint32_t oat_check_sum = oat_file->GetOatHeader().GetChecksum();
+    for (uint32_t e = oats_.size(); oat_index < e; oat_index++) {
+      const OneOatIndex& ooi = oats_[oat_index];
+      if (ooi.oat_checksum == oat_check_sum) {
+        CHECK_EQ(oat_location, GetStringLocation(ooi.offset_of_oat_location_string))
+            << PrettyDescriptor(klass);
+        break;
+      }
+    }
+    if (oat_index == oats_.size()) {
+      // Need to add a new OAT file to the OAT table.
+      OneOatIndex new_oat_index;
+      new_oat_index.oat_checksum = oat_check_sum;
+      new_oat_index.offset_of_oat_location_string = AddStringLocation(oat_location);
+      oat_index = oats_.size();
+      oats_.push_back(new_oat_index);
+      oat_map_.insert(std::pair<const OatFile*, uint32_t>(oat_file, oat_index));
+      updated_ = true;
+    }
+  }
+
+  CHECK_LT(oat_index, oats_.size());
+
+  // Find the dex file index in the OAT file.
+  const std::vector<const OatDexFile*>& oat_dex_files =
+      oat_dex_file->GetOatFile()->GetOatDexFiles();
+  auto index_in_oat = std::find(oat_dex_files.begin(), oat_dex_files.end(), oat_dex_file);
+  CHECK(index_in_oat != oat_dex_files.end());
+  uint32_t dex_index = index_in_oat - oat_dex_files.begin();
+
+  // Remember this for next time this class is used.
+  PersistentClassIndex index(oat_index, dex_index, class_def_index);
+  class_map_.insert(std::pair<mirror::Class*, PersistentClassIndex>(klass, index));
+
+  return index;
+}
+
+static void MergeInvokes(OatTableManager& oat_table,
+                         OneMethod* method_info,
+                         OneMethod* file_method_info,
+                         bool zero_counters)
+    SHARED_REQUIRES(Locks::mutator_lock_) {
+  for (uint32_t i = 0; i < method_info->num_method_invokes; i++) {
+    OneCallSite* call_site = method_info->CallSiteAt(i);
+    OneCallSite* file_call_site = file_method_info->CallSiteAt(i);
+    for (int j = 0; j < OneCallSite::kNumInvokeTargets; j++) {
+      mirror::Class* klass = call_site->targets[j].klass.Read();
+      if (klass == nullptr) {
+        // There are no more slots to check.
+        break;
+      }
+
+      // Handle(Ignore) known problems.
+      if (klass->GetDexCache() == nullptr) {
+        // TODO: Handle this case.
+        // This is a builtin class type, such as byte[] or java.lang.Object[],
+        // And there is no dex file associated with it.  Ignore for now
+        VLOG(exact_profiler) << "Missing dex cache for class: " << PrettyDescriptor(klass);
+        continue;
+      }
+      if (klass->GetDexFile().GetOatDexFile() == nullptr) {
+        // TODO: Figure this out!
+        // There is no OAT file associated with the Dex file. Ignore for now
+        VLOG(exact_profiler) << "Missing OAT dex file for class: " << PrettyDescriptor(klass);
+        continue;
+      }
+
+      PersistentClassIndex class_index = oat_table.AddClassType(klass);
+      // Is this class already known?
+      bool seen_class = false;
+      int k;
+      uint32_t new_count = call_site->targets[j].count;
+      int smallest_index = 0;
+      uint32_t smallest_count = file_call_site->targets[0].count;
+      for (k = 0; k < OneCallSite::kNumInvokeTargets; k++) {
+        uint32_t old_count = file_call_site->targets[k].count;
+        PersistentClassIndex old_class_index = file_call_site->targets[k].class_index;
+        if (old_class_index.IsNull()) {
+          // Slot is empty.  No more types can be present.
+          break;
+        }
+
+        if (class_index == old_class_index) {
+          seen_class = true;
+          if (std::numeric_limits<OneInvoke::CountType>::max() - old_count > new_count) {
+            file_call_site->targets[k].count += new_count;
+          } else {
+            file_call_site->targets[k].count = std::numeric_limits<OneInvoke::CountType>::max();
+          }
+          break;
+        }
+
+        // Remember the smallest index, in case we need it later.
+        if (old_count < smallest_count) {
+          smallest_index = k;
+          smallest_count = old_count;
+        }
+      }
+      if (!seen_class) {
+        // This is a new class type.  Should we add it to the list?
+        if (k == OneCallSite::kNumInvokeTargets) {
+          DCHECK(!file_call_site->targets[k - 1].class_index.IsNull());
+          DCHECK(!file_call_site->targets[smallest_index].class_index.IsNull());
+          // There are no more free slots in the invoke type list.  Replace the
+          // smallest index if we are larger than it.
+          if (new_count > smallest_count) {
+            file_call_site->targets[smallest_index].class_index = class_index;
+            file_call_site->targets[smallest_index].count = new_count;
+          }
+        } else {
+          // There is still space for a new class type.
+          DCHECK(file_call_site->targets[k].class_index.IsNull());
+          file_call_site->targets[k].class_index = class_index;
+          file_call_site->targets[k].count = new_count;
+        }
+      }
+      if (zero_counters) {
+        call_site->targets[j].count = 0;
+      }
+    }
+  }
+}
+
 static void UpdateOneProfileFile(ExactProfileFile* hdr,
                                  ExactProfileFile* file_hdr,
+                                 OatTableManager& oat_table,
                                  char *profile_file_name,
                                  bool zero_counters) {
   if (hdr->version != file_hdr->version) {
@@ -670,12 +982,13 @@ static void UpdateOneProfileFile(ExactProfileFile* hdr,
   // Handle each Dex file.
   char *base = reinterpret_cast<char*>(hdr);
   char *file_base = reinterpret_cast<char*>(file_hdr);
-  OneDexFile* dex_files = reinterpret_cast<OneDexFile*>(base + sizeof(ExactProfileFile));
-  OneDexFile* file_dex_files = reinterpret_cast<OneDexFile*>(file_base + sizeof(ExactProfileFile));
+  OneDexFile* dex_files = hdr->dex_info;
+  OneDexFile* file_dex_files = file_hdr->dex_info;
 
   VLOG(exact_profiler) << "Total number of counters = " << hdr->total_num_counters;
   VLOG(exact_profiler) << "Total number of methods = " << hdr->total_num_methods;
 
+  ReaderMutexLock mu(Thread::Current(), *Locks::mutator_lock_);
   for (uint32_t i = 0; i < hdr->num_dex_files; i++) {
     OneDexFile& df = dex_files[i];
     OneDexFile& file_df = file_dex_files[i];
@@ -687,6 +1000,7 @@ static void UpdateOneProfileFile(ExactProfileFile* hdr,
       LOG(WARNING) << "Number of methods mismatch on profile file '" << profile_file_name << ", dex file index: " << i;
       return;
     }
+
     for (uint32_t j = 0; j < df.num_methods; j++) {
       DCHECK_EQ(index_table[j], file_index_table[j]);
       DCHECK_EQ(index_table[j], reinterpret_cast<char*>(method_info) - base);
@@ -707,15 +1021,13 @@ static void UpdateOneProfileFile(ExactProfileFile* hdr,
           }
         }
       }
+
+      // Check on the invoke types.
+      MergeInvokes(oat_table, method_info, file_method_info, zero_counters);
+
       // Bump to next method.
-      method_info =
-        reinterpret_cast<OneMethod*>(
-            reinterpret_cast<char *>(method_info) +
-               sizeof(OneMethod) + method_info->num_blocks * sizeof(OneMethod::CountType));
-      file_method_info =
-        reinterpret_cast<OneMethod*>(
-            reinterpret_cast<char *>(file_method_info) +
-               sizeof(OneMethod) + file_method_info->num_blocks * sizeof(OneMethod::CountType));
+      method_info = method_info->Next();
+      file_method_info = file_method_info->Next();
     }
   }
 }
@@ -749,10 +1061,46 @@ void ExactProfiler::UpdateProfileFiles(SafeMap<const OatFile*, ExactProfileFile*
       } else {
         // Update the information in the file.
         ExactProfileFile *file_hdr = reinterpret_cast<ExactProfileFile*>(memmap_addr);
-        UpdateOneProfileFile(hdr, file_hdr, *profile_file_name, zero_counters);
+        OatTableManager oat_table(file_hdr);
+        UpdateOneProfileFile(hdr, file_hdr, oat_table, *profile_file_name, zero_counters);
 
-        // And finish up.
-        munmap(memmap_addr, prof_stat.st_size);
+
+        // Update the OAT location information, if needed.
+        if (!oat_table.IsEmpty() && oat_table.Updated()) {
+          // For now, just re-write the tables each time.
+          // Ensure that we don't mess up due to mapped pages, as we may be
+          // overwriting part of the file which was mmap'ed.
+          DCHECK_NE(file_hdr->variable_start_offset, 0U);
+          DCHECK_EQ(file_hdr->variable_start_offset % getpagesize(), 0U);
+
+          // Update the offsets to our areas.
+          const std::vector<OneOatIndex>& oats = oat_table.GetOatIndicies();
+          size_t tab_size = sizeof(OneOatIndex) * oats.size();
+          file_hdr->offset_to_oat_table = file_hdr->variable_start_offset;
+          file_hdr->offset_to_oat_string_table =
+            file_hdr->offset_to_oat_table + sizeof(OatTable) + tab_size;
+          // We no longer need the memory mapped image of the file. This will write
+          // any changes to disk.
+          ::lseek(fd, file_hdr->variable_start_offset, SEEK_SET);
+          munmap(memmap_addr, prof_stat.st_size);
+
+          // First write the OAT table.
+          OatTable oat_tab;
+          oat_tab.num_oat_locations = oats.size();
+          oat_tab.num_allocated_oat_locations = oat_tab.num_oat_locations;
+          (void) ::write(fd, &oat_tab, sizeof(oat_tab));
+          (void) ::write(fd, &oats[0], tab_size);
+
+          const std::vector<char>& strings = oat_table.GetStringTable();
+          OatLocationStringTable string_tab;
+          string_tab.num_string_chars = strings.size();
+          string_tab.num_allocated_string_chars = string_tab.num_string_chars;
+          (void) ::write(fd, &string_tab, sizeof(string_tab));
+          (void) ::write(fd, &strings[0], string_tab.num_string_chars);
+        } else {
+          // We no longer need the memory mapped image of the file.
+          munmap(memmap_addr, prof_stat.st_size);
+        }
       }
     } else {
       LOG(WARNING) << "mmap of profile file '" << *profile_file_name << "' failed";
@@ -840,7 +1188,6 @@ void ExactProfiler::AllocateProfileCounters(ExactProfileFile* hdr,
     ArtMethod* method = mirror::DexCache::GetElementPtrSize<ArtMethod*>(art_methods, j, ptr_size);
     uint32_t method_idx = method->GetDexMethodIndex();
     std::pair<const DexFile*, uint32_t> method_ref(dex_file, method_idx);
-    uint32_t counters_size = prof_method->num_blocks * sizeof(OneMethod::CountType);
 
     // Use the counters in the ExactProfile for this Method.
     auto it = prof_counters.find(method_ref);
@@ -853,9 +1200,8 @@ void ExactProfiler::AllocateProfileCounters(ExactProfileFile* hdr,
     }
 
     // And bump to the next method.
-    prof_method = reinterpret_cast<OneMethod*>(
-        reinterpret_cast<char *>(prof_method) + sizeof(OneMethod) + counters_size);
-    }
+    prof_method = prof_method->Next();
+  }
 }
 
 class ExactProfileSaver {
@@ -1238,7 +1584,7 @@ OneMethod* ExactProfiler::FindMethodCounts(HGraph* graph) {
   for (auto prof : existing_profiles_) {
     // Try to match the dex file name.
     char *base = reinterpret_cast<char*>(prof);
-    OneDexFile* dex_files = reinterpret_cast<OneDexFile*>(base + sizeof(ExactProfileFile));
+    OneDexFile* dex_files = prof->dex_info;
     for (uint32_t i = 0; i < prof->num_dex_files; i++) {
       OneDexFile& df = dex_files[i];
 #if MORE_DEBUG
@@ -1275,6 +1621,77 @@ OneMethod* ExactProfiler::FindMethodCounts(HGraph* graph) {
     }
   }
   return nullptr;
+}
+
+ExactProfiler* ExactProfiler::FindExactProfiler(std::vector<std::unique_ptr<ExactProfiler>>& eps,
+                                                HGraph* graph) {
+  if (eps.size() == 1) {
+    return eps[0].get();
+  }
+
+  // Multiple OAT files.  Look for a match.
+  // Have we seen this DexFile before?
+  const DexFile& dex_file = graph->GetDexFile();
+  static Mutex finder_lock("exact profile finder");
+  static std::map<const DexFile*, ExactProfiler*> map;
+  MutexLock mu(nullptr, finder_lock);
+  auto it = map.find(&dex_file);
+  if (it != map.end()) {
+    return it->second;
+  }
+
+  for (uint32_t i = 0, e = eps.size(); i < e; i++) {
+    if (eps[i]->ContainsDexFile(dex_file)) {
+      ExactProfiler* ep = eps[i].get();
+      map.insert(std::pair<const DexFile*, ExactProfiler*>(&dex_file, ep));
+      return ep;
+    }
+  }
+
+  // Remember that we don't know about it for next time.
+  map.insert(std::pair<const DexFile*, ExactProfiler*>(&dex_file, nullptr));
+  return nullptr;
+}
+
+void ExactProfiler::SetContainsDexFile(const DexFile* dex_file)
+    REQUIRES(!method_lock_) {
+  MutexLock mu(nullptr, method_lock_);
+  dex_files_.insert(dex_file);
+}
+
+bool ExactProfiler::ContainsDexFile(const DexFile& dex_file)
+    NO_THREAD_SAFETY_ANALYSIS {
+  MutexLock mu(nullptr, method_lock_);
+  return dex_files_.find(&dex_file) != dex_files_.end();
+}
+
+void ExactProfiler::VisitRoots(SafeMap<const OatFile*, ExactProfileFile*>& profiles,
+                               RootVisitor* visitor)
+    NO_THREAD_SAFETY_ANALYSIS {
+  VLOG(exact_profiler) << "ExactProfiler::VisitRoots() Start";
+  RootInfo root_info(kRootUnknown);
+  for (auto& it : profiles) {
+    ExactProfileFile* hdr = it.second;
+    char *base = reinterpret_cast<char*>(hdr);
+    OneDexFile* dex_files = hdr->dex_info;
+
+    for (uint32_t i = 0; i < hdr->num_dex_files; i++) {
+      OneDexFile& df = dex_files[i];
+      OneMethod* method_info = reinterpret_cast<OneMethod*>(base + df.base_of_methods);
+      for (uint32_t j = 0; j < df.num_methods; j++) {
+        for (uint32_t k = 0; k < method_info->num_method_invokes; k++) {
+          OneCallSite* call_site = method_info->CallSiteAt(k);
+          for (int l = 0; l < OneCallSite::kNumInvokeTargets; l++) {
+            call_site->targets[l].klass.VisitRootIfNonNull(visitor, root_info);
+          }
+        }
+
+        // Bump to next method.
+        method_info = method_info->Next();
+      }
+    }
+  }
+  VLOG(exact_profiler) << "ExactProfiler::VisitRoots() End";
 }
 
 }  // namespace art

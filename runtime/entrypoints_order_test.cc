@@ -333,7 +333,10 @@ class EntrypointsOrderTest : public CommonRuntimeTest {
     EXPECT_OFFSET_DIFFNP(QuickEntryPoints, pJniMethodStartSynchronizedFromCode,
                          pReturnProfilingBuffer, sizeof(void*));
 
-    CHECKED(OFFSETOF_MEMBER(QuickEntryPoints, pReturnProfilingBuffer)
+    EXPECT_OFFSET_DIFFNP(QuickEntryPoints, pReturnProfilingBuffer,
+                         pProfileInvoke, sizeof(void*));
+
+    CHECKED(OFFSETOF_MEMBER(QuickEntryPoints, pProfileInvoke)
             + sizeof(void*) == sizeof(QuickEntryPoints), QuickEntryPoints_all);
   }
 };

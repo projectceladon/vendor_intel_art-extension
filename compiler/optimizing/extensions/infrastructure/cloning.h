@@ -181,6 +181,7 @@ class HInstructionCloner : public HGraphVisitor {
   void VisitXor(HXor* instr) OVERRIDE;
   void VisitConstant(HConstant* instr) OVERRIDE { VisitInstruction(instr); }
   void VisitX86SelectValue(HX86SelectValue* instr) OVERRIDE;
+  void VisitX86ProfileInvoke(HX86ProfileInvoke* instr) OVERRIDE;
 
   // TODO: fix FakeString.
 

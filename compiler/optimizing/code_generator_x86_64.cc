@@ -7326,6 +7326,30 @@ void InstructionCodeGeneratorX86_64::VisitX86IncrementExecutionCount(
   __ addq(Address(count_array, instr->GetBlockNumber() * sizeof(uint64_t)), Immediate(1));
 }
 
+void LocationsBuilderX86_64::VisitX86ProfileInvoke(HX86ProfileInvoke* instr) {
+  LocationSummary* locations =
+      new (GetGraph()->GetArena()) LocationSummary(instr, LocationSummary::kCall);
+  InvokeRuntimeCallingConvention calling_convention;
+  // Pass ArtMethod* in argument register 0.
+  locations->SetInAt(0, Location::RegisterLocation(calling_convention.GetRegisterAt(0)));
+  // Pass Thread* in argument register 1.
+  locations->AddTemp(Location::RegisterLocation(calling_convention.GetRegisterAt(1)));
+  // Pass index in argument register 2.
+  locations->AddTemp(Location::RegisterLocation(calling_convention.GetRegisterAt(2)));
+  // Pass Object* in argument register 3.
+  locations->SetInAt(1, Location::RegisterLocation(calling_convention.GetRegisterAt(3)));
+}
+
+void InstructionCodeGeneratorX86_64::VisitX86ProfileInvoke(HX86ProfileInvoke* instr) {
+  LocationSummary* locations = instr->GetLocations();
+  __ gs()->movq(locations->GetTemp(0).AsRegister<CpuRegister>(),
+                Address::Absolute(Thread::SelfOffset<8>(), true));
+  // Index into argument register 2.
+  codegen_->Load32BitValue(locations->GetTemp(1).AsRegister<CpuRegister>(), instr->GetIndex());
+  __ gs()->call(
+      Address::Absolute(QUICK_ENTRYPOINT_OFFSET(kX86_64WordSize, pProfileInvoke), true));
+}
+
 /**
  * Class to handle late fixup of offsets into constant area.
  */

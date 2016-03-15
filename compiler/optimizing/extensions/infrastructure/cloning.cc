@@ -798,4 +798,19 @@ void HInstructionCloner::VisitX86SelectValue(HX86SelectValue* instr) {
   }
 }
 
+void HInstructionCloner::VisitX86ProfileInvoke(HX86ProfileInvoke* instr) {
+  if (cloning_enabled_) {
+    HInstruction* current_method, *object;
+    OverwriteAllowanceCheck(instr);
+    GetInputsForBinary(instr, &current_method, &object);
+    DCHECK(current_method->IsCurrentMethod());
+    HX86ProfileInvoke* clone =
+        new (arena_) HX86ProfileInvoke(instr->GetIndex(),
+                                       current_method->AsCurrentMethod(),
+                                       object,
+                                       instr->GetDexPc());
+    orig_to_clone_.Overwrite(instr, clone);
+  }
+}
+
 }  // namespace art

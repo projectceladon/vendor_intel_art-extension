@@ -37,9 +37,11 @@ void HInsertProfiling::Run() {
 
   // Walk the blocks, and insert profiling code.  Do this for original blocks
   // formed from the Dex code only.
+  // Also remember all the virtual/interface invokes and dex_pcs.
   std::set<uint32_t> dex_pcs_seen;
   HX86ReturnExecutionCountTable* count_table = nullptr;
   int32_t max_profiled_block = -1;
+  std::map<uint32_t, HInvoke*> virtual_invoke_map;
   for (HBasicBlock* block : graph_->GetBlocks()) {
     if (block == nullptr) {
       continue;
@@ -50,6 +52,30 @@ void HInsertProfiling::Run() {
     if (block == graph_->GetExitBlock()) {
       // We don't profile the exit block.
       continue;
+    }
+
+    for (HInstructionIterator inst_it(block->GetInstructions()); !inst_it.Done(); inst_it.Advance()) {
+      HInstruction* insn = inst_it.Current();
+      switch(insn->GetKind()) {
+        case HInstruction::kInvokeUnresolved:
+          switch (insn->AsInvokeUnresolved()->GetOriginalInvokeType()) {
+            case kVirtual:
+            case kInterface:
+              // Will fall through to code below to add instrumentation.
+              break;
+            default:
+              // Ignore this invoke.
+              continue;
+          }
+          FALLTHROUGH_INTENDED;
+        case HInstruction::kInvokeVirtual:
+        case HInstruction::kInvokeInterface:
+          virtual_invoke_map.insert(
+              std::pair<uint32_t, HInvoke*>(insn->GetDexPc(), insn->AsInvoke()));
+          break;
+        default:
+          break;
+      }
     }
 
     // We know we have to profile block 0 and 1, and they will have a duplicate dex_pc.
@@ -131,7 +157,28 @@ void HInsertProfiling::Run() {
     dex_pcs_seen.insert(dex_pc);
   }
 
-  GRAPH_TO_GRAPH_X86(graph_)->SetNumProfiledBlocks(max_profiled_block+1);
+  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  graph->SetNumProfiledBlocks(max_profiled_block+1);
+
+  if (!virtual_invoke_map.empty()) {
+    // Generate the profiling information for virtual invokes.
+    int index = 0;
+    ArenaVector<uint16_t>& dex_pcs = graph->GetProfiledInvokesDexPcs();
+    dex_pcs.reserve(virtual_invoke_map.size());
+    for (auto& it : virtual_invoke_map) {
+      uint32_t dex_pc = it.first;
+      HInvoke* insn = it.second;
+      HX86ProfileInvoke* prof_insn = 
+          new(arena) HX86ProfileInvoke(index,
+                                       graph_->GetCurrentMethod(),
+                                       insn->InputAt(0),
+                                       dex_pc);
+      insn->GetBlock()->InsertInstructionBefore(prof_insn, insn);
+      dex_pcs.push_back(dex_pc);
+      index++;
+    }
+  }
+
   PRINT_PASS_OSTREAM_MESSAGE(this, "End " << GetMethodName(graph_));
 }
 

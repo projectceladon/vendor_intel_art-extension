@@ -43,7 +43,8 @@ class HGraph_X86 : public HGraph {
       bool osr = false, int start_instruction_id = 0) :
           HGraph(arena, dex_file, method_idx, should_generate_constructor_barrier,
           instruction_set, invoke_type, debuggable, osr, start_instruction_id),
-          loop_information_(nullptr) {
+          loop_information_(nullptr),
+          profiled_invokes_(arena->Adapter()) {
 #ifndef NDEBUG
         down_cast_checker_ = GRAPH_MAGIC;
 #endif
@@ -178,6 +179,23 @@ class HGraph_X86 : public HGraph {
     num_profiled_blocks_ = val;
   }
 
+  /**
+   * @brief Are there any saved invoke dex pcs?
+   * @ereturns 'true' if there are virtual/interface invokes in the method.
+   */
+  bool HasProfiledInvokesDexPcs() const {
+    return !profiled_invokes_.empty();
+  }
+
+  /**
+   * @brief Return the saved invoke dex pcs list.
+   * @returns the vector of saved virtual/interface invokes.  Will create the
+   * list if not already created.
+   */
+  ArenaVector<uint16_t>& GetProfiledInvokesDexPcs() {
+    return profiled_invokes_;
+  }
+
  protected:
 #ifndef NDEBUG
   uint32_t down_cast_checker_;
@@ -189,6 +207,11 @@ class HGraph_X86 : public HGraph {
    * @brief Used to record the maximum block number that contains exact profiling.
    */
   int num_profiled_blocks_ = 0;
+
+  /**
+   * @brief Used to record the dex_pcs for virtual/interface invoke calls.
+   */
+  ArenaVector<uint16_t> profiled_invokes_;
 };
 
 /**

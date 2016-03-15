@@ -2572,6 +2572,7 @@ void Thread::DumpThreadOffset(std::ostream& os, uint32_t offset) {
   QUICK_ENTRY_POINT_INFO(pJniMethodStartFromCode)
   QUICK_ENTRY_POINT_INFO(pJniMethodStartSynchronizedFromCode)
   QUICK_ENTRY_POINT_INFO(pReturnProfilingBuffer)
+  QUICK_ENTRY_POINT_INFO(pProfileInvoke)
 #undef QUICK_ENTRY_POINT_INFO
 
   os << offset;

@@ -105,6 +105,91 @@ struct ProfDumpArgs : public CmdlineArgs {
   const char* prof_filename_ = nullptr;
 };
 
+static void ComputeClassNames(ExactProfileFile* hdr,
+                              std::map<PersistentClassIndex, std::string>& map) {
+  char* base = reinterpret_cast<char*>(hdr);
+  if (hdr->offset_to_oat_table == 0) {
+    // No Oat Table -> no invokes present in the file.
+    return;
+  }
+  DCHECK_NE(hdr->offset_to_oat_table, 0U);
+  DCHECK_NE(hdr->offset_to_oat_string_table, 0U);
+  OatTable* oat_table = reinterpret_cast<OatTable*>(base + hdr->offset_to_oat_table);
+  OatLocationStringTable* string_table =
+      reinterpret_cast<OatLocationStringTable*>(base + hdr->offset_to_oat_string_table);
+  // Collect all the OAT files we need.
+  std::vector<OatFile*> oat_table_files;
+  std::string error_msg;
+  for (uint32_t i = 0; i < oat_table->num_oat_locations; i++) {
+    OneOatIndex& oat_index = oat_table->oat_locations[i];
+    char *oat_name = &string_table->strings[oat_index.offset_of_oat_location_string];
+    OatFile* oat =
+        OatFile::Open(oat_name, oat_name, nullptr, nullptr, false, nullptr, &error_msg);
+    oat_table_files.push_back(oat);
+    if (oat == nullptr) {
+      std::cerr << "Unable to open OAT file: " << oat_name << ": " << error_msg << '\n';
+    }
+  }
+
+  // Now walk the invokes and do the mapping.
+  typedef std::pair<uint8_t, uint8_t> OatDexIndex;
+  std::map<OatDexIndex, std::unique_ptr<const DexFile>> oat_dex_map;
+  OneDexFile* dex_files = hdr->dex_info;
+  for (uint32_t i = 0; i < hdr->num_dex_files; i++) {
+    OneDexFile& df = dex_files[i];
+    OneMethod* method_info = reinterpret_cast<OneMethod*>(base + df.base_of_methods);
+
+    for (uint32_t j = 0; j < df.num_methods; j++) {
+      for (uint32_t k = 0; k < method_info->num_method_invokes; k++) {
+        OneCallSite* call_site = method_info->CallSiteAt(k);
+        for (int l = 0; l < OneCallSite::kNumInvokeTargets; l++) {
+          PersistentClassIndex& invoke = call_site->targets[l].class_index;
+          if (invoke.IsNull()) {
+            break;
+          }
+          if (map.find(invoke) != map.end()) {
+            continue;
+          }
+          OatDexIndex odi(invoke.OatIndex(), invoke.DexIndex());
+          auto it = oat_dex_map.find(odi);
+          const DexFile* dex_file = nullptr;
+          OatFile* oat_file = oat_table_files.at(invoke.OatIndex());
+          if (it != oat_dex_map.end()) {
+            dex_file = it->second.get();
+          } else if (oat_file != nullptr) {
+            // Need to look it up.
+            const OatDexFile* oat_dex_file = oat_file->GetOatDexFiles().at(invoke.DexIndex());
+            if (oat_dex_file != nullptr) {
+              std::unique_ptr<const DexFile> dex_file_ptr =
+                  oat_dex_file->OpenDexFile(&error_msg);
+              dex_file = dex_file_ptr.get();
+              oat_dex_map.insert(std::make_pair(odi,std::move(dex_file_ptr)));
+            }
+          }
+          if (dex_file == nullptr) {
+            std::ostringstream ss;
+            ss << '<' << static_cast<int>(invoke.OatIndex())
+               << ':' << static_cast<int>(invoke.DexIndex())
+               << ':' << static_cast<int>(invoke.DexIndex()) << '>';
+            map.insert(std::make_pair(invoke, ss.str()));
+          } else {
+            std::string class_name =
+                std::string(dex_file->StringByTypeIdx(invoke.ClassDefIndex()));
+            class_name = PrettyDescriptor(class_name.c_str());
+            map.insert(std::make_pair(invoke, class_name));
+          }
+        }
+      }
+
+      // Bump to next method.
+      method_info = method_info->Next();
+    }
+  }
+  for (auto oat_file : oat_table_files) {
+    delete oat_file;
+  }
+}
+
 static int DumpProfile(const ProfDumpArgs* args) {
   ExactProfileFile* hdr;
   const char* fname;
@@ -112,6 +197,7 @@ static int DumpProfile(const ProfDumpArgs* args) {
   std::string error_msg;
   OatFile* oat_file = nullptr;
 
+  std::map<PersistentClassIndex, std::string> class_name_map;
   if (args->prof_filename_ != nullptr) {
     DCHECK(args->oat_filename_ == nullptr);
     fname = args->prof_filename_;
@@ -138,6 +224,9 @@ static int DumpProfile(const ProfDumpArgs* args) {
       return EXIT_FAILURE;
     }
     no_oat_file = true;
+    if (!args->method_counts_only_) {
+      ComputeClassNames(hdr, class_name_map);
+    }
   } else {
     fname = args->oat_filename_;
     oat_file = OatFile::Open(fname, fname, nullptr, nullptr, false, nullptr, &error_msg);
@@ -150,6 +239,13 @@ static int DumpProfile(const ProfDumpArgs* args) {
     if (hdr == nullptr) {
       std::cerr << "Unable to open matching profile file for OAT file: " << fname << '\n';
       return EXIT_FAILURE;
+    }
+    if (!args->method_counts_only_ && hdr->offset_to_oat_table != 0U) {
+      // Unfortunately, we have a problem with multiple open OAT files.
+      delete oat_file;
+      ComputeClassNames(hdr, class_name_map);
+      oat_file = OatFile::Open(fname, fname, nullptr, nullptr, false, nullptr, &error_msg);
+      DCHECK(oat_file != nullptr);
     }
   }
 
@@ -172,10 +268,27 @@ static int DumpProfile(const ProfDumpArgs* args) {
     std::cout << "Number of dex files: " << hdr->num_dex_files << '\n';
     std::cout << "Total Number of counters: " << hdr->total_num_counters << '\n';
     std::cout << "Total Number of methods: " << hdr->total_num_methods << '\n';
+    std::cout << "Offset to oat table: " << hdr->offset_to_oat_table << '\n';
+    std::cout << "Offset to oat string table: " << hdr->offset_to_oat_string_table << '\n';
+    std::cout << "Variable start offset: 0x" << std::hex
+              << hdr->variable_start_offset << std::dec << '\n';
+    if (hdr->offset_to_oat_table != 0U) {
+      DCHECK_NE(hdr->offset_to_oat_string_table, 0U);
+      OatTable* oat_table = reinterpret_cast<OatTable*>(base + hdr->offset_to_oat_table);
+      OatLocationStringTable* string_table =
+          reinterpret_cast<OatLocationStringTable*>(base + hdr->offset_to_oat_string_table);
+      for (uint32_t i = 0; i < oat_table->num_oat_locations; i++) {
+        OneOatIndex& oat_index = oat_table->oat_locations[i];
+        char *oat_name = &string_table->strings[oat_index.offset_of_oat_location_string];
+        std::cout << "Oat index(" << i << "): " << oat_name
+                  << ", checksum = 0x" << std::hex << oat_index.oat_checksum
+                  << std::dec << '\n';
+        }
+    }
   }
 
   // Dump each dex file.
-  OneDexFile* dex_files = reinterpret_cast<OneDexFile*>(base + sizeof(ExactProfileFile));
+  OneDexFile* dex_files = hdr->dex_info;
   for (uint32_t i = 0; i < hdr->num_dex_files; i++) {
     OneDexFile& df = dex_files[i];
     std::unique_ptr<const DexFile> real_dex_file;
@@ -238,39 +351,63 @@ static int DumpProfile(const ProfDumpArgs* args) {
           std::cout << method_name << '\n';
         }
       } else {
-        for (int k = 0; k < method_info->num_blocks; k++) {
+        for (uint32_t k = 0; k < method_info->num_blocks; k++) {
           if (method_info->counts[k]) {
             if (!header_printed) {
               header_printed = true;
-              std::cout << "Method " << method_name << ": num_blocks = " << method_info->num_blocks;
-              if (method_info->offset_to_per_method_data) {
-                std::cout << ", per method offset = " << method_info->offset_to_per_method_data;
-              }
-              std::cout << '\n';
+              std::cout << "Method " << method_name << ": num_blocks = "
+                        << method_info->num_blocks << ", num_method_invokes = "
+                        << method_info->num_method_invokes << '\n';
             }
             all_zero = false;
             std::cout << "  Block " << k << " count: " << method_info->counts[k] << '\n';
           }
         }
         if (all_zero && args->show_zero_counts_) {
-          std::cout << "Method " << method_name << ": num_blocks = " << method_info->num_blocks;
-          if (method_info->offset_to_per_method_data) {
-            std::cout << ", per method offset = " << method_info->offset_to_per_method_data;
+          std::cout << "Method " << method_name << ": num_blocks = "
+                    << method_info->num_blocks << ", num_method_invokes = "
+                    << method_info->num_method_invokes
+                    << "\n  All block counts are zero\n";
+        }
+
+        // If there are any BB counts, also dump invoke types.
+        if (method_info->num_method_invokes > 0 &&
+            (args->show_zero_counts_ || !all_zero)) {
+          for (uint32_t l = 0; l < method_info->num_method_invokes; l++) {
+            OneCallSite* call_site = method_info->CallSiteAt(l);
+            bool hdr_printed = false;
+            for (int m = 0; m < OneCallSite::kNumInvokeTargets; m++) {
+              OneInvoke& invoke = call_site->targets[m];
+              if (invoke.class_index.IsNull()) {
+                break;
+              }
+              if (!hdr_printed) {
+                hdr_printed = true;
+                std::cout << "  Dex pc: 0x" << std::hex << call_site->dex_pc << std::dec;
+              }
+              auto it = class_name_map.find(invoke.class_index);
+              DCHECK(it != class_name_map.end());
+              std::cout << ' ' << it->second << " count: " << invoke.count;
+            }
+            if (hdr_printed) {
+              std::cout << '\n';
+            }
           }
-          std::cout << "\n  All block counts are zero\n";
         }
       }
 
       if (args->dump_and_zero_) {
         // Zero the counts.  We will update the copy on disk later.
         memset(method_info->counts, '\0', method_info->num_blocks * sizeof(OneMethod::CountType));
+        // Zero the invoke classes/counts.
+        for (uint16_t site = 0; site < method_info->num_method_invokes; site++) {
+          OneCallSite* call_site = method_info->CallSiteAt(site);
+          memset(call_site->targets, '\0', sizeof(call_site->targets));
+        }
       }
 
       // Bump to next method.
-      method_info =
-        reinterpret_cast<OneMethod*>(
-            reinterpret_cast<char *>(method_info) +
-               sizeof(OneMethod) + method_info->num_blocks * sizeof(OneMethod::CountType));
+      method_info = method_info->Next();
     }
   }
 

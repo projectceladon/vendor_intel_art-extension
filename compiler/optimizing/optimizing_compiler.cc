@@ -889,12 +889,13 @@ CodeGenerator* OptimizingCompiler::TryCompile(ArenaAllocator* arena,
                      &pass_observer,
                      &handles);
 
-    ExactProfiler* ep = compiler_driver->GetExactProfiler();
-    if (ep != nullptr) {
-      int num_profiled_blocks = GRAPH_TO_GRAPH_X86(graph)->GetNumProfiledBlocks();
-      if (num_profiled_blocks > 0) {
-        // We may be using the profile without generating a new one.
-        ep->RegisterMethod(graph->GetDexFile(), graph->GetMethodIdx(), num_profiled_blocks);
+    std::vector<std::unique_ptr<ExactProfiler>>* eps =
+        compiler_driver->GetExactProfilers();
+    if (eps != nullptr) {
+      // We need the right ExactProfiler for this method.
+      ExactProfiler* ep = ExactProfiler::FindExactProfiler(*eps, graph);
+      if (ep != nullptr) {
+        ep->RegisterMethod(*GRAPH_TO_GRAPH_X86(graph));
       }
     }
 

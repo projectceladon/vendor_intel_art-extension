@@ -124,5 +124,6 @@ extern "C" void art_quick_throw_stack_overflow(void*);
 
 // Profiling entrypoints.
 extern "C" uint64_t* art_quick_return_profiling_buffer(art::ArtMethod*, art::Thread*);
+extern "C" void art_quick_profile_invoke(art::ArtMethod*, art::Thread*, uint32_t, art::mirror::Object*);
 
 #endif  // ART_RUNTIME_ENTRYPOINTS_QUICK_QUICK_DEFAULT_EXTERNS_H_

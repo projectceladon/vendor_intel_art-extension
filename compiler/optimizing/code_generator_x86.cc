@@ -7827,6 +7827,28 @@ void InstructionCodeGeneratorX86::VisitX86IncrementExecutionCount(
   __ adcl(Address(count_array, offset + 4), Immediate(0));
 }
 
+void LocationsBuilderX86::VisitX86ProfileInvoke(HX86ProfileInvoke* instr) {
+  LocationSummary* locations =
+      new (GetGraph()->GetArena()) LocationSummary(instr, LocationSummary::kCall);
+  InvokeRuntimeCallingConvention calling_convention;
+  locations->SetInAt(0, Location::RequiresRegister());
+  locations->SetInAt(1, Location::RequiresRegister());
+}
+
+void InstructionCodeGeneratorX86::VisitX86ProfileInvoke(HX86ProfileInvoke* instr) {
+  LocationSummary* locations = instr->GetLocations();
+  // Push object*.
+  __ pushl(locations->InAt(0).AsRegister<Register>());
+  // Push index.
+  __ pushl(Immediate(instr->GetIndex()));
+  // Push Thread::self.
+  __ fs()->pushl(Address::Absolute(Thread::SelfOffset<4>()));
+  // Push the Method*.
+  __ pushl(locations->InAt(0).AsRegister<Register>());
+  __ fs()->call(Address::Absolute(QUICK_ENTRYPOINT_OFFSET(kX86WordSize, pProfileInvoke)));
+  __ addl(ESP, Immediate(16));
+}
+
 /**
  * Class to handle late fixup of offsets into constant area.
  */

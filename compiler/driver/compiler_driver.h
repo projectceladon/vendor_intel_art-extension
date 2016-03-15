@@ -104,7 +104,7 @@ class CompilerDriver {
                  CumulativeLogger* timer,
                  int swap_fd,
                  const ProfileCompilationInfo* profile_compilation_info,
-                 ExactProfiler* exact_profiler_ = nullptr);
+                 std::vector<std::unique_ptr<ExactProfiler>>* exact_profilers = nullptr);
 
   ~CompilerDriver();
 
@@ -485,8 +485,8 @@ class CompilerDriver {
     return current_dex_to_dex_methods_;
   }
 
-  ExactProfiler* GetExactProfiler() const {
-    return exact_profiler_;
+  std::vector<std::unique_ptr<ExactProfiler>>* GetExactProfilers() const {
+    return exact_profilers_;
   }
 
  private:
@@ -727,6 +727,7 @@ class CompilerDriver {
   const BitVector* current_dex_to_dex_methods_;
 
   ExactProfiler* exact_profiler_;
+  std::vector<std::unique_ptr<ExactProfiler>>* exact_profilers_;
 
   friend class CompileClassVisitor;
 

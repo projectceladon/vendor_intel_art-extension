@@ -479,6 +479,29 @@ class HTrap : public HTemplateInstruction<0> {
   DISALLOW_COPY_AND_ASSIGN(HTrap);
 };
 
+// Remember the invoke target class for a virtual/interface invoke.
+class HX86ProfileInvoke : public HExpression<2> {
+ public:
+  HX86ProfileInvoke(uint32_t index,
+                    HCurrentMethod* current_method,
+                    HInstruction* object,
+                    uint32_t dex_pc)
+      : HExpression(Primitive::kPrimVoid, SideEffects::AllWritesAndReads(), dex_pc),
+        index_(index) {
+    SetRawInputAt(0, current_method);
+    SetRawInputAt(1, object);
+  }
+
+  uint32_t GetIndex() const { return index_; }
+
+  DECLARE_INSTRUCTION(X86ProfileInvoke);
+
+ private:
+  const uint32_t index_;
+
+  DISALLOW_COPY_AND_ASSIGN(HX86ProfileInvoke);
+};
+
 }  // namespace art
 
 #endif  // ART_COMPILER_OPTIMIZING_NODES_X86_H_

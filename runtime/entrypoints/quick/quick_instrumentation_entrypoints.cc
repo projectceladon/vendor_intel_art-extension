@@ -71,7 +71,19 @@ extern "C" TwoWordReturn artInstrumentationMethodExitFromCode(Thread* self, ArtM
   return return_or_deoptimize_pc;
 }
 
-extern "C" uint64_t* art_quick_return_profiling_buffer(art::ArtMethod* method, art::Thread* self)
+static void CantFindMethod(Runtime::ProfileBuffersMap& prof_counters,
+                           art::ArtMethod* method,
+                           uint32_t method_idx,
+                           const DexFile* dex_file)
+    SHARED_REQUIRES(Locks::mutator_lock_) {
+  LOG(INFO)  << "Entries in counters: " << prof_counters.size();
+  LOG(INFO)  << "Method*: " << method << ", idx = " << method_idx
+          << ", dex_file = " << dex_file << ", location = " << dex_file->GetLocation()
+          << ", dex_file checksum = 0x" << std::hex << dex_file->GetHeader().checksum_;
+  LOG(FATAL) << "Failed to locate counters for method: " << PrettyMethod(method, true);
+}
+
+static OneMethod* GetOneMethodFromArtMethod(art::ArtMethod* method, art::Thread* self)
     SHARED_REQUIRES(Locks::mutator_lock_) {
   Runtime::ProfileBuffersMap& prof_counters = Runtime::Current()->GetProfileBuffers();
   // Handle Proxies properly.
@@ -81,14 +93,62 @@ extern "C" uint64_t* art_quick_return_profiling_buffer(art::ArtMethod* method, a
   std::pair<const DexFile*, uint32_t> method_ref(dex_file, method_idx);
   MutexLock mu_prof(self, *Locks::profiler_lock_);
   auto it = prof_counters.find(method_ref);
-  if (it == prof_counters.end()) {
-    LOG(INFO)  << "Entries in counters: " << prof_counters.size();
-    LOG(INFO)  << "Method*: " << method << ", idx = " << method_idx
-            << ", dex_file = " << dex_file << ", location = " << dex_file->GetLocation()
-            << ", dex_file checksum = 0x" << std::hex << dex_file->GetHeader().checksum_;
-    LOG(FATAL) << "Failed to locate counters for method: " << PrettyMethod(method, true);
+  if (UNLIKELY(it == prof_counters.end())) {
+    // Do error dump out of line.
+    CantFindMethod(prof_counters, method, method_idx, dex_file);
+    UNREACHABLE();
   }
-  return it->second->counts;
+  return it->second;
+}
+
+extern "C" uint64_t* art_quick_return_profiling_buffer(art::ArtMethod* method, art::Thread* self)
+    SHARED_REQUIRES(Locks::mutator_lock_) {
+  OneMethod* info = GetOneMethodFromArtMethod(method, self);
+  DCHECK(info != nullptr);
+  return info->counts;
+}
+
+extern "C" void art_quick_profile_invoke(art::ArtMethod* method,
+                                         art::Thread* self,
+                                         uint32_t index,
+                                         art::mirror::Object* object)
+    SHARED_REQUIRES(Locks::mutator_lock_) {
+  OneMethod* info = GetOneMethodFromArtMethod(method, self);
+  DCHECK(info != nullptr);
+
+  // We now have the correct OneMethod.  Increment the correct counter.
+  DCHECK_LT(index, info->num_method_invokes);
+  OneCallSite* call_site = info->CallSiteAt(index);
+  mirror::Class* cls = object->GetClass();
+
+  for (size_t i = 0; i < OneCallSite::kNumInvokeTargets; ++i) {
+    OneInvoke* invoke = &call_site->targets[i];
+    mirror::Class* existing = invoke->klass.Read();
+    if (existing == cls) {
+      // Receiver type is already in the cache, increment the count.
+      uint32_t new_count = invoke->count + 1;
+
+      // Let us not overflow.
+      if (new_count != 0) {
+        invoke->count = new_count;
+      }
+      return;
+    } else if (existing == nullptr) {
+      // Cache entry is empty, try to put `cls` in it.
+      GcRoot<mirror::Class> expected_root(nullptr);
+      GcRoot<mirror::Class> desired_root(cls);
+      if (!reinterpret_cast<Atomic<GcRoot<mirror::Class>>*>(&invoke->klass)->
+              CompareExchangeStrongSequentiallyConsistent(expected_root, desired_root)) {
+        // Some other thread put a class in the cache, continue iteration starting at this
+        // entry in case the entry contains `cls`.
+        --i;
+      } else {
+        // We successfully set `cls`, just return.
+        invoke->count = 1;
+        return;
+      }
+    }
+  }
 }
 
 }  // namespace art

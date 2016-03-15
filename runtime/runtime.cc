@@ -1672,6 +1672,7 @@ void Runtime::VisitNonThreadRoots(RootVisitor* visitor) {
   pre_allocated_NoClassDefFoundError_.VisitRootIfNonNull(visitor, RootInfo(kRootVMInternal));
   verifier::MethodVerifier::VisitStaticRoots(visitor);
   VisitTransactionRoots(visitor);
+  ExactProfiler::VisitRoots(profiles_, visitor);
 }
 
 void Runtime::VisitNonConcurrentRoots(RootVisitor* visitor) {

@@ -86,6 +86,7 @@ void InitEntryPoints(JniEntryPoints* jpoints, QuickEntryPoints* qpoints) {
 
   // Profiling
   qpoints->pReturnProfilingBuffer = art_quick_return_profiling_buffer;
+  qpoints->pProfileInvoke = art_quick_profile_invoke;
 };
 
 }  // namespace art
