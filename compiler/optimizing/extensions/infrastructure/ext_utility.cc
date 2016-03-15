@@ -315,7 +315,9 @@ namespace art {
     for (HBasicBlock* back_block : loop->GetBackEdges()) {
       LOG(INFO) << "BackEdge " << back_block->GetBlockId();
     }
-    LOG(INFO) << "Exit " << loop->GetExitBlock()->GetBlockId();
+    if (loop->GetExitBlock() != nullptr) {
+      LOG(INFO) << "Exit " << loop->GetExitBlock()->GetBlockId();
+    }
 
     DumpBasicBlock("Pre-header", loop->GetPreHeader());
 

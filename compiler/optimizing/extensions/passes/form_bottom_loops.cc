@@ -461,15 +461,16 @@ void HFormBottomLoops::CloneInstructions(FBLContext& context,
     HInstruction* cloned_insn = cloner.GetClone(insn);
 
     // Add the cloned instruction to the back block.
-    DCHECK(cloned_insn != nullptr);
-    if (cloned_insn->GetBlock() == nullptr) {
-      back_block->AddInstruction(cloned_insn);
-      clones_.insert(cloned_insn);
+    if (cloned_insn != nullptr) {
+      if (cloned_insn->GetBlock() == nullptr) {
+        back_block->AddInstruction(cloned_insn);
+        clones_.insert(cloned_insn);
+      }
+
+      PRINT_PASS_OSTREAM_MESSAGE(this, "Clone " << insn << " to " << cloned_insn);
+
+      FixHeaderInsnUses(insn, cloned_insn, context);
     }
-
-    PRINT_PASS_OSTREAM_MESSAGE(this, "Clone " << insn << " to " << cloned_insn);
-
-    FixHeaderInsnUses(insn, cloned_insn, context);
   }
 
   HInstruction* if_insn = back_block->GetLastInstruction();
