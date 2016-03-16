@@ -1252,6 +1252,17 @@ LiveInterval* RegisterAllocator::SplitBetween(LiveInterval* interval, size_t fro
     block_to = header;
   }
 
+  // If we haven't changed block_to which is loop exit block, we can split interval
+  // outside the loop to let ConnectSibling spill in exit block instead of spilling
+  // in loop body.
+  const auto& predecessors = block_to->GetPredecessors();
+  if (liveness_.GetBlockFromPosition(to / 2) == block_to
+      && liveness_.GetInstructionFromPosition(to / 2) != nullptr
+      && predecessors.size() == 1u
+      && predecessors[0]->GetLoopInformation() != block_to->GetLoopInformation()) {
+    return Split(interval, to);
+  }
+
   // Split at the start of the found block, to piggy back on existing moves
   // due to resolution if non-linear control flow (see `ConnectSplitSiblings`).
   return Split(interval, block_to->GetLifetimeStart());
@@ -1630,7 +1641,7 @@ void RegisterAllocator::ConnectSiblings(LiveInterval* interval) {
             if (!loop_info->Contains(*successor)) {
               size_t successor_position = successor->GetFirstInstruction()->GetLifetimePosition();
               if (successor_position > current->GetStart() &&
-                  successor_position < current->GetFirstRange()->GetEnd()) {
+                  successor_position <= current->GetFirstRange()->GetEnd()) {
                 exit_blocks.push_back(successor);
               } else {
                 is_safe = false;
