@@ -456,20 +456,27 @@ void HFormBottomLoops::CloneInstructions(FBLContext& context,
                             !inst_it.Done();
                             inst_it.Advance()) {
     HInstruction* insn = inst_it.Current();
-    // Clone the instruction.
-    insn->Accept(&cloner);
-    HInstruction* cloned_insn = cloner.GetClone(insn);
 
-    // Add the cloned instruction to the back block.
-    if (cloned_insn != nullptr) {
-      if (cloned_insn->GetBlock() == nullptr) {
-        back_block->AddInstruction(cloned_insn);
-        clones_.insert(cloned_insn);
+    // Special case for HLoadClass, we want to clone it to back branch and
+    // the original node will go to pre-header which dominates the back
+    // branch, so instead of cloning we can use just original HLoadClass node.
+    if (insn->IsLoadClass()) {
+      cloner.AddCloneManually(insn, insn);
+    } else {
+      // Clone the instruction.
+      insn->Accept(&cloner);
+      HInstruction* cloned_insn = cloner.GetClone(insn);
+
+      // Add the cloned instruction to the back block.
+      if (cloned_insn != nullptr) {
+        if (cloned_insn->GetBlock() == nullptr) {
+          back_block->AddInstruction(cloned_insn);
+          clones_.insert(cloned_insn);
+          FixHeaderInsnUses(insn, cloned_insn, context);
+        }
+
+        PRINT_PASS_OSTREAM_MESSAGE(this, "Clone " << insn << " to " << cloned_insn);
       }
-
-      PRINT_PASS_OSTREAM_MESSAGE(this, "Clone " << insn << " to " << cloned_insn);
-
-      FixHeaderInsnUses(insn, cloned_insn, context);
     }
   }
 
