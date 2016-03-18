@@ -24,6 +24,7 @@
 #include "base/mutex.h"
 #include "garbage_collector.h"
 #include "gc_root.h"
+#include "gc/accounting/aging_table.h"
 #include "gc/accounting/heap_bitmap.h"
 #include "immune_spaces.h"
 #include "mirror/object_reference.h"
@@ -61,7 +62,7 @@ class SemiSpace : public GarbageCollector {
   // If true, use remembered sets in the generational mode.
   static constexpr bool kUseRememberedSet = true;
   explicit SemiSpace(Heap* heap, bool generational = false,
-                     const std::string& name_prefix = "", bool support_parallel = true);
+                     const std::string& name_prefix = "", bool need_aging_table = false, bool support_parallel = true);
 
   ~SemiSpace() {}
 
@@ -75,12 +76,14 @@ class SemiSpace : public GarbageCollector {
   void MarkReachableObjects()
       REQUIRES(Locks::mutator_lock_, Locks::heap_bitmap_lock_);
   virtual GcType GetGcType() const OVERRIDE {
-    return kGcTypePartial;
+    return need_aging_table_ ? kGcTypeYoung : kGcTypePartial;
   }
   virtual CollectorType GetCollectorType() const OVERRIDE {
     return generational_ ? kCollectorTypeGSS : kCollectorTypeSS;
   }
 
+  // Wake up suspended mutators due to allocation failures.
+  void NeedToWakeMutators();
   // Sets which space we will be copying objects to.
   void SetToSpace(space::ContinuousMemMapAllocSpace* to_space);
 
@@ -306,10 +309,6 @@ class SemiSpace : public GarbageCollector {
   // as a new garbage collector?
   const bool generational_;
 
-  // Used for the generational mode. the end/top of the bump
-  // pointer space at the end of the last collection.
-  uint8_t* last_gc_to_space_end_;
-
   // Used for the generational mode. During a collection, keeps track
   // of how many bytes of objects have been copied so far from the
   // bump pointer space to the non-moving space.
@@ -327,6 +326,7 @@ class SemiSpace : public GarbageCollector {
 
   // Used for generational mode. When true, we only collect the from_space_.
   bool collect_from_space_only_;
+  bool force_copy_all_ = false;
 
   // The space which we are promoting into, only used for GSS.
   space::ContinuousMemMapAllocSpace* promo_dest_space_;
@@ -355,6 +355,9 @@ class SemiSpace : public GarbageCollector {
   // Whether or not record root using seperate mark stack for parallel copying.
   bool marking_roots_;
 
+  // Whether or not we create the aging table to track the ages of living objects.
+  bool need_aging_table_;
+
   AtomicInteger work_chunks_created_;
   AtomicInteger work_chunks_deleted_;
   Atomic<size_t> bytes_promoted_parallel_;
@@ -367,7 +370,11 @@ class SemiSpace : public GarbageCollector {
   Atomic<size_t> fallback_bytes_parallel_;
   Atomic<size_t> fallback_objects_parallel_;
   Atomic<size_t> wasted_bytes_;
-  // Map stores the pair of thread and stack of the thread's roots.
+  accounting::AgingTable* from_age_table_;
+  accounting::AgingTable* to_age_table_;
+  size_t threshold_age_;
+
+// Map stores the pair of thread and stack of the thread's roots.
   ThreadRootStacksMap* thread_roots_stacks_;
   ThreadRootMarkStack* thread_mark_stack_;
  // Support parallel copy or not.

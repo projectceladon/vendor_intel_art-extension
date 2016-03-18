@@ -116,6 +116,9 @@ static constexpr bool kUseRosAlloc = true;
 
 // If true, use thread-local allocation stack.
 static constexpr bool kUseThreadLocalAllocationStack = true;
+// This is used for Generational Copying collector.
+// TODO: make this configurable.
+static constexpr size_t kTenureThreshold = 6;
 
 class Heap {
  public:
@@ -472,6 +475,12 @@ class Heap {
   size_t GetBytesAllocated() const {
     return num_bytes_allocated_.LoadSequentiallyConsistent();
   }
+
+  // Returns the number of bytes currently allocated.
+  size_t AddBytesAllocated(size_t extra_bytes) {
+    return num_bytes_allocated_.FetchAndAddSequentiallyConsistent(extra_bytes);
+  }
+
   size_t GetRevokeBytes() const {
     return num_bytes_freed_revoke_.LoadSequentiallyConsistent();
   }
@@ -624,6 +633,15 @@ class Heap {
   space::RosAllocSpace* GetRosAllocSpace() const {
     return rosalloc_space_;
   }
+
+  space::BumpPointerSpace* GetFromBumpPointerSpace() const {
+    return bump_pointer_space_;
+  }
+
+  space::BumpPointerSpace* GetToBumpPointerSpace() const {
+    return temp_space_;
+  }
+
   // Return the corresponding rosalloc space.
   space::RosAllocSpace* GetRosAllocSpace(gc::allocator::RosAlloc* rosalloc) const
       SHARED_REQUIRES(Locks::mutator_lock_);
@@ -799,11 +817,18 @@ class Heap {
   HomogeneousSpaceCompactResult PerformHomogeneousSpaceCompact() REQUIRES(!*gc_complete_lock_);
   bool SupportHomogeneousSpaceCompactAndCollectorTransitions() const;
 
+  size_t GetThresholdAge();
+  void SetThresholdAge(size_t age);
   void GCProfileSetDir(const std::string& dir);
   void GCProfileStart();
   void GCProfileEnd(bool drop_result);
   void GCProfileEnableSuccAllocProfile(bool enable);
   bool GCProfileRunning();
+
+  void BlockGC(Thread* self, GcCause cause, CollectorType collector_type)
+      REQUIRES(!*gc_complete_lock_);
+  void UnblockGC(Thread* self) REQUIRES(!*gc_complete_lock_);
+
 
  private:
   class ConcurrentGCTask;
@@ -828,6 +853,7 @@ class Heap {
   void StartGC(Thread* self, GcCause cause, CollectorType collector_type)
       REQUIRES(!*gc_complete_lock_);
   void FinishGC(Thread* self, collector::GcType gc_type) REQUIRES(!*gc_complete_lock_);
+  void WakeMutators() REQUIRES(!*gc_complete_lock_);
 
   // Create a mem map with a preferred base address.
   static MemMap* MapAnonymousPreferredAddress(const char* name, uint8_t* request_begin,
@@ -845,10 +871,11 @@ class Heap {
         allocator_type != kAllocatorTypeRegion &&
         allocator_type != kAllocatorTypeRegionTLAB;
   }
-  static ALWAYS_INLINE bool AllocatorMayHaveConcurrentGC(AllocatorType allocator_type) {
+  ALWAYS_INLINE bool AllocatorMayHaveConcurrentGC(AllocatorType allocator_type) {
     return
-        allocator_type != kAllocatorTypeBumpPointer &&
-        allocator_type != kAllocatorTypeTLAB;
+        (allocator_type != kAllocatorTypeBumpPointer &&
+        allocator_type != kAllocatorTypeTLAB) ||
+        collector_type_ == kCollectorTypeGenCopying;
   }
   static bool IsMovingGc(CollectorType collector_type) {
     return
@@ -856,7 +883,8 @@ class Heap {
         collector_type == kCollectorTypeGSS ||
         collector_type == kCollectorTypeCC ||
         collector_type == kCollectorTypeMC ||
-        collector_type == kCollectorTypeHomogeneousSpaceCompact;
+        collector_type == kCollectorTypeHomogeneousSpaceCompact ||
+        collector_type == kCollectorTypeGenCopying;
   }
   bool ShouldAllocLargeObject(mirror::Class* c, size_t byte_count) const
       SHARED_REQUIRES(Locks::mutator_lock_);
@@ -984,6 +1012,7 @@ class Heap {
                                                   const char* name,
                                                   bool can_move_objects);
 
+  void GrowForUtilizationGenCopying(collector::GarbageCollector* collector_ran);
   // Given the current contents of the alloc space, increase the allowed heap footprint to match
   // the target utilization ratio.  This should only be called immediately after a full garbage
   // collection. bytes_allocated_before_gc is used to measure bytes / second for the period which
@@ -1026,7 +1055,8 @@ class Heap {
   // What kind of concurrency behavior is the runtime after? Currently true for concurrent mark
   // sweep GC, false for other GC types.
   bool IsGcConcurrent() const ALWAYS_INLINE {
-    return collector_type_ == kCollectorTypeCMS || collector_type_ == kCollectorTypeCC;
+    return collector_type_ == kCollectorTypeCMS || collector_type_ == kCollectorTypeCC ||
+           collector_type_ == kCollectorTypeGenCopying;
   }
 
   // Trim the managed and native spaces by releasing unused memory back to the OS.
@@ -1162,6 +1192,7 @@ class Heap {
 
   // Last Gc type we ran. Used by WaitForConcurrentGc to know which Gc was waited on.
   volatile collector::GcType last_gc_type_ GUARDED_BY(gc_complete_lock_);
+  bool gc_is_finished_ GUARDED_BY(gc_complete_lock_);
   collector::GcType next_gc_type_;
 
   // Maximum size that the heap can reach.
@@ -1349,6 +1380,9 @@ class Heap {
   CollectorTransitionTask* pending_collector_transition_ GUARDED_BY(pending_task_lock_);
   HeapTrimTask* pending_heap_trim_ GUARDED_BY(pending_task_lock_);
 
+  // Threshold for promoting old enough objects to old generation space.
+  // This is for Generational Copying collector.
+  Atomic<size_t> threshold_age_;
   // Whether or not we use homogeneous space compaction to avoid OOM errors.
   bool use_homogeneous_space_compaction_for_oom_;
 

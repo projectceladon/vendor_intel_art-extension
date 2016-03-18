@@ -557,6 +557,10 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
       }
     }
 
+    if (collector_type_ == gc::kCollectorTypeGenCopying) {
+      background_collector_type_ = collector_type_;
+    }
+
     if (background_collector_type_ == gc::kCollectorTypeNone) {
       if (collector_type_ != gc::kCollectorTypeGSS) {
         background_collector_type_ = low_memory_mode_ ?
@@ -570,7 +574,8 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
 
     // If foregroud is SS/GSS, Enable Parallel GC without considering kDefaultEnableParallelGC.
     if (collector_type_ == gc::kCollectorTypeGSS ||
-        collector_type_ == gc::kCollectorTypeSS) {
+        collector_type_ == gc::kCollectorTypeSS ||
+        collector_type_ == gc::kCollectorTypeGenCopying) {
         args.SetIfMissing(M::ParallelGCThreads,
             static_cast<unsigned int>(sysconf(_SC_NPROCESSORS_CONF) - 1u) );
     } else {

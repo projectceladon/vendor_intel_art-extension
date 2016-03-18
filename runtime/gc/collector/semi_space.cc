@@ -60,9 +60,9 @@ static constexpr bool kProtectFromSpace = true;
 static constexpr bool kStoreStackTraces = false;
 static constexpr size_t kBytesPromotedThreshold = 4 * MB;
 static constexpr size_t kLargeObjectBytesAllocatedThreshold = 16 * MB;
-static constexpr bool kSSParallelCopy = true;
+static constexpr bool kSSParallelCopy = false;
 static constexpr bool kSSUseMarkStackPrefetch = true;
-static constexpr size_t kSSMinimumParallelMarkStackSize = 256;
+static constexpr size_t kSSMinimumParallelMarkStackSize = 32;
 static constexpr bool kCountTasks = false;
 static const size_t kFifoSize = 4;
 
@@ -146,7 +146,7 @@ void SemiSpace::BindBitmaps() {
 }
 
 SemiSpace::SemiSpace(Heap* heap, bool generational,
-                     const std::string& name_prefix, bool support_parallel)
+                     const std::string& name_prefix, bool need_aging_table, bool support_parallel)
     : GarbageCollector(heap,
                        name_prefix + (name_prefix.empty() ? "" : " ") + "marksweep + semispace"),
       mark_stack_(nullptr),
@@ -157,7 +157,6 @@ SemiSpace::SemiSpace(Heap* heap, bool generational,
       mark_bitmap_(nullptr),
       self_(nullptr),
       generational_(generational),
-      last_gc_to_space_end_(nullptr),
       bytes_promoted_(0),
       bytes_wasted_(0),
       bytes_promoted_since_last_whole_heap_collection_(0),
@@ -171,9 +170,19 @@ SemiSpace::SemiSpace(Heap* heap, bool generational,
       collector_name_(name_),
       swap_semi_spaces_(true),
       marking_roots_(false),
+      need_aging_table_(need_aging_table),
       thread_roots_stacks_(nullptr),
       thread_mark_stack_(nullptr),
       support_parallel_(support_parallel) {
+}
+
+void SemiSpace::NeedToWakeMutators() {
+  //TODO: ensure that GetCollectorType() can get expected GenCopying collector.
+  if (GetCollectorType() == kCollectorTypeGenCopying ||
+      GetCollectorType() == kCollectorTypeGSS ||
+      GetCollectorType() == kCollectorTypeSS) {
+    GetHeap()->WakeMutators();
+  }
 }
 
 void SemiSpace::RunPhases() {
@@ -212,6 +221,7 @@ void SemiSpace::RunPhases() {
       }
     }
     {
+      NeedToWakeMutators();
       ReaderMutexLock mu(self, *Locks::mutator_lock_);
       if (Runtime::Current()->EnabledGcProfile()) {
         uint64_t sweep_start = NanoTime();
@@ -265,6 +275,20 @@ void SemiSpace::InitializePhase() {
     promo_dest_space_ = GetHeap()->GetPrimaryFreeListSpace();
   }
   fallback_space_ = GetHeap()->GetNonMovingSpace();
+  // If swap_semi_spaces_ is true, from and to are both bump pointer spaces. They are
+  // for SS, GSS, and GenCopying collectors.
+  // If swap_semi_spaces_ is false, there are two cases. One is for zygote collector.
+  // The other is to compact from bump pointer space to main space in the case of
+  // DisableMovingGc --> TransitionCollector due to full non moving space.
+  // TODO: only need swap_semi_spaces_?
+  if (need_aging_table_ && swap_semi_spaces_) {
+    from_age_table_ = from_space_->AsBumpPointerSpace()->GetAgingTable();
+    to_age_table_ = to_space_->AsBumpPointerSpace()->GetAgingTable();
+    DCHECK(from_age_table_ != nullptr);
+    DCHECK(to_age_table_ != nullptr);
+    threshold_age_ = heap_->GetThresholdAge();
+    force_copy_all_ = false;
+  }
 }
 
 void SemiSpace::ProcessReferences(Thread* self) {
@@ -292,6 +316,10 @@ void SemiSpace::MarkingPhase() {
   // to prevent fragmentation.
   RevokeAllThreadLocalBuffers();
   if (generational_) {
+    // For GenCopying YoungGC, collect from space only.
+    //  In most cases Generational Copying GC doesn't walk here.
+    //  If bps is full, it will trigger STW semi-space GC.
+    //  And just before OOM, it's true to clear soft references.
     if (GetCurrentIteration()->GetGcCause() == kGcCauseExplicit ||
         GetCurrentIteration()->GetGcCause() == kGcCauseForNativeAlloc ||
         GetCurrentIteration()->GetClearSoftReferences()) {
@@ -307,6 +335,9 @@ void SemiSpace::MarkingPhase() {
       name_ = collector_name_ + " bps";
     }
   }
+  if (GetCurrentIteration()->GetClearSoftReferences()) {
+    force_copy_all_ = true;
+  }
 
   if (!collect_from_space_only_) {
     // If non-generational, always clear soft references.
@@ -315,13 +346,6 @@ void SemiSpace::MarkingPhase() {
   }
   Locks::mutator_lock_->AssertExclusiveHeld(self_);
   if (generational_) {
-    // If last_gc_to_space_end_ is out of the bounds of the from-space
-    // (the to-space from last GC), then point it to the beginning of
-    // the from-space. For example, the very first GC or the
-    // pre-zygote compaction.
-    if (!from_space_->HasAddress(reinterpret_cast<mirror::Object*>(last_gc_to_space_end_))) {
-      last_gc_to_space_end_ = from_space_->Begin();
-    }
     // Reset this before the marking starts below.
     bytes_promoted_ = 0;
     bytes_wasted_ = 0;
@@ -386,6 +410,9 @@ void SemiSpace::MarkingPhase() {
   }
   heap_->PreSweepingGcVerification(this);
   if (swap_semi_spaces_) {
+    // Clear aging table of from space.
+    if (from_space_->IsBumpPointerSpace())
+      from_space_->AsBumpPointerSpace()->GetAgingTable()->Reset();
     heap_->SwapSemiSpaces();
   }
 }
@@ -537,12 +564,6 @@ void SemiSpace::ReclaimPhase() {
   GetHeap()->UnBindBitmaps();
   if (saved_bytes_ > 0) {
     VLOG(heap) << "Avoided dirtying " << PrettySize(saved_bytes_);
-  }
-  if (generational_) {
-    // Record the end (top) of the to space so we can distinguish
-    // between objects that were allocated since the last GC and the
-    // older objects.
-    last_gc_to_space_end_ = to_space_->End();
   }
 }
 
@@ -700,7 +721,9 @@ class MarkStackCopyTask : public Task {
     semi_space_->objects_promoted_parallel_.FetchAndAddSequentiallyConsistent(objects_promoted_);
     semi_space_->fallback_bytes_parallel_.FetchAndAddSequentiallyConsistent(bytes_fallback_);
     semi_space_->fallback_objects_parallel_.FetchAndAddSequentiallyConsistent(objects_fallback_);
-
+    VLOG(heap) << "Parallel Copying Thread Info: Thread:" << self
+               << " objects copied: " << objects_copied_
+               << " objects updated: " << objects_updated_;
     space::ContinuousMemMapAllocSpace* to_space = semi_space_->GetToSpace();
     if (to_space->IsBumpPointerSpace()) {
       to_space->AsBumpPointerSpace()->RevokeThreadLocalBuffers(self);
@@ -794,7 +817,9 @@ mirror::Object* SemiSpace::MarkNonForwardedObject(mirror::Object* obj) {
   const size_t object_size = obj->SizeOf();
   size_t bytes_allocated, dummy;
   mirror::Object* forward_address = nullptr;
-  if (generational_ && reinterpret_cast<uint8_t*>(obj) < last_gc_to_space_end_) {
+  uint8_t age = (need_aging_table_ && swap_semi_spaces_) ? from_age_table_->GetObjectAge(obj) : 0;
+  // generational is false for CMS + homogeneous compaction.
+  if (generational_ && (age >= threshold_age_ || force_copy_all_)) {
     // If it's allocated before the last GC (older), move
     // (pseudo-promote) it to the main free list space (as sort
     // of an old generation.)
@@ -804,6 +829,9 @@ mirror::Object* SemiSpace::MarkNonForwardedObject(mirror::Object* obj) {
       // If out of space, fall back to the to-space.
       forward_address = to_space_->AllocThreadUnsafe(self_, object_size, &bytes_allocated, nullptr,
                                                      &dummy);
+      if (to_age_table_ != nullptr) {
+        to_age_table_->IncreaseObjectAge(forward_address, age);
+      }
       // No logic for marking the bitmap, so it must be null.
       DCHECK(to_space_live_bitmap_ == nullptr);
     } else {
@@ -851,6 +879,9 @@ mirror::Object* SemiSpace::MarkNonForwardedObject(mirror::Object* obj) {
     // If it's allocated after the last GC (younger), copy it to the to-space.
     forward_address = to_space_->AllocThreadUnsafe(self_, object_size, &bytes_allocated, nullptr,
                                                    &dummy);
+    if (to_age_table_ != nullptr && need_aging_table_ && swap_semi_spaces_) {
+      to_age_table_->IncreaseObjectAge(forward_address, age);
+    }
     if (forward_address != nullptr && to_space_live_bitmap_ != nullptr) {
       to_space_live_bitmap_->Set(forward_address);
     }
@@ -999,6 +1030,10 @@ bool SemiSpace::ShouldSweepSpace(space::ContinuousSpace* space) const {
 void SemiSpace::Sweep(bool swap_bitmaps) {
   TimingLogger::ScopedTiming t(__FUNCTION__, GetTimings());
   DCHECK(mark_stack_->IsEmpty());
+  // For YoungGC in GenCopying, no need to sweep other spaces.
+  if (need_aging_table_ && swap_semi_spaces_ && collect_from_space_only_) {
+    return;
+  }
   for (const auto& space : GetHeap()->GetContinuousSpaces()) {
     if (space->IsContinuousMemMapAllocSpace()) {
       space::ContinuousMemMapAllocSpace* alloc_space = space->AsContinuousMemMapAllocSpace();
@@ -1105,7 +1140,9 @@ mirror::Object* SemiSpace::MarkNonForwardedObjectParallel(mirror::Object* obj,
 
   // Must be false when begining.
   DCHECK_EQ(*win, false);
-  if (generational_ && reinterpret_cast<uint8_t*>(obj) < last_gc_to_space_end_) {
+  uint8_t age = (need_aging_table_ && swap_semi_spaces_) ? from_age_table_->GetObjectAge(obj) : 0;
+  // generational is false for CMS + homogeneous compaction.
+  if (generational_ && (age >= threshold_age_ || force_copy_all_)) {
     // If it's allocated before the last GC (older), move
     // (pseudo-promote) it to the main free list space (as sort of an old generation.)
     forward_address = TryInstallForwardingAddress(obj, promo_dest_space_, &bytes_allocated, win);
@@ -1114,6 +1151,11 @@ mirror::Object* SemiSpace::MarkNonForwardedObjectParallel(mirror::Object* obj,
       forward_address = TryInstallForwardingAddress(obj, to_space_, &bytes_allocated, win);
       // No logic for marking the bitmap, so it must be null.
       DCHECK(to_space_live_bitmap_ == nullptr);
+      if (*win == true && forward_address != nullptr) {
+        if (to_age_table_ != nullptr) {
+          to_age_table_->IncreaseObjectAge(forward_address, age);
+        }
+      }
     } else {
       if (*win == true) {
         // The lock word was updated by current thread.
@@ -1161,6 +1203,11 @@ mirror::Object* SemiSpace::MarkNonForwardedObjectParallel(mirror::Object* obj,
     forward_address = TryInstallForwardingAddress(obj, to_space_, &bytes_allocated, win);
     if (*win == true && to_space_live_bitmap_ != nullptr) {
       to_space_live_bitmap_->AtomicTestAndSet(forward_address);
+    }
+    if (*win == true) {
+      if (to_age_table_ != nullptr) {
+        to_age_table_->IncreaseObjectAge(forward_address, age);
+      }
     }
   }
   // If it's still null, attempt to use the fallback space.
@@ -1297,6 +1344,7 @@ void SemiSpace::ProcessMarkStackParallel(size_t thread_count) {
           auto* task = new MarkStackCopyTask(thread_pool, this, chunk_size, mark_stack + idx);
           thread_pool->AddTask(Thread::Current(), task);
           idx += chunk_size;
+          VLOG(heap) << "Add thread roots to CopyTask: < " << chunk_size << ", " << task << ">";
         }
         // All objects on root mark stack have been copied to MarkStackCopyTask, reclaim the memory.
         delete rms;
@@ -1339,7 +1387,6 @@ void SemiSpace::ProcessMarkStack() {
     DCHECK(mark_bitmap != nullptr);
     DCHECK_EQ(live_bitmap, mark_bitmap);
   }
-
   if (support_parallel_ && kSSParallelCopy && thread_count > 1 &&
     mark_stack_->Size() >= kSSMinimumParallelMarkStackSize) {
     ProcessMarkStackParallel(thread_count);

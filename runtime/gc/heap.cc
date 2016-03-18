@@ -109,7 +109,7 @@ static constexpr size_t kGcAlotAllocationStackSize = 4 * KB /
 // Verify objet has a small allocation stack size since searching the allocation stack is slow.
 static constexpr size_t kVerifyObjectAllocationStackSize = 16 * KB /
     sizeof(mirror::HeapReference<mirror::Object>);
-static constexpr size_t kDefaultAllocationStackSize = 8 * MB /
+static constexpr size_t kDefaultAllocationStackSize = 12 * MB /
     sizeof(mirror::HeapReference<mirror::Object>);
 // System.runFinalization can deadlock with native allocations, to deal with this, we have a
 // timeout on how long we wait for finalizers to run. b/21544853
@@ -182,6 +182,7 @@ Heap::Heap(size_t initial_size,
       thread_flip_running_(false),
       collector_type_running_(kCollectorTypeNone),
       last_gc_type_(collector::kGcTypeNone),
+      gc_is_finished_(false),
       next_gc_type_(collector::kGcTypePartial),
       capacity_(capacity),
       growth_limit_(growth_limit),
@@ -359,7 +360,11 @@ Heap::Heap(size_t initial_size,
   */
   // We don't have hspace compaction enabled with GSS or CC.
   if (foreground_collector_type_ == kCollectorTypeGSS ||
-      foreground_collector_type_ == kCollectorTypeCC) {
+      foreground_collector_type_ == kCollectorTypeCC ||
+      // TODO: Enable ros2ros compaction for generational copying collector.
+      // Two scenarios need this optimization. One is Brillo devices with tiny memory.
+      // The other is when OOM is about to happen.
+      foreground_collector_type_ == kCollectorTypeGenCopying) {
     use_homogeneous_space_compaction_for_oom_ = false;
   }
   bool support_homogeneous_space_compaction =
@@ -372,7 +377,8 @@ Heap::Heap(size_t initial_size,
   bool separate_non_moving_space = is_zygote ||
       support_homogeneous_space_compaction || IsMovingGc(foreground_collector_type_) ||
       IsMovingGc(background_collector_type_);
-  if (foreground_collector_type_ == kCollectorTypeGSS) {
+  if (foreground_collector_type_ == kCollectorTypeGSS ||
+      foreground_collector_type_ == kCollectorTypeGenCopying) {
     separate_non_moving_space = false;
   }
   std::unique_ptr<MemMap> main_mem_map_1;
@@ -454,7 +460,8 @@ Heap::Heap(size_t initial_size,
     region_space_ = space::RegionSpace::Create("Region space", capacity_ * 2, request_begin);
     AddSpace(region_space_);
   } else if (IsMovingGc(foreground_collector_type_) &&
-      foreground_collector_type_ != kCollectorTypeGSS) {
+      foreground_collector_type_ != kCollectorTypeGSS &&
+      foreground_collector_type_ != kCollectorTypeGenCopying) {
     // Create bump pointer spaces.
     // We only to create the bump pointer if the foreground collector is a compacting GC.
     // TODO: Place bump-pointer spaces somewhere to minimize size of card table.
@@ -475,10 +482,12 @@ Heap::Heap(size_t initial_size,
       non_moving_space_ = main_space_;
       CHECK(!non_moving_space_->CanMoveObjects());
     }
-    if (foreground_collector_type_ == kCollectorTypeGSS) {
+    if (foreground_collector_type_ == kCollectorTypeGSS ||
+        foreground_collector_type_ == kCollectorTypeGenCopying) {
       CHECK_EQ(foreground_collector_type_, background_collector_type_);
       // Create bump pointer spaces instead of a backup space.
       main_mem_map_2.release();
+      // TODO: make sure the two bps are adjacent to the ros.
       bump_pointer_space_ = space::BumpPointerSpace::Create("Bump pointer space 1",
                                                             kGSSBumpPointerSpaceCapacity, nullptr);
       CHECK(bump_pointer_space_ != nullptr);
@@ -582,6 +591,7 @@ Heap::Heap(size_t initial_size,
   reference_processor_.reset(new ReferenceProcessor());
   pending_task_lock_ = new Mutex("Pending task lock");
   if (ignore_max_footprint_) {
+    // Guarantee the YoungGen is default for GenCopying.
     SetIdealFootprint(std::numeric_limits<size_t>::max());
     concurrent_start_bytes_ = std::numeric_limits<size_t>::max();
   }
@@ -599,12 +609,22 @@ Heap::Heap(size_t initial_size,
   if (kMovingCollector) {
     if (MayUseCollector(kCollectorTypeSS) || MayUseCollector(kCollectorTypeGSS) ||
         MayUseCollector(kCollectorTypeHomogeneousSpaceCompact) ||
+        MayUseCollector(kCollectorTypeGenCopying) ||
         use_homogeneous_space_compaction_for_oom_) {
       // TODO: Clean this up.
-      const bool generational = foreground_collector_type_ == kCollectorTypeGSS;
+      const bool generational = foreground_collector_type_ == kCollectorTypeGSS ||
+                                foreground_collector_type_ == kCollectorTypeGenCopying;
+      // Create aging table for copying collector to promote old enough objects to old space.
+      // CMS + homogeneous compaction doesn't need aging table.
+      const bool need_aging_table = !MayUseCollector(kCollectorTypeHomogeneousSpaceCompact);
       semi_space_collector_ = new collector::SemiSpace(this, generational,
-                                                       generational ? "generational" : "");
+                                                       generational ? "generational" : "",
+                                                       need_aging_table);
       garbage_collectors_.push_back(semi_space_collector_);
+    }
+    if (MayUseCollector(kCollectorTypeGenCopying)) {
+      garbage_collectors_.push_back(new collector::PartialMarkSweep(this, true/*concurrent*/, true/*copying*/));
+      garbage_collectors_.push_back(new collector::MarkSweep(this, true, true));
     }
     if (MayUseCollector(kCollectorTypeCC)) {
       concurrent_copying_collector_ = new collector::ConcurrentCopying(this);
@@ -644,6 +664,9 @@ Heap::Heap(size_t initial_size,
   if (VLOG_IS_ON(heap) || VLOG_IS_ON(startup)) {
     LOG(INFO) << "Heap() exiting";
   }
+  // For GSS and Generational Copying collector.
+  // It won't impact other collectors.
+  SetThresholdAge(kTenureThreshold);
 }
 
 MemMap* Heap::MapAnonymousPreferredAddress(const char* name,
@@ -706,7 +729,8 @@ void Heap::CreateMainMallocSpace(MemMap* mem_map, size_t initial_size, size_t gr
     // After the zygote we want this to be false if we don't have background compaction enabled so
     // that getting primitive array elements is faster.
     // We never have homogeneous compaction with GSS and don't need a space with movable objects.
-    can_move_objects = !HasZygoteSpace() && foreground_collector_type_ != kCollectorTypeGSS;
+    can_move_objects = !HasZygoteSpace() && foreground_collector_type_ != kCollectorTypeGSS &&
+                       foreground_collector_type_ != kCollectorTypeGenCopying;
   }
   if (collector::SemiSpace::kUseRememberedSet && main_space_ != nullptr) {
     RemoveRememberedSet(main_space_);
@@ -1453,6 +1477,14 @@ void Heap::StartGC(Thread* self, GcCause cause, CollectorType collector_type) {
   collector_type_running_ = collector_type;
 }
 
+void Heap::BlockGC(Thread* self, GcCause cause, CollectorType collector_type) {
+  StartGC(self, cause, collector_type);
+}
+
+void Heap::UnblockGC(Thread* self) {
+  FinishGC(self, collector::kGcTypeNone);
+}
+
 void Heap::TrimSpaces(Thread* self) {
   {
     // Need to do this before acquiring the locks since we don't want to get suspended while
@@ -1659,9 +1691,14 @@ void Heap::RecordFree(uint64_t freed_objects, int64_t freed_bytes) {
   // Use signed comparison since freed bytes can be negative when background compaction foreground
   // transitions occurs. This is caused by the moving objects from a bump pointer space to a
   // free list backed space typically increasing memory footprint due to padding and binning.
-  DCHECK_LE(freed_bytes, static_cast<int64_t>(num_bytes_allocated_.LoadRelaxed()));
+  // DCHECK_LE(freed_bytes, static_cast<int64_t>(num_bytes_allocated_.LoadRelaxed()));
   // Note: This relies on 2s complement for handling negative freed_bytes.
-  num_bytes_allocated_.FetchAndSubSequentiallyConsistent(static_cast<ssize_t>(freed_bytes));
+  // num_bytes_allocated_.FetchAndSubSequentiallyConsistent(static_cast<ssize_t>(freed_bytes));
+  uint64_t bytes_allocated = GetBytesAllocated();
+  // If the allocated bytes is little than freed bytes, keep the existing allocated bytes.
+  if (bytes_allocated > static_cast<uint64_t>(freed_bytes) || static_cast<ssize_t>(freed_bytes) < 0) {
+    num_bytes_allocated_.FetchAndSubSequentiallyConsistent(static_cast<ssize_t>(freed_bytes));
+  }
   if (Runtime::Current()->HasStatsEnabled()) {
     RuntimeStats* thread_stats = Thread::Current()->GetStats();
     thread_stats->freed_objects += freed_objects;
@@ -1704,6 +1741,14 @@ static inline bool EntrypointsInstrumented() SHARED_REQUIRES(Locks::mutator_lock
   instrumentation::Instrumentation* const instrumentation =
       Runtime::Current()->GetInstrumentation();
   return instrumentation != nullptr && instrumentation->AllocEntrypointsInstrumented();
+}
+
+size_t Heap::GetThresholdAge() {
+  return threshold_age_.LoadSequentiallyConsistent();
+}
+
+void Heap::SetThresholdAge(size_t age) {
+  threshold_age_.StoreSequentiallyConsistent(age);
 }
 
 mirror::Object* Heap::AllocateInternalWithGc(Thread* self,
@@ -1817,6 +1862,7 @@ mirror::Object* Heap::AllocateInternalWithGc(Thread* self,
   // TODO: Run finalization, but this may cause more allocations to occur.
   // We don't need a WaitForGcToComplete here either.
   DCHECK(!gc_plan_.empty());
+  // We will force promote live objects from young to old. Thus keep the original threshold.
   CollectGarbageInternal(gc_plan_.back(), kGcCauseForAlloc, true);
   if ((was_default_allocator && allocator != GetCurrentAllocator()) ||
       (!instrumented && EntrypointsInstrumented())) {
@@ -1895,6 +1941,31 @@ mirror::Object* Heap::AllocateInternalWithGc(Thread* self,
             LOG(WARNING) << "Disabled moving GC due to the non moving space being full";
             ptr = TryToAllocate<true, true>(self, allocator, alloc_size, bytes_allocated,
                                             usable_size, bytes_tl_bulk_allocated);
+          }
+        }
+        break;
+      }
+      case kAllocatorTypeBumpPointer:
+        // Fall-through.
+      case kAllocatorTypeTLAB: {
+        // TODO: This is not final solution for GenCopying. If the disable_moving_gc_count_ is
+        // not zero, below two cases may be triggered.
+        // 1. old space is full.
+        // 2. allocation stack is full.
+        // The root cause may be that DecrementDisableMovingGC is hanging for gc_complete_lock_
+        // when mutators always get this lock to GC after allocation failures.
+        if (IsMovingGCDisabled(self) && collector_type_== kCollectorTypeGenCopying) {
+          LOG(WARNING) << "Allocate in NonMovingSpace due to the young semi space is full!";
+          ptr = TryToAllocate<true, true>(self, kAllocatorTypeNonMoving, alloc_size, bytes_allocated,
+                                          usable_size, bytes_tl_bulk_allocated);
+          if (ptr != nullptr) {
+            if (GetBytesAllocated() > max_allowed_footprint_ && GetBytesAllocated() <= growth_limit_) {
+              max_allowed_footprint_ = GetBytesAllocated();
+            }
+            // Need to push on allocation stach and mark card table as allocator is not changed in fact.
+            // TLAB / BumpPointer will not push object to allocation stack.
+            WriteBarrierField(ptr, mirror::Object::ClassOffset(), nullptr);
+            PushOnAllocationStack(self, &ptr);
           }
         }
         break;
@@ -2351,6 +2422,17 @@ void Heap::ChangeCollector(CollectorType collector_type) {
         ChangeAllocator(kUseRosAlloc ? kAllocatorTypeRosAlloc : kAllocatorTypeDlMalloc);
         break;
       }
+      case kCollectorTypeGenCopying: {
+        gc_plan_.push_back(collector::kGcTypeYoung);
+        gc_plan_.push_back(collector::kGcTypePartial);
+        gc_plan_.push_back(collector::kGcTypeFull);
+        if (use_tlab_) {
+          ChangeAllocator(kAllocatorTypeTLAB);
+        } else {
+          ChangeAllocator(kAllocatorTypeBumpPointer);
+        }
+        break;
+      }
       default: {
         UNIMPLEMENTED(FATAL);
         UNREACHABLE();
@@ -2369,7 +2451,7 @@ void Heap::ChangeCollector(CollectorType collector_type) {
 class ZygoteCompactingCollector FINAL : public collector::SemiSpace {
  public:
   ZygoteCompactingCollector(gc::Heap* heap, bool is_running_on_memory_tool)
-      : SemiSpace(heap, false, "zygote collector", false),
+      : SemiSpace(heap, false, "zygote collector", false, false),
         bin_live_bitmap_(nullptr),
         bin_mark_bitmap_(nullptr),
         is_running_on_memory_tool_(is_running_on_memory_tool) {}
@@ -2764,6 +2846,31 @@ collector::GcType Heap::CollectGarbageInternal(collector::GcType gc_type,
         semi_space_collector_->SetSwapSemiSpaces(true);
         collector = semi_space_collector_;
         break;
+      case kCollectorTypeGenCopying:
+        // Young GC is using the existing semi space collector.
+        // Otherwise, it's using partial/full concurrent marking and copying collector.
+        // TODO: If gc is caused by allocation failures, it's required to trigger full
+        // STW GC, because it's meaningless to trigger concurrent GC with full bps.
+        if (gc_cause != kGcCauseForAlloc) {
+          gc_type =  HasZygoteSpace() ? collector::kGcTypePartial : collector::kGcTypeFull;
+        }
+        // Clearing soft references is just before OOM. Thus it requires stop-the-world full GC.
+        // TODO: Use stop-the-world full GC when kGrow is true.
+        if (clear_soft_references == true) {
+          gc_type = collector::kGcTypeYoung;
+        }
+        if (gc_type == collector::kGcTypeYoung) {
+          semi_space_collector_->SetFromSpace(bump_pointer_space_);
+          semi_space_collector_->SetToSpace(temp_space_);
+          semi_space_collector_->SetSwapSemiSpaces(true);
+          // TODO: Make sure that young GC only collects from bump pointer space.
+          collector = semi_space_collector_;
+        } else if (gc_type == collector::kGcTypePartial || gc_type == collector::kGcTypeFull) {
+          collector = FindCollectorByGcType(gc_type);
+        } else {
+          LOG(FATAL) << "Invalid gc type " << gc_type << " for generational copying collector";
+        }
+        break;
       case kCollectorTypeCC:
         concurrent_copying_collector_->SetRegionSpace(region_space_);
         collector = concurrent_copying_collector_;
@@ -2783,7 +2890,9 @@ collector::GcType Heap::CollectGarbageInternal(collector::GcType gc_type,
       }
       CHECK(temp_space_->IsEmpty());
     }
-    gc_type = collector::kGcTypeFull;  // TODO: Not hard code this in.
+    if (collector_type_ != kCollectorTypeGenCopying) {
+      gc_type = collector::kGcTypeFull;  // TODO: Not hard code this in.
+    }
   } else if (current_allocator_ == kAllocatorTypeRosAlloc ||
       current_allocator_ == kAllocatorTypeDlMalloc) {
     collector = FindCollectorByGcType(gc_type);
@@ -2890,6 +2999,25 @@ void Heap::LogGC(GcCause gc_cause, collector::GarbageCollector* collector) {
   }
 }
 
+/* The wait for GC can be triggered in the following phases of concurrent GC cycle.
+ * 1. In the initialization or marking phase:
+ *    The solution is to wake mutators after pause phase or interleave young GC with old GC.
+ * 2. In the reclamation phase:
+ *    The solution is that young GC can be interleaved with old GC.
+ * 3. In the ending phase:
+ *    Keep the existing solution. Wake in FinishGC.
+ * TODO: Interleave young GC with old GC to improve GC throughput.
+*/
+void Heap::WakeMutators() {
+  Thread* const self = Thread::Current();
+  MutexLock mu(self, *gc_complete_lock_);
+  // For generational collectors (GenCopying and GSS/SS), from bps is empty
+  // after pause phase. Therefore, it can wake the mutators to allocate new
+  // objects after pause phase.
+  gc_is_finished_ = false;
+  gc_complete_cond_->Broadcast(self);
+}
+
 void Heap::FinishGC(Thread* self, collector::GcType gc_type) {
   MutexLock mu(self, *gc_complete_lock_);
   if (IsMovingGc(collector_type_running_)) {
@@ -2912,6 +3040,7 @@ void Heap::FinishGC(Thread* self, collector::GcType gc_type) {
     UpdateGcCountRateHistograms();
   }
   // Reset.
+  gc_is_finished_ = true;
   running_collection_is_blocking_ = false;
   // Wake anyone who may have been waiting for the GC to complete.
   gc_complete_cond_->Broadcast(self);
@@ -3422,8 +3551,10 @@ void Heap::ProcessCards(TimingLogger* timings,
           "ImageModUnionClearCards";
       TimingLogger::ScopedTiming t2(name, timings);
       table->ClearCards();
-    } else if (use_rem_sets && rem_set != nullptr) {
-      DCHECK(collector::SemiSpace::kUseRememberedSet && collector_type_ == kCollectorTypeGSS)
+    } else if (use_rem_sets && rem_set != nullptr &&
+               (space->IsRosAllocSpace() || space == GetNonMovingSpace())) {
+      DCHECK(collector::SemiSpace::kUseRememberedSet && (collector_type_ == kCollectorTypeGSS ||
+             collector_type_ == kCollectorTypeGenCopying))
           << static_cast<int>(collector_type_);
       TimingLogger::ScopedTiming t2("AllocSpaceRemSetClearCards", timings);
       rem_set->ClearCards();
@@ -3431,9 +3562,10 @@ void Heap::ProcessCards(TimingLogger* timings,
       TimingLogger::ScopedTiming t2("AllocSpaceClearCards", timings);
       if (clear_alloc_space_cards) {
         uint8_t* end = space->End();
-        if (space->IsImageSpace()) {
+        if (space->IsImageSpace() || space->IsBumpPointerSpace()) {
           // Image space end is the end of the mirror objects, it is not necessarily page or card
           // aligned. Align up so that the check in ClearCardRange does not fail.
+          // It's also true for bump pointer spaces if Generational Copying Collector is on.
           end = AlignUp(end, accounting::CardTable::kCardSize);
         }
         card_table_->ClearCardRange(space->Begin(), end);
@@ -3600,7 +3732,16 @@ collector::GcType Heap::WaitForGcToCompleteLocked(GcCause cause, Thread* self) {
     ScopedTrace trace("GC: Wait For Completion");
     // We must wait, change thread state then sleep on gc_complete_cond_;
     gc_complete_cond_->Wait(self);
-    last_gc_type = last_gc_type_;
+    // If gc is not finished yet, don't update last_gc_type.
+    // If wait is caused by allocation failures, update last_gc_type.
+    if ((foreground_collector_type_ == kCollectorTypeGenCopying ||
+        foreground_collector_type_ == kCollectorTypeGSS ||
+        foreground_collector_type_ == kCollectorTypeSS) &&
+        (gc_is_finished_ || cause == kGcCauseForAlloc)) {
+      last_gc_type = last_gc_type_;
+    } else {
+      last_gc_type = last_gc_type_;
+    }
   }
   uint64_t wait_time = NanoTime() - wait_start;
   total_wait_time_ += wait_time;
@@ -3689,10 +3830,10 @@ double Heap::HeapGrowthMultiplier() const {
   return foreground_heap_growth_multiplier_;
 }
 
-void Heap::GrowForUtilization(collector::GarbageCollector* collector_ran,
-                              uint64_t bytes_allocated_before_gc) {
+void Heap::GrowForUtilizationGenCopying(collector::GarbageCollector* collector_ran) {
   // We know what our utilization is at this moment.
   // This doesn't actually resize any memory. It just lets the heap grow more when necessary.
+  bool need_grow = false;
   const uint64_t bytes_allocated = GetBytesAllocated();
   uint64_t target_size;
   collector::GcType gc_type = collector_ran->GetGcType();
@@ -3700,90 +3841,163 @@ void Heap::GrowForUtilization(collector::GarbageCollector* collector_ran,
   // foreground.
   const uint64_t adjusted_min_free = static_cast<uint64_t>(min_free_ * multiplier);
   const uint64_t adjusted_max_free = static_cast<uint64_t>(max_free_ * multiplier);
-  if (gc_type != collector::kGcTypeSticky) {
-    // Grow the heap for non sticky GC.
-    ssize_t delta = bytes_allocated / GetTargetHeapUtilization() - bytes_allocated;
-    CHECK_GE(delta, 0);
-    target_size = bytes_allocated + delta * multiplier;
-    target_size = std::min(target_size, bytes_allocated + adjusted_max_free);
-    target_size = std::max(target_size, bytes_allocated + adjusted_min_free);
+  if (gc_type != collector::kGcTypeYoung) {
+    // Partial/Full GC are supposed to collect most garbages, which cause bytes_allocated reduced much.
+    // So the max_allowed_footprint_ should shrink in this case.
+    // And to not trigger Partial/Full GC too much, leave delta bytes free.
+    need_grow = true;
     native_need_to_run_finalization_ = true;
-    next_gc_type_ = collector::kGcTypeSticky;
+    // Next GC will be Young.
+    next_gc_type_ = collector::kGcTypeYoung;
   } else {
-    collector::GcType non_sticky_gc_type =
+    // Decision of next Partial/Full GC is based on the bytes_allocated and utilization of promote space.
+    collector::GcType old_gc_type =
         HasZygoteSpace() ? collector::kGcTypePartial : collector::kGcTypeFull;
-    // Find what the next non sticky collector will be.
-    collector::GarbageCollector* non_sticky_collector = FindCollectorByGcType(non_sticky_gc_type);
-    // If the throughput of the current sticky GC >= throughput of the non sticky collector, then
-    // do another sticky collection next.
-    // We also check that the bytes allocated aren't over the footprint limit in order to prevent a
-    // pathological case where dead objects which aren't reclaimed by sticky could get accumulated
-    // if the sticky GC throughput always remained >= the full/partial throughput.
-    if (current_gc_iteration_.GetEstimatedThroughput() * kStickyGcThroughputAdjustment >=
-        non_sticky_collector->GetEstimatedMeanThroughput() &&
-        non_sticky_collector->NumberOfIterations() > 0 &&
-        bytes_allocated <= max_allowed_footprint_) {
-      next_gc_type_ = collector::kGcTypeSticky;
+    // If total bytes allocated is not excees the footprint,
+    // Or promote space is enough, trigger Young as next GC.
+    // And keep max_allowed_footprint, shrink only after the non-Young GC.
+    if (bytes_allocated <= max_allowed_footprint_) {
+      next_gc_type_ = collector::kGcTypeYoung;
+      target_size = max_allowed_footprint_;
+      if (bytes_allocated == max_allowed_footprint_) {
+        need_grow = true;
+      } else {
+        need_grow = false;
+      }
     } else {
-      next_gc_type_ = non_sticky_gc_type;
-    }
-    // If we have freed enough memory, shrink the heap back down.
-    if (bytes_allocated + adjusted_max_free < max_allowed_footprint_) {
-      target_size = bytes_allocated + adjusted_max_free;
-    } else {
-      target_size = std::max(bytes_allocated, static_cast<uint64_t>(max_allowed_footprint_));
+      next_gc_type_ = old_gc_type;
+      // Make at lease Young space size avaiable for Concurrent Old GC.
+      target_size = max_allowed_footprint_ + kGSSBumpPointerSpaceCapacity;
+      need_grow = false;
     }
   }
+  // Grow/Shrink the max_allowed_footrpint if necessory.
+  if (need_grow == true) {
+    ssize_t delta = bytes_allocated / GetTargetHeapUtilization() - bytes_allocated;
+    CHECK_GE(delta, 0);
+    target_size = bytes_allocated + delta;
+    target_size = std::min(target_size, bytes_allocated + adjusted_max_free);
+    target_size = std::max(target_size, bytes_allocated + adjusted_min_free);
+  }
   if (!ignore_max_footprint_) {
-    SetIdealFootprint(target_size);
+      SetIdealFootprint(target_size);
     if (IsGcConcurrent()) {
-      size_t comp_concurrent_start_bytes = 0;
-      const uint64_t freed_bytes = current_gc_iteration_.GetFreedBytes() +
-          current_gc_iteration_.GetFreedLargeObjectBytes() +
-          current_gc_iteration_.GetFreedRevokeBytes();
-      // Bytes allocated will shrink by freed_bytes after the GC runs, so if we want to figure out
-      // how many bytes were allocated during the GC we need to add freed_bytes back on.
-      CHECK_GE(bytes_allocated + freed_bytes, bytes_allocated_before_gc);
-      const uint64_t bytes_allocated_during_gc = bytes_allocated + freed_bytes -
-          bytes_allocated_before_gc;
-      // Calculate when to perform the next ConcurrentGC.
-      // Calculate the estimated GC duration.
-      const double gc_duration_seconds = NsToMs(current_gc_iteration_.GetDurationNs()) / 1000.0;
-      // Estimate how many remaining bytes we will have when we need to start the next GC.
-      size_t remaining_bytes = bytes_allocated_during_gc * gc_duration_seconds;
-      remaining_bytes = std::min(remaining_bytes, kMaxConcurrentRemainingBytes);
-      remaining_bytes = std::max(remaining_bytes, kMinConcurrentRemainingBytes);
-      if (UNLIKELY(remaining_bytes > max_allowed_footprint_)) {
-        // A never going to happen situation that from the estimated allocation rate we will exceed
-        // the applications entire footprint with the given estimated allocation rate. Schedule
-        // another GC nearly straight away.
-        remaining_bytes = kMinConcurrentRemainingBytes;
-      }
-      DCHECK_LE(remaining_bytes, max_allowed_footprint_);
-      DCHECK_LE(max_allowed_footprint_, GetMaxMemory());
-      // Start a concurrent GC when we get close to the estimated remaining bytes. When the
-      // allocation rate is very high, remaining_bytes could tell us that we should start a GC
-      // right away.
-      comp_concurrent_start_bytes = std::max(max_allowed_footprint_ - remaining_bytes,
-                                             static_cast<size_t>(bytes_allocated));
-      // Activate the new heuristic that defers triggering background concurrent GC
-      // until active heap is at least at a third of the growth_limit, when concurrent_gc_cycle_start_ == 0
-      // (also the default). Revert to the old heuristic when this switch is set to any non-zero value.
-      // The onus will be on anyone creating another heuristic, to extend the behavior to ensure the
-      // appropriate algorithm is invoked, as the case may be, and any user input error conditions
-      // are handled gracefully by the runtime. The way this is coded right now, the runtime code is
-      // error-safe and fail-safe when it comes to the values of the concurrent_gc_cycle_start_ switch
-      // (i.e. the ConcurrentGCCycleStart system property):
-      // Default and 0: The new heuristics
-      // Any other positive number: Old heuristics
-      // In other words, all values are handled correctly and gracefully and there is a correct default behavior.
-      if (concurrent_gc_cycle_start_ == 0) {
-        concurrent_start_bytes_ = std::max(comp_concurrent_start_bytes,
-                                           growth_limit_ / concurrent_gc_start_factor_);
+      if (next_gc_type_ == collector::kGcTypeYoung) {
+        concurrent_start_bytes_ = std::numeric_limits<size_t>::max();
+        VLOG(heap) << " next YoungGC concurrent_start_bytes: " << concurrent_start_bytes_
+                   << " max_allowed_footprint_: " << max_allowed_footprint_
+                   << " bytes_allocated: " << bytes_allocated;
       } else {
-        concurrent_start_bytes_ = comp_concurrent_start_bytes;
+        // For Full/Partial, we trigger concurrent GC directly.
+        // TODO: Tune, seems this is a Young/Full back to back GC?
+        concurrent_start_bytes_ = std::min(max_allowed_footprint_, static_cast<size_t>(bytes_allocated));
+        VLOG(heap) << " next FullGC concurrent_start_bytes: " << concurrent_start_bytes_
+                   << " max_allowed_footprint_: " << max_allowed_footprint_
+                   << " bytes_allocated: " << bytes_allocated;
       }
     }
+  }
+}
+
+void Heap::GrowForUtilization(collector::GarbageCollector* collector_ran,
+                              uint64_t bytes_allocated_before_gc) {
+  if (foreground_collector_type_ != kCollectorTypeGenCopying) {
+    // We know what our utilization is at this moment.
+    // This doesn't actually resize any memory. It just lets the heap grow more when necessary.
+    const uint64_t bytes_allocated = GetBytesAllocated();
+    uint64_t target_size;
+    collector::GcType gc_type = collector_ran->GetGcType();
+    const double multiplier = HeapGrowthMultiplier();  // Use the multiplier to grow more for
+    // foreground.
+    const uint64_t adjusted_min_free = static_cast<uint64_t>(min_free_ * multiplier);
+    const uint64_t adjusted_max_free = static_cast<uint64_t>(max_free_ * multiplier);
+    if (gc_type != collector::kGcTypeSticky) {
+      // Grow the heap for non sticky GC.
+      ssize_t delta = bytes_allocated / GetTargetHeapUtilization() - bytes_allocated;
+      CHECK_GE(delta, 0);
+      target_size = bytes_allocated + delta * multiplier;
+      target_size = std::min(target_size, bytes_allocated + adjusted_max_free);
+      target_size = std::max(target_size, bytes_allocated + adjusted_min_free);
+      native_need_to_run_finalization_ = true;
+      next_gc_type_ = collector::kGcTypeSticky;
+    } else {
+      collector::GcType non_sticky_gc_type =
+          HasZygoteSpace() ? collector::kGcTypePartial : collector::kGcTypeFull;
+      // Find what the next non sticky collector will be.
+      collector::GarbageCollector* non_sticky_collector = FindCollectorByGcType(non_sticky_gc_type);
+      // If the throughput of the current sticky GC >= throughput of the non sticky collector, then
+      // do another sticky collection next.
+      // We also check that the bytes allocated aren't over the footprint limit in order to prevent a
+      // pathological case where dead objects which aren't reclaimed by sticky could get accumulated
+      // if the sticky GC throughput always remained >= the full/partial throughput.
+      if (current_gc_iteration_.GetEstimatedThroughput() * kStickyGcThroughputAdjustment >=
+          non_sticky_collector->GetEstimatedMeanThroughput() &&
+          non_sticky_collector->NumberOfIterations() > 0 &&
+          bytes_allocated <= max_allowed_footprint_) {
+          next_gc_type_ = collector::kGcTypeSticky;
+      } else {
+        next_gc_type_ = non_sticky_gc_type;
+      }
+      // If we have freed enough memory, shrink the heap back down.
+      if (bytes_allocated + adjusted_max_free < max_allowed_footprint_) {
+        target_size = bytes_allocated + adjusted_max_free;
+      } else {
+        target_size = std::max(bytes_allocated, static_cast<uint64_t>(max_allowed_footprint_));
+      }
+    }
+    if (!ignore_max_footprint_) {
+      SetIdealFootprint(target_size);
+      if (IsGcConcurrent()) {
+        size_t comp_concurrent_start_bytes = 0;
+        const uint64_t freed_bytes = current_gc_iteration_.GetFreedBytes() +
+            current_gc_iteration_.GetFreedLargeObjectBytes() +
+            current_gc_iteration_.GetFreedRevokeBytes();
+        // Bytes allocated will shrink by freed_bytes after the GC runs, so if we want to figure out
+        // how many bytes were allocated during the GC we need to add freed_bytes back on.
+        CHECK_GE(bytes_allocated + freed_bytes, bytes_allocated_before_gc);
+        const uint64_t bytes_allocated_during_gc = bytes_allocated + freed_bytes -
+            bytes_allocated_before_gc;
+        // Calculate when to perform the next ConcurrentGC.
+        // Calculate the estimated GC duration.
+        const double gc_duration_seconds = NsToMs(current_gc_iteration_.GetDurationNs()) / 1000.0;
+        // Estimate how many remaining bytes we will have when we need to start the next GC.
+        size_t remaining_bytes = bytes_allocated_during_gc * gc_duration_seconds;
+        remaining_bytes = std::min(remaining_bytes, kMaxConcurrentRemainingBytes);
+        remaining_bytes = std::max(remaining_bytes, kMinConcurrentRemainingBytes);
+        if (UNLIKELY(remaining_bytes > max_allowed_footprint_)) {
+          // A never going to happen situation that from the estimated allocation rate we will exceed
+          // the applications entire footprint with the given estimated allocation rate. Schedule
+          // another GC nearly straight away.
+          remaining_bytes = kMinConcurrentRemainingBytes;
+        }
+        DCHECK_LE(remaining_bytes, max_allowed_footprint_);
+        DCHECK_LE(max_allowed_footprint_, GetMaxMemory());
+        // Start a concurrent GC when we get close to the estimated remaining bytes. When the
+        // allocation rate is very high, remaining_bytes could tell us that we should start a GC
+        // right away.
+        comp_concurrent_start_bytes = std::max(max_allowed_footprint_ - remaining_bytes,
+                                               static_cast<size_t>(bytes_allocated));
+        // Activate the new heuristic that defers triggering background concurrent GC
+        // until active heap is at least at a third of the growth_limit, when concurrent_gc_cycle_start_ == 0
+        // (also the default). Revert to the old heuristic when this switch is set to any non-zero value.
+        // The onus will be on anyone creating another heuristic, to extend the behavior to ensure the
+        // appropriate algorithm is invoked, as the case may be, and any user input error conditions
+        // are handled gracefully by the runtime. The way this is coded right now, the runtime code is
+        // error-safe and fail-safe when it comes to the values of the concurrent_gc_cycle_start_ switch
+        // (i.e. the ConcurrentGCCycleStart system property):
+        // Default and 0: The new heuristics
+        // Any other positive number: Old heuristics
+        // In other words, all values are handled correctly and gracefully and there is a correct default behavior.
+        if (concurrent_gc_cycle_start_ == 0) {
+          concurrent_start_bytes_ = std::max(comp_concurrent_start_bytes,
+                                             growth_limit_ / concurrent_gc_start_factor_);
+        } else {
+          concurrent_start_bytes_ = comp_concurrent_start_bytes;
+        }
+      }
+    }
+  } else {
+    GrowForUtilizationGenCopying(collector_ran);
   }
 }
 
@@ -3996,6 +4210,7 @@ void Heap::RevokeRosAllocThreadLocalBuffers(Thread* thread) {
   if (rosalloc_space_ != nullptr) {
     size_t freed_bytes_revoke = rosalloc_space_->RevokeThreadLocalBuffers(thread);
     if (freed_bytes_revoke > 0U) {
+      // TODO: For generational copying, revoked in ros is done by GC threads except non moving objects.
       num_bytes_freed_revoke_.FetchAndAddSequentiallyConsistent(freed_bytes_revoke);
       CHECK_GE(num_bytes_allocated_.LoadRelaxed(), num_bytes_freed_revoke_.LoadRelaxed());
     }

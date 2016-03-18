@@ -129,12 +129,19 @@ class RememberedSetObjectVisitor {
 };
 
 void RememberedSet::UpdateAndMarkReferences(space::ContinuousSpace* target_space,
-                                            collector::GarbageCollector* collector) {
+                                            collector::GarbageCollector* collector,
+                                            bool use_livebitmap) {
   CardTable* card_table = heap_->GetCardTable();
   bool contains_reference_to_target_space = false;
   RememberedSetObjectVisitor obj_visitor(target_space, &contains_reference_to_target_space,
                                          collector);
   ContinuousSpaceBitmap* bitmap = space_->GetLiveBitmap();
+  if (!use_livebitmap) {
+    // For generational copying, when old enough objects are promoted to ros,
+    // it requires to use mark bitmap instead of old live bitmap.
+    ContinuousSpaceBitmap* mark_bitmap = space_->GetMarkBitmap();
+    bitmap = mark_bitmap;
+  }
   CardSet remove_card_set;
   for (uint8_t* const card_addr : dirty_cards_) {
     contains_reference_to_target_space = false;

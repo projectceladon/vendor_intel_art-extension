@@ -213,7 +213,7 @@ inline mirror::Object* Heap::AllocObjectWithAllocator(Thread* self,
   // the BumpPointer or TLAB allocators. This is nice since it allows the entire if statement to be
   // optimized out. And for the other allocators, AllocatorMayHaveConcurrentGC is a constant since
   // the allocator_type should be constant propagated.
-  if (AllocatorMayHaveConcurrentGC(allocator) && IsGcConcurrent()) {
+  if ((AllocatorMayHaveConcurrentGC(allocator) && IsGcConcurrent())) {
     CheckConcurrentGC(self, new_num_bytes_allocated, &obj);
   }
   VerifyObject(obj);
@@ -335,7 +335,22 @@ inline mirror::Object* Heap::TryToAllocate(Thread* self,
         // Try allocating a new thread local buffer, if the allocaiton fails the space must be
         // full so return null.
         if (!bump_pointer_space_->AllocNewTlab(self, new_tlab_size)) {
-          return nullptr;
+          // Retry the allocation to reuse the left space at the end of bump pointer space.
+          // This happen only when kGrow is true in order to avoid performance impact.
+          size_t max_contiguous_bytes = bump_pointer_space_->GetMaxContiguousBytes();
+          size_t tail = bump_pointer_space_->GetHeaderSize();
+          if (max_contiguous_bytes < alloc_size || max_contiguous_bytes < tail) {
+            return nullptr;
+          }
+          const size_t adjusted_tlab_size = max_contiguous_bytes - tail;
+          DCHECK_LT(adjusted_tlab_size, new_tlab_size);
+          if (kGrow && adjusted_tlab_size > alloc_size) {
+            if (!bump_pointer_space_->AllocNewTlab(self, adjusted_tlab_size)) {
+              return nullptr;
+            }
+          } else {
+            return nullptr;
+          }
         }
         *bytes_tl_bulk_allocated = new_tlab_size;
       } else {
@@ -425,7 +440,8 @@ inline bool Heap::IsOutOfMemoryOnAllocation(AllocatorType allocator_type, size_t
     if (UNLIKELY(new_footprint > growth_limit_)) {
       return true;
     }
-    if (!AllocatorMayHaveConcurrentGC(allocator_type) || !IsGcConcurrent()) {
+    if (!AllocatorMayHaveConcurrentGC(allocator_type) || !IsGcConcurrent() ||
+        foreground_collector_type_ == kCollectorTypeGenCopying) {
       if (!kGrow) {
         return true;
       }

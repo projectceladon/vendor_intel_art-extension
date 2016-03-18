@@ -26,7 +26,9 @@
 #include "garbage_collector.h"
 #include "gc_root.h"
 #include "gc/accounting/heap_bitmap.h"
+#include "gc/space/bump_pointer_space.h"
 #include "immune_spaces.h"
+#include "lock_word.h"
 #include "object_callbacks.h"
 #include "offsets.h"
 
@@ -54,7 +56,8 @@ namespace collector {
 
 class MarkSweep : public GarbageCollector {
  public:
-  MarkSweep(Heap* heap, bool is_concurrent, const std::string& name_prefix = "");
+  MarkSweep(Heap* heap, bool is_concurrent, bool is_copying = false,
+            const std::string& name_prefix = "");
 
   ~MarkSweep() {}
 
@@ -69,8 +72,15 @@ class MarkSweep : public GarbageCollector {
       REQUIRES(!mark_stack_lock_)
       SHARED_REQUIRES(Locks::mutator_lock_);
 
+  // Wake up suspended mutators due to allocation failures.
+  void NeedToWakeMutators();
+
   bool IsConcurrent() const {
     return is_concurrent_;
+  }
+
+  bool IsCopying() const {
+    return is_copying_;
   }
 
   virtual GcType GetGcType() const OVERRIDE {
@@ -78,7 +88,20 @@ class MarkSweep : public GarbageCollector {
   }
 
   virtual CollectorType GetCollectorType() const OVERRIDE {
-    return is_concurrent_ ? kCollectorTypeCMS : kCollectorTypeMS;
+    if (is_concurrent_) {
+      if (!is_copying_) {
+        return kCollectorTypeCMS;
+      } else {
+        return kCollectorTypeGenCopying;
+      }
+    } else {
+      if (!is_copying_) {
+        return kCollectorTypeMS;
+      }
+      return kCollectorTypeGenCopying;
+      // No STW GenCopying yet.
+      // return kCollectorTypeNone;
+    }
   }
 
   // Initializes internal structures.
@@ -230,10 +253,16 @@ class MarkSweep : public GarbageCollector {
   void DelayReferenceReferent(mirror::Class* klass, mirror::Reference* reference)
       SHARED_REQUIRES(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
 
+  void VerifyNoFromSpaceReferences(mirror::Object* obj)
+      SHARED_REQUIRES(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
+
  protected:
   // Returns object if the object is marked in the heap bitmap, otherwise null.
   virtual mirror::Object* IsMarked(mirror::Object* object) OVERRIDE
       SHARED_REQUIRES(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
+
+  bool IsMarkedAfterCopying(const mirror::Object* object) const
+      SHARED_REQUIRES(Locks::heap_bitmap_lock_);
 
   void MarkObjectNonNull(mirror::Object* obj,
                          mirror::Object* holder = nullptr,
@@ -301,12 +330,80 @@ class MarkSweep : public GarbageCollector {
   // Revoke all the thread-local buffers.
   void RevokeAllThreadLocalBuffers();
 
+  // Added for copying between two bump pointer spaces.
+  void ForwardObjects()
+      REQUIRES(Locks::heap_bitmap_lock_)
+      REQUIRES(Locks::mutator_lock_);
+  void UpdateReferences()
+      REQUIRES(Locks::heap_bitmap_lock_)
+      REQUIRES(Locks::mutator_lock_);
+  static mirror::Object* MarkedForwardingAddressCallback(mirror::Object* obj, void* arg)
+      REQUIRES(Locks::heap_bitmap_lock_)
+      REQUIRES(Locks::mutator_lock_);
+  // Below can be parallel.
+  void ForwardObject(mirror::Object* obj)
+      SHARED_REQUIRES(Locks::heap_bitmap_lock_)
+      REQUIRES(Locks::mutator_lock_);
+  inline mirror::Object* GetMarkedForwardAddress(mirror::Object* obj) const
+      SHARED_REQUIRES(Locks::heap_bitmap_lock_)
+      SHARED_REQUIRES(Locks::mutator_lock_);
+  inline void UpdateHeapReference(mirror::HeapReference<mirror::Object>* reference)
+      SHARED_REQUIRES(Locks::heap_bitmap_lock_)
+      SHARED_REQUIRES(Locks::mutator_lock_);
+  static bool UpdateHeapReferenceReferentCallback(mirror::HeapReference<mirror::Object>* reference,
+                                                  void* arg)
+      SHARED_REQUIRES(Locks::heap_bitmap_lock_)
+      SHARED_REQUIRES(Locks::mutator_lock_);
+  bool UpdateHeapReferenceReferent(mirror::HeapReference<mirror::Object>* reference)
+      SHARED_REQUIRES(Locks::heap_bitmap_lock_)
+      SHARED_REQUIRES(Locks::mutator_lock_);
+  static void UpdateHeapReferenceCallback(mirror::HeapReference<mirror::Object>* reference,
+                                          void* arg)
+      SHARED_REQUIRES(Locks::heap_bitmap_lock_)
+      SHARED_REQUIRES(Locks::mutator_lock_);
+
+  // Update all of the references of a single object.
+  void UpdateObjectReferences(mirror::Object* obj)
+      SHARED_REQUIRES(Locks::heap_bitmap_lock_)
+      SHARED_REQUIRES(Locks::mutator_lock_);
+  // Schedules an unmarked object for reference processing.
+  void DelayReference(mirror::Class* klass, mirror::Reference* reference)
+      SHARED_REQUIRES(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
+  static void DelayReferenceCallback(mirror::Class* klass, mirror::Reference* ref, void* arg)
+      SHARED_REQUIRES(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
+
   // Whether or not we count how many of each type of object were scanned.
   static constexpr bool kCountScannedTypes = false;
 
   // Current space, we check this space first to avoid searching for the appropriate space for an
   // object.
   accounting::ContinuousSpaceBitmap* current_space_bitmap_;
+
+  // From bump pointer space.
+  space::BumpPointerSpace* from_bps_ = nullptr;
+  // To bump pointer space.
+  space::BumpPointerSpace* to_bps_ = nullptr;
+  // The bump pointer in To bump pointer space where the next forwarding address will be.
+  uint8_t* bump_pointer_;
+  // How many objects and bytes we moved. Used for accounting.
+  size_t bytes_moved_;
+  size_t objects_moved_;
+  size_t bytes_promoted_;
+  // The objects promoted to ros will be rounded as bracket size.
+  size_t bytes_adjusted_;
+  // How many bytes we avoided dirtying.
+  size_t saved_bytes_;
+  Thread* self_;
+
+  // Bitmap which describes which objects we have to move, need to do / 2 so that we can handle
+  // objects which are only 8 bytes.
+  std::unique_ptr<accounting::ContinuousSpaceBitmap> objects_before_forwarding_ = nullptr;
+  std::unique_ptr<accounting::ContinuousSpaceBitmap> objects_after_forwarding_ = nullptr;
+  // The space which we are promoting into.
+  space::ContinuousMemMapAllocSpace* promo_dest_space_;
+  accounting::AgingTable* from_age_table_;
+  accounting::AgingTable* to_age_table_;
+
   // Cache the heap's mark bitmap to prevent having to do 2 loads during slow path marking.
   accounting::HeapBitmap* mark_bitmap_;
 
@@ -344,11 +441,17 @@ class MarkSweep : public GarbageCollector {
   Mutex mark_stack_lock_ ACQUIRED_AFTER(Locks::classlinker_classes_lock_);
 
   const bool is_concurrent_;
+  const bool is_copying_;
 
   // Verification.
   size_t live_stack_freeze_size_;
 
   std::unique_ptr<MemMap> sweep_array_free_buffer_mem_map_;
+
+  bool updating_reference_;
+
+  bool force_copy_all_ = false;
+  size_t threshold_age_;
 
  private:
   class CardScanTask;
@@ -359,9 +462,15 @@ class MarkSweep : public GarbageCollector {
   class RecursiveMarkTask;
   class ScanObjectParallelVisitor;
   class ScanObjectVisitor;
-  class VerifyRootMarkedVisitor;
+  friend class VerifyRootMarkedVisitor;
+  friend class VerifyRootMarkedVisitorAfterCopying;
   class VerifyRootVisitor;
   class VerifySystemWeakVisitor;
+
+  friend class ForwardObjectsVisitor;
+  friend class MarkSweepUpdateObjectReferencesVisitor;
+  friend class MarkSweepUpdateReferenceVisitor;
+  friend class MarkSweepUpdateRootVisitor;
 
   DISALLOW_IMPLICIT_CONSTRUCTORS(MarkSweep);
 };

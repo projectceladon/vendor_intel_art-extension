@@ -96,7 +96,7 @@ endif
 
 
 #
-# Used to change the default GC. Valid values are CMS, SS, GSS. The default is CMS.
+# Used to change the default GC. Valid values are CMS, SS, GSS, GENCOPYING. The default is CMS.
 #
 ART_DEFAULT_GC_TYPE ?= CMS
 art_default_gc_type_cflags := -DART_DEFAULT_GC_TYPE_IS_$(ART_DEFAULT_GC_TYPE)

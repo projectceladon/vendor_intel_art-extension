@@ -39,6 +39,8 @@ QUIET="n"
 RELOCATE="y"
 STRIP_DEX="n"
 SECONDARY_DEX=""
+#Generational Collector is more conservative to grow the heap,
+#therefore, the OOM will take longer to throw. 114 and 080 are two examples.
 TIME_OUT="gdb"  # "n" (disabled), "timeout" (use timeout), "gdb" (use gdb)
 # Value in seconds
 if [ "$ART_USE_READ_BARRIER" = "true" ]; then

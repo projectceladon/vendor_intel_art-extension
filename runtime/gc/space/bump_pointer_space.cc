@@ -61,6 +61,10 @@ BumpPointerSpace::BumpPointerSpace(const std::string& name, MemMap* mem_map)
       block_lock_("Block lock", kBumpPointerSpaceBlockLock),
       main_block_size_(0),
       num_blocks_(0) {
+  aging_table_.reset(accounting::AgingTable::Create(
+        StringPrintf("bump pointer space %s aging-table", name.c_str()),
+        NonGrowthLimitCapacity(), Begin(), mem_map->End()));
+  CHECK(aging_table_.get() != nullptr) << "could not create bump pointer space aging table";
 }
 
 void BumpPointerSpace::Clear() {

@@ -19,6 +19,7 @@
 
 #include "object_callbacks.h"
 #include "space.h"
+#include "gc/accounting/aging_table.h"
 
 namespace art {
 namespace gc {
@@ -159,6 +160,17 @@ class BumpPointerSpace FINAL : public ContinuousMemMapAllocSpace {
   // Object alignment within the space.
   static constexpr size_t kAlignment = 8;
 
+  accounting::AgingTable* GetAgingTable() {
+    return aging_table_.get();
+  }
+
+  size_t GetMaxContiguousBytes() {
+    return Limit() - End();
+  }
+
+  size_t GetHeaderSize() {
+    return sizeof(BlockHeader);
+  }
  protected:
   BumpPointerSpace(const std::string& name, MemMap* mem_map);
 
@@ -170,7 +182,6 @@ class BumpPointerSpace FINAL : public ContinuousMemMapAllocSpace {
   // enables us to maintain tightly packed objects when you are not using thread local buffers for
   // allocation. The main block starts at the space Begin().
   void UpdateMainBlock() REQUIRES(block_lock_);
-
   uint8_t* growth_end_;
   AtomicInteger objects_allocated_;  // Accumulated from revoked thread local regions.
   AtomicInteger bytes_allocated_;  // Accumulated from revoked thread local regions.
@@ -181,6 +192,9 @@ class BumpPointerSpace FINAL : public ContinuousMemMapAllocSpace {
   // The number of blocks in the space, if it is 0 then the space has one long continuous block
   // which doesn't have an updated header.
   size_t num_blocks_ GUARDED_BY(block_lock_);
+
+  // Aging table.
+  std::unique_ptr<accounting::AgingTable> aging_table_;
 
  private:
   struct BlockHeader {

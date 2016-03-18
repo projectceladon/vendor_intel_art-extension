@@ -29,9 +29,11 @@
 #include "base/systrace.h"
 #include "base/time_utils.h"
 #include "base/timing_logger.h"
+#include "gc/accounting/aging_table.h"
 #include "gc/accounting/card_table-inl.h"
 #include "gc/accounting/heap_bitmap-inl.h"
 #include "gc/accounting/mod_union_table.h"
+#include "gc/accounting/remembered_set.h"
 #include "gc/accounting/space_bitmap-inl.h"
 #include "gc/heap.h"
 #include "gc/reference_processor.h"
@@ -89,7 +91,7 @@ void MarkSweep::BindBitmaps() {
   }
 }
 
-MarkSweep::MarkSweep(Heap* heap, bool is_concurrent, const std::string& name_prefix)
+MarkSweep::MarkSweep(Heap* heap, bool is_concurrent, bool is_copying, const std::string& name_prefix)
     : GarbageCollector(heap,
                        name_prefix +
                        (is_concurrent ? "concurrent mark sweep": "mark sweep")),
@@ -99,7 +101,9 @@ MarkSweep::MarkSweep(Heap* heap, bool is_concurrent, const std::string& name_pre
       gc_barrier_(new Barrier(0)),
       mark_stack_lock_("mark sweep mark stack lock", kMarkSweepMarkStackLock),
       is_concurrent_(is_concurrent),
-      live_stack_freeze_size_(0) {
+      is_copying_(is_copying),
+      live_stack_freeze_size_(0),
+      updating_reference_(false) {
   std::string error_msg;
   MemMap* mem_map = MemMap::MapAnonymous(
       "mark sweep sweep array free buffer", nullptr,
@@ -134,9 +138,64 @@ void MarkSweep::InitializePhase() {
     ReaderMutexLock mu(Thread::Current(), *Locks::heap_bitmap_lock_);
     mark_bitmap_ = heap_->GetMarkBitmap();
   }
+  /*
+   For copying living objects from from bps to to bps, there are below two solutions:
+   * a) requires somewhere to backup the lock words of the living objects in from bps.
+   *    1) calculate forwarding address of living objects in from bps, store the forwarding
+   *       address into the lock word with the lock word backup somewhere.
+   *    2) walk the living objects in from bps to fixup the references.
+   *    3) copy the living objects from from bps to to bps.
+   *
+   * b) requires live bitmap of to bps to record the living objects in to bps after promotion.
+   *    1) calculate the forwarding address and copy the living objects from from bps to to bps
+   *       at the same time. The forwarding address are stored in the lock word of the old objects
+   *       in from bps.
+   *    2) walk the living objects in to bps to fixup the references.
+   *
+   * solution a) needs 3X to walk the living objects in bps.
+   * solution b) needs 2X to walk the living objects in bps.
+   * the lock word backup footprint is higher than living bitmap of to bps.
+   *
+   * Generational Copying is using solution b).
+  */
+  if (IsCopying()) {
+    from_bps_ = heap_->GetFromBumpPointerSpace();
+    to_bps_ = heap_->GetToBumpPointerSpace();
+    promo_dest_space_ = GetHeap()->GetPrimaryFreeListSpace();
+    force_copy_all_ = false;
+    threshold_age_ = heap_->GetThresholdAge();
+    // Bitmap which describes which objects we have to move in bump pointer space.
+    // No need to create mark and live bitmaps for bump pointer space from the scratch.
+    // One bump pointer space only requires one bitmap to track the living objects.
+    objects_before_forwarding_.reset(accounting::ContinuousSpaceBitmap::Create(
+        "objects before forwarding", from_bps_->Begin(), from_bps_->Capacity()));
+    objects_after_forwarding_.reset(accounting::ContinuousSpaceBitmap::Create(
+        "objects after forwarding", to_bps_->Begin(), to_bps_->Capacity()));
+    from_age_table_ = from_bps_->GetAgingTable();
+    to_age_table_ = to_bps_->GetAgingTable();
+    if (GetCurrentIteration()->GetClearSoftReferences()) {
+      // Force copy all since it is nearly to throw OOM.
+      force_copy_all_ = true;
+      VLOG(heap) << "Copying all objects in young space";
+    }
+    DCHECK(from_age_table_ != nullptr);
+    DCHECK(to_age_table_ != nullptr);
+    saved_bytes_ = 0;
+    bytes_moved_ = 0;
+    bytes_adjusted_ = 0;
+    objects_moved_ = 0;
+    bytes_promoted_ = 0;
+    self_ = Thread::Current();
+  }
   if (!GetCurrentIteration()->GetClearSoftReferences()) {
     // Always clear soft references if a non-sticky collection.
     GetCurrentIteration()->SetClearSoftReferences(GetGcType() != collector::kGcTypeSticky);
+  }
+}
+
+void MarkSweep::NeedToWakeMutators() {
+  if (GetCollectorType() == kCollectorTypeGenCopying) {
+    GetHeap()->WakeMutators();
   }
 }
 
@@ -175,6 +234,7 @@ void MarkSweep::RunPhases() {
     RevokeAllThreadLocalBuffers();
   }
   {
+    NeedToWakeMutators();
     // Sweeping always done concurrently, even for non concurrent mark sweep.
     ReaderMutexLock mu(self, *Locks::mutator_lock_);
     if (Runtime::Current()->EnabledGcProfile()) {
@@ -198,8 +258,452 @@ void MarkSweep::ProcessReferences(Thread* self) {
       this);
 }
 
+static inline size_t CopyAvoidingDirtyingPages(void* dest, const void* src, size_t size) {
+  if (LIKELY(size <= static_cast<size_t>(kPageSize))) {
+    // We will dirty the current page and somewhere in the middle of the next page. This means
+    // that the next object copied will also dirty that page.
+    // TODO: Worth considering the last object copied? We may end up dirtying one page which is
+    // not necessary per GC.
+    memcpy(dest, src, size);
+    return 0;
+  }
+  size_t saved_bytes = 0;
+  uint8_t* byte_dest = reinterpret_cast<uint8_t*>(dest);
+  if (kIsDebugBuild) {
+    for (size_t i = 0; i < size; ++i) {
+      CHECK_EQ(byte_dest[i], 0U);
+    }
+  }
+  // Process the start of the page. The page must already be dirty, don't bother with checking.
+  const uint8_t* byte_src = reinterpret_cast<const uint8_t*>(src);
+  const uint8_t* limit = byte_src + size;
+  size_t page_remain = AlignUp(byte_dest, kPageSize) - byte_dest;
+  // Copy the bytes until the start of the next page.
+  memcpy(dest, src, page_remain);
+  byte_src += page_remain;
+  byte_dest += page_remain;
+  DCHECK_ALIGNED(reinterpret_cast<uintptr_t>(byte_dest), kPageSize);
+  DCHECK_ALIGNED(reinterpret_cast<uintptr_t>(byte_dest), sizeof(uintptr_t));
+  DCHECK_ALIGNED(reinterpret_cast<uintptr_t>(byte_src), sizeof(uintptr_t));
+  while (byte_src + kPageSize < limit) {
+    bool all_zero = true;
+    uintptr_t* word_dest = reinterpret_cast<uintptr_t*>(byte_dest);
+    const uintptr_t* word_src = reinterpret_cast<const uintptr_t*>(byte_src);
+    for (size_t i = 0; i < kPageSize / sizeof(*word_src); ++i) {
+      // Assumes the destination of the copy is all zeros.
+      if (word_src[i] != 0) {
+        all_zero = false;
+        word_dest[i] = word_src[i];
+      }
+    }
+    if (all_zero) {
+      // Avoided copying into the page since it was all zeros.
+      saved_bytes += kPageSize;
+    }
+    byte_src += kPageSize;
+    byte_dest += kPageSize;
+  }
+  // Handle the part of the page at the end.
+  memcpy(byte_dest, byte_src, limit - byte_src);
+  return saved_bytes;
+}
+
+void MarkSweep::ForwardObject(mirror::Object* obj) {
+  const size_t object_size = obj->SizeOf();
+  size_t bytes_allocated = 0;
+  size_t dummy = 0;
+  mirror::Object* forward_address = nullptr;
+  uint8_t age = from_age_table_->GetObjectAge(obj);
+  if (force_copy_all_ || age >= threshold_age_) {
+    forward_address = promo_dest_space_->AllocThreadUnsafe(self_, object_size, &bytes_allocated,
+                                               nullptr, &dummy);
+    if (UNLIKELY(forward_address == nullptr)) {
+      // If out of space, fall back to the to-space.
+      forward_address = to_bps_->AllocThreadUnsafe(self_, object_size, &bytes_allocated,
+                                                                  nullptr, &dummy);
+      objects_after_forwarding_->Set(forward_address);
+      to_age_table_->IncreaseObjectAge(forward_address, age);
+    } else {
+      bytes_promoted_ += bytes_allocated;
+      bytes_adjusted_ += bytes_allocated - object_size;
+      GetHeap()->WriteBarrierEveryFieldOf(forward_address);
+      // Handle the bitmaps marking.
+      accounting::ContinuousSpaceBitmap* live_bitmap = promo_dest_space_->GetLiveBitmap();
+      DCHECK(live_bitmap != nullptr);
+      accounting::ContinuousSpaceBitmap* mark_bitmap = promo_dest_space_->GetMarkBitmap();
+      DCHECK(mark_bitmap != nullptr);
+      DCHECK(!live_bitmap->Test(forward_address));
+      // Mark forward_address on the live bit map.
+      live_bitmap->Set(forward_address);
+      // Mark forward_address on the mark bit map.
+      DCHECK(!mark_bitmap->Test(forward_address));
+      mark_bitmap->Set(forward_address);
+    }
+  } else {
+    forward_address = to_bps_->AllocThreadUnsafe(self_, object_size, &bytes_allocated,
+                                                                nullptr, &dummy);
+    objects_after_forwarding_->Set(forward_address);
+    to_age_table_->IncreaseObjectAge(forward_address, age);
+  }
+  CHECK((forward_address != nullptr));
+  CHECK(to_bps_->HasAddress(forward_address) ||
+        promo_dest_space_->HasAddress(forward_address));
+  ++objects_moved_;
+  // The objects promoted to ros will be rounded as backet size.
+  bytes_moved_ += bytes_allocated;
+  // Copy over the object and add it to the mark stack since we still need to update its
+  // references.
+  saved_bytes_ +=
+      CopyAvoidingDirtyingPages(reinterpret_cast<void*>(forward_address), obj, object_size);
+  // Make sure to only update the forwarding address AFTER you copy the object so that the
+  // monitor word doesn't Get stomped over.
+  obj->SetLockWord(
+      LockWord::FromForwardingAddress(reinterpret_cast<size_t>(forward_address)), false);
+}
+
+class ForwardObjectsVisitor {
+ public:
+  explicit ForwardObjectsVisitor(MarkSweep* collector)
+      : collector_(collector) {}
+  void operator()(mirror::Object* obj) const REQUIRES(Locks::mutator_lock_,
+                                                                      Locks::heap_bitmap_lock_) {
+    DCHECK_ALIGNED(obj, space::BumpPointerSpace::kAlignment);
+    DCHECK(collector_->IsMarked(obj));
+    collector_->ForwardObject(obj);
+  }
+
+ private:
+  MarkSweep* const collector_;
+};
+
+void MarkSweep::ForwardObjects() {
+  TimingLogger::ScopedTiming t(__FUNCTION__, GetTimings());
+  // Visit all the marked objects in the from bump pointer space.
+  ForwardObjectsVisitor visitor(this);
+  objects_before_forwarding_->VisitMarkedRange(reinterpret_cast<uintptr_t>(from_bps_->Begin()),
+                                               reinterpret_cast<uintptr_t>(from_bps_->End()),
+                                               visitor);
+}
+
+inline mirror::Object* MarkSweep::GetMarkedForwardAddress(mirror::Object* obj) const {
+  if (immune_spaces_.ContainsObject(obj) || (to_bps_ != nullptr && to_bps_->HasAddress(obj))) {
+    return obj;
+  } else if (current_space_bitmap_->HasAddress(obj)) {
+    LockWord lock_word = obj->GetLockWord(false);
+    if (lock_word.GetState() != LockWord::kForwardingAddress) {
+      return nullptr;
+    }
+    mirror::Object* ret =
+        reinterpret_cast<mirror::Object*>(lock_word.ForwardingAddress());
+    DCHECK(ret != nullptr);
+    return ret;
+  }
+  DCHECK(!(to_bps_ != nullptr && to_bps_->HasAddress(obj)) &&
+         !current_space_bitmap_->HasAddress(obj));
+  return mark_bitmap_->Test(obj) ? obj : nullptr;
+}
+
+class MarkSweepUpdateRootVisitor : public RootVisitor {
+ public:
+  explicit MarkSweepUpdateRootVisitor(MarkSweep* collector) : collector_(collector) {
+  }
+
+  void VisitRoots(mirror::Object*** roots, size_t count, const RootInfo& info ATTRIBUTE_UNUSED)
+      OVERRIDE REQUIRES(Locks::mutator_lock_)
+      REQUIRES(Locks::heap_bitmap_lock_) {
+    for (size_t i = 0; i < count; ++i) {
+      mirror::Object* obj = *roots[i];
+      mirror::Object* new_obj = collector_->GetMarkedForwardAddress(obj);
+      if (obj != new_obj && new_obj != nullptr) {
+        *roots[i] = new_obj;
+        DCHECK(new_obj != nullptr);
+      }
+    }
+  }
+
+  void VisitRoots(mirror::CompressedReference<mirror::Object>** roots, size_t count,
+                  const RootInfo& info ATTRIBUTE_UNUSED)
+      OVERRIDE REQUIRES(Locks::mutator_lock_)
+      REQUIRES(Locks::heap_bitmap_lock_) {
+    for (size_t i = 0; i < count; ++i) {
+      mirror::Object* obj = roots[i]->AsMirrorPtr();
+      mirror::Object* new_obj = collector_->GetMarkedForwardAddress(obj);
+      if (obj != new_obj && new_obj != nullptr) {
+        roots[i]->Assign(new_obj);
+        DCHECK(new_obj != nullptr);
+      }
+    }
+  }
+
+ private:
+  MarkSweep* const collector_;
+};
+
+inline void MarkSweep::UpdateHeapReference(mirror::HeapReference<mirror::Object>* reference) {
+  mirror::Object* obj = reference->AsMirrorPtr();
+  if (obj != nullptr) {
+    mirror::Object* new_obj = GetMarkedForwardAddress(obj);
+    if (obj != new_obj && new_obj != nullptr) {
+      reference->Assign(new_obj);
+    }
+  }
+}
+
+mirror::Object* MarkSweep::MarkedForwardingAddressCallback(mirror::Object* obj, void* arg) {
+  return reinterpret_cast<MarkSweep*>(arg)->GetMarkedForwardAddress(obj);
+}
+
+void MarkSweep::UpdateHeapReferenceCallback(mirror::HeapReference<mirror::Object>* reference,
+                                            void* arg) {
+  reinterpret_cast<MarkSweep*>(arg)->UpdateHeapReference(reference);
+}
+
+class MarkSweepUpdateReferenceVisitor {
+ public:
+  explicit MarkSweepUpdateReferenceVisitor(MarkSweep* collector) : collector_(collector) {
+  }
+
+  void operator()(mirror::Object* obj, MemberOffset offset, bool /*is_static*/) const
+      ALWAYS_INLINE REQUIRES(Locks::mutator_lock_, Locks::heap_bitmap_lock_) {
+    collector_->UpdateHeapReference(obj->GetFieldObjectReferenceAddr<kVerifyNone>(offset));
+  }
+
+  void operator()(mirror::Class* /*klass*/, mirror::Reference* ref) const
+      REQUIRES(Locks::mutator_lock_, Locks::heap_bitmap_lock_) {
+    collector_->UpdateHeapReference(
+        ref->GetFieldObjectReferenceAddr<kVerifyNone>(mirror::Reference::ReferentOffset()));
+  }
+
+  void VisitRootIfNonNull(mirror::CompressedReference<mirror::Object>* root) const
+      NO_THREAD_SAFETY_ANALYSIS {
+    if (!root->IsNull()) {
+      VisitRoot(root);
+    }
+  }
+
+  void VisitRoot(mirror::CompressedReference<mirror::Object>* root) const
+      NO_THREAD_SAFETY_ANALYSIS {
+    root->Assign(collector_->GetMarkedForwardAddress(root->AsMirrorPtr()));
+  }
+
+ private:
+  MarkSweep* const collector_;
+};
+
+void MarkSweep::UpdateObjectReferences(mirror::Object* obj) {
+  MarkSweepUpdateReferenceVisitor visitor(this);
+  obj->VisitReferences(visitor, visitor);
+}
+
+class MarkSweepUpdateObjectReferencesVisitor {
+ public:
+  explicit MarkSweepUpdateObjectReferencesVisitor(MarkSweep* collector) : collector_(collector) {
+  }
+  void operator()(mirror::Object* obj) const SHARED_REQUIRES(Locks::heap_bitmap_lock_)
+          REQUIRES(Locks::mutator_lock_) ALWAYS_INLINE {
+    collector_->UpdateObjectReferences(obj);
+  }
+
+ private:
+  MarkSweep* const collector_;
+};
+
+bool MarkSweep::UpdateHeapReferenceReferentCallback(mirror::HeapReference<mirror::Object>* object,
+                                                    void* arg) {
+  return reinterpret_cast<MarkSweep*>(arg)->UpdateHeapReferenceReferent(object);
+}
+
+bool MarkSweep::UpdateHeapReferenceReferent(mirror::HeapReference<mirror::Object>* object) {
+  const mirror::Object* obj = object->AsMirrorPtr();
+  if (immune_spaces_.ContainsObject(obj)) {
+    return true;
+  }
+  if (current_space_bitmap_->HasAddress(obj)) {
+    mirror::Object* new_obj = GetMarkedForwardAddress(const_cast<mirror::Object*>(obj));
+    if (new_obj == nullptr) {
+      return false;
+    }
+    if (new_obj != obj) {
+      // Write barrier is not necessary since it still points to the same object,
+      // just at a different address.
+      object->Assign(new_obj);
+    }
+    return true;
+  }
+  return mark_bitmap_->Test(obj) ? true : false;
+}
+
+// Process the "referent" field in a java.lang.ref.Reference.  If the referent has not yet been
+// marked, put it on the appropriate list in the heap for later processing.
+void MarkSweep::DelayReference(mirror::Class* klass, mirror::Reference* reference) {
+  heap_->GetReferenceProcessor()->DelayReferenceReferent(klass, reference, this);
+}
+
+void MarkSweep::DelayReferenceCallback(mirror::Class* klass, mirror::Reference* ref,
+                                               void* arg) {
+  reinterpret_cast<MarkSweep*>(arg)->DelayReference(klass, ref);
+}
+
+// Used to verify that there's no references to the from-space.
+class MarkSweepVerifyNoFromSpaceReferencesVisitor {
+ public:
+  explicit MarkSweepVerifyNoFromSpaceReferencesVisitor(space::ContinuousMemMapAllocSpace* from_space)
+      : from_space_(from_space) {}
+
+  void operator()(mirror::Object* obj, MemberOffset offset, bool /* is_static */) const
+      SHARED_REQUIRES(Locks::mutator_lock_) ALWAYS_INLINE {
+    mirror::Object* ref = obj->GetFieldObject<mirror::Object>(offset);
+    if (from_space_->HasAddress(ref)) {
+      Runtime::Current()->GetHeap()->DumpObject(LOG(INFO), obj);
+      LOG(FATAL) << ref << " found in from space";
+    }
+  }
+
+  void VisitRootIfNonNull(mirror::CompressedReference<mirror::Object>* root) const
+      SHARED_REQUIRES(Locks::mutator_lock_) {
+    if (!root->IsNull()) {
+      VisitRoot(root);
+    }
+  }
+
+  void VisitRoot(mirror::CompressedReference<mirror::Object>* root) const
+      SHARED_REQUIRES(Locks::mutator_lock_) {
+    mirror::Object* obj = root->AsMirrorPtr();
+    if (from_space_->HasAddress(obj)) {
+      Runtime::Current()->GetHeap()->DumpObject(LOG(INFO), obj);
+      LOG(FATAL) << obj << " found in from space";
+    }
+  }
+
+ private:
+  space::ContinuousMemMapAllocSpace* from_space_;
+};
+
+void MarkSweep::VerifyNoFromSpaceReferences(mirror::Object* obj) {
+  CHECK(!from_bps_->HasAddress(obj)) << "Scanning object "
+      << obj << " in from bump pointer space";
+  MarkSweepVerifyNoFromSpaceReferencesVisitor visitor(from_bps_);
+  obj->VisitReferences(visitor, VoidFunctor());
+}
+
+class MarkSweepVerifyNoFromSpaceReferencesObjectVisitor {
+ public:
+  explicit MarkSweepVerifyNoFromSpaceReferencesObjectVisitor(MarkSweep* mark_sweep)
+      : mark_sweep_(mark_sweep) {}
+  void operator()(mirror::Object* obj) const
+      SHARED_REQUIRES(Locks::heap_bitmap_lock_, Locks::mutator_lock_) {
+    DCHECK(obj != nullptr);
+    mark_sweep_->VerifyNoFromSpaceReferences(obj);
+  }
+ private:
+  MarkSweep* const mark_sweep_;
+};
+
+void MarkSweep::UpdateReferences() {
+  TimingLogger::ScopedTiming t1(__FUNCTION__, GetTimings());
+  updating_reference_ = true;
+  Runtime* runtime = Runtime::Current();
+  // Update roots.
+  MarkSweepUpdateRootVisitor update_root_visitor(this);
+  runtime->VisitRoots(&update_root_visitor);
+  space::RosAllocSpace* ros = nullptr;
+  // Update object references in mod union tables and spaces.
+  for (const auto& space : heap_->GetContinuousSpaces()) {
+    // If the space is immune then we need to mark the references to other spaces.
+    accounting::ModUnionTable* table = heap_->FindModUnionTableFromSpace(space);
+    accounting::RememberedSet* rem_set = heap_->FindRememberedSetFromSpace(space);
+    if (table != nullptr) {
+      // TODO: Improve naming.
+      TimingLogger::ScopedTiming t2(
+          space->IsZygoteSpace() ? "UpdateZygoteModUnionTableReferences" :
+                                   "UpdateImageModUnionTableReferences",
+                                   GetTimings());
+      table->UpdateAndMarkReferences(this);
+      DCHECK(rem_set == nullptr);
+    } else if (rem_set != nullptr &&
+               (space->IsRosAllocSpace() || space == heap_->GetNonMovingSpace())) {
+      TimingLogger::ScopedTiming t2("UpdateAndMarkRememberedSet", GetTimings());
+      rem_set->UpdateAndMarkReferences(from_bps_, this, false);
+      if (space->IsRosAllocSpace()) {
+        ros = space->AsRosAllocSpace();
+      }
+    } else if (space == to_bps_) {
+      TimingLogger::ScopedTiming t2("VisitToBumpPointerSpaceObjects", GetTimings());
+      MarkSweepUpdateObjectReferencesVisitor from_visitor(this);
+      objects_after_forwarding_->VisitMarkedRange(reinterpret_cast<uintptr_t>(to_bps_->Begin()),
+                                                  reinterpret_cast<uintptr_t>(to_bps_->End()),
+                                                  from_visitor);
+    } else {
+      // Nothing to do for From bump pointer space.
+    }
+  }
+  if (kIsDebugBuild && ros != nullptr) {
+    // Verify that there are no from-space references that
+    // remain in the space, that is, the remembered set (and the
+    // card table) didn't miss any from-space references in the
+    // space.
+    TimingLogger::ScopedTiming t3("VerifyRosObjects", GetTimings());
+    accounting::ContinuousSpaceBitmap* mark_bitmap = ros->GetMarkBitmap();
+    MarkSweepVerifyNoFromSpaceReferencesObjectVisitor visitor(this);
+    mark_bitmap->VisitMarkedRange(reinterpret_cast<uintptr_t>(ros->Begin()),
+                                  reinterpret_cast<uintptr_t>(ros->End()),
+                                  visitor);
+  }
+  space::LargeObjectSpace* los = GetHeap()->GetLargeObjectsSpace();
+  if (los != nullptr) {
+    TimingLogger::ScopedTiming t4("VisitLargeObjects", GetTimings());
+    accounting::LargeObjectBitmap* large_mark_bitmap = los->GetMarkBitmap();
+    MarkSweepUpdateObjectReferencesVisitor los_visitor(this);
+    large_mark_bitmap->VisitMarkedRange(reinterpret_cast<uintptr_t>(los->Begin()),
+                                        reinterpret_cast<uintptr_t>(los->End()),
+                                        los_visitor);
+  }
+  // Update the reference processor cleared list.
+  heap_->GetReferenceProcessor()->UpdateRoots(this);
+  // Update and sweep the system weaks.
+  runtime->SweepSystemWeaks(this);
+  if (kIsDebugBuild && los != nullptr) {
+    TimingLogger::ScopedTiming t5("VerifyLargeObjects", GetTimings());
+    accounting::LargeObjectBitmap* large_mark_bitmap = los->GetMarkBitmap();
+    MarkSweepVerifyNoFromSpaceReferencesObjectVisitor los_visitor(this);
+    large_mark_bitmap->VisitMarkedRange(reinterpret_cast<uintptr_t>(los->Begin()),
+                                        reinterpret_cast<uintptr_t>(los->End()),
+                                        los_visitor);
+  }
+  updating_reference_ = false;
+  // The above references update in modunion table or rem set may put objects
+  // in mark stack. Reset mark stack after the references are updated already.
+  mark_stack_->Reset();
+}
+
+class VerifyRootMarkedVisitorAfterCopying : public SingleRootVisitor {
+ public:
+  explicit VerifyRootMarkedVisitorAfterCopying(MarkSweep* collector) : collector_(collector) { }
+
+  void VisitRoot(mirror::Object* root, const RootInfo& info) OVERRIDE
+      SHARED_REQUIRES(Locks::mutator_lock_, Locks::heap_bitmap_lock_) {
+    CHECK(collector_->IsMarkedAfterCopying(root)) << info.ToString();
+  }
+
+ private:
+  MarkSweep* const collector_;
+};
+
+class VerifyRootMarkedVisitor : public SingleRootVisitor {
+ public:
+  explicit VerifyRootMarkedVisitor(MarkSweep* collector) : collector_(collector) { }
+
+  void VisitRoot(mirror::Object* root, const RootInfo& info) OVERRIDE
+      SHARED_REQUIRES(Locks::mutator_lock_, Locks::heap_bitmap_lock_) {
+    CHECK(collector_->IsMarked(root)) << info.ToString();
+  }
+
+ private:
+  MarkSweep* const collector_;
+};
+
 void MarkSweep::PausePhase() {
-  TimingLogger::ScopedTiming t("(Paused)PausePhase", GetTimings());
+  TimingLogger::ScopedTiming t1("(Paused)PausePhase", GetTimings());
   Thread* self = Thread::Current();
   Locks::mutator_lock_->AssertExclusiveHeld(self);
   if (IsConcurrent()) {
@@ -207,7 +711,14 @@ void MarkSweep::PausePhase() {
     WriterMutexLock mu(self, *Locks::heap_bitmap_lock_);
     // Re-mark root set.
     ReMarkRoots();
-    // Scan dirty objects, this is only required if we are not doing concurrent GC.
+    // Update mod union tables and remember sets in order to update references later.
+    if (IsCopying()) {
+      // TODO: In pause phase if we can record dirty cards for only rememberedset
+      // and modunion tables, this will save paused time, because no CAS and no change from
+      // dirty to dirty - 1.
+      heap_->ProcessCards(GetTimings(), true, false, false);
+    }
+    // Scan dirty objects, this is only required if we are doing concurrent GC.
     RecursiveMarkDirtyObjects(true, accounting::CardTable::kCardDirty);
   }
   {
@@ -219,15 +730,71 @@ void MarkSweep::PausePhase() {
     // stacks and don't want anybody to allocate into the live stack.
     RevokeAllThreadLocalAllocationStacks(self);
   }
+  if (kVerifyRootsMarked) {
+    TimingLogger::ScopedTiming t_verify("(Paused)VerifyRoots before copying", GetTimings());
+    VerifyRootMarkedVisitor visitor_verify(this);
+    Runtime::Current()->VisitRoots(&visitor_verify);
+  }
+  // Copying between two bump pointer spaces and fixup the references.
+  if (IsCopying()) {
+    // At the beginning, no need to revoke thread local buffers, because we will
+    // forward live objects to another empty bump pointer space.
+    TimingLogger::ScopedTiming t3("copy bump pointer space", GetTimings());
+    WriterMutexLock mu(self, *Locks::heap_bitmap_lock_);
+    GetHeap()->GetReferenceProcessor()->ProcessReferences(
+        false,
+        GetTimings(),
+        GetCurrentIteration()->GetClearSoftReferences(),
+        this);
+
+    ForwardObjects();
+
+    // If the old enough objects are promoted to ros, update remember set of ros.
+    if (bytes_promoted_ > 0) {
+      space::RosAllocSpace* ros = heap_->GetRosAllocSpace();
+      accounting::RememberedSet* rem_set = heap_->FindRememberedSetFromSpace(ros);
+      // TODO: No need to change to dirty - 1 to avoid CAS.
+      rem_set->ClearCards();
+    }
+    UpdateReferences();
+    // Revoke buffers before measuring how many objects were moved since the TLABs need to be revoked
+    // before they are properly counted. Also the old enough objects may be promoted into ros,
+    // and this helps prevent fragmentation.
+    GetHeap()->RevokeAllThreadLocalBuffers();
+    // Record freed memory.
+    const size_t from_objects = from_bps_->GetObjectsAllocated();
+    const size_t to_objects = objects_moved_;
+    CHECK_LE(to_objects, from_objects);
+    // Note: Freed bytes can be negative because sometimes the promoted objects will be large.
+    int64_t freed_bytes_bps = static_cast<int64_t>(from_bps_->Size()) -
+                              static_cast<int64_t>(to_bps_->Size()) -
+                              static_cast<int64_t>((bytes_promoted_));
+    RecordFree(ObjectBytePair(from_objects - to_objects, freed_bytes_bps));
+    // Clear and protect the from space.
+    from_bps_->Clear();
+    // Protect with PROT_NONE.
+    VLOG(heap) << "Protecting from_space_ : " << *from_bps_ << " to_space: " << *to_bps_;
+    from_bps_->GetMemMap()->Protect(PROT_NONE);
+  }
+  if (kVerifyRootsMarked) {
+    TimingLogger::ScopedTiming t_verifyAfterCopying("(Paused)VerifyRoots after copying", GetTimings());
+    VerifyRootMarkedVisitorAfterCopying visitorAfterCopying(this);
+    Runtime::Current()->VisitRoots(&visitorAfterCopying);
+  }
   heap_->PreSweepingGcVerification(this);
-  // Disallow new system weaks to prevent a race which occurs when someone adds a new system
-  // weak before we sweep them. Since this new system weak may not be marked, the GC may
-  // incorrectly sweep it. This also fixes a race where interning may attempt to return a strong
-  // reference to a string that is about to be swept.
-  Runtime::Current()->DisallowNewSystemWeaks();
-  // Enable the reference processing slow path, needs to be done with mutators paused since there
-  // is no lock in the GetReferent fast path.
-  GetHeap()->GetReferenceProcessor()->EnableSlowPath();
+  if (!IsCopying()) {
+    // Disallow new system weaks to prevent a race which occurs when someone adds a new system
+    // weak before we sweep them. Since this new system weak may not be marked, the GC may
+    // incorrectly sweep it. This also fixes a race where interning may attempt to return a strong
+    // reference to a string that is about to be swept.
+    Runtime::Current()->DisallowNewSystemWeaks();
+    // Enable the reference processing slow path, needs to be done with mutators paused since there
+    // is no lock in the GetReferent fast path.
+    GetHeap()->GetReferenceProcessor()->EnableSlowPath();
+  } else {
+    from_bps_->GetAgingTable()->Reset();
+    heap_->SwapSemiSpaces();
+  }
   const GcType gc_type = GetGcType();
   const space::RosAllocSpace* ros_space = GetHeap()->GetRosAllocSpace();
   if (ros_space != nullptr && (gc_type == kGcTypePartial || gc_type == kGcTypeFull)) {
@@ -244,7 +811,11 @@ void MarkSweep::PreCleanCards() {
     Thread* self = Thread::Current();
     CHECK(!Locks::mutator_lock_->IsExclusiveHeld(self));
     // Process dirty cards and add dirty cards to mod union tables, also ages cards.
-    heap_->ProcessCards(GetTimings(), false, true, false);
+    if (IsCopying()) {
+      heap_->ProcessCards(GetTimings(), true, true, false);
+    } else {
+      heap_->ProcessCards(GetTimings(), false, true, false);
+    }
     // The checkpoint root marking is required to avoid a race condition which occurs if the
     // following happens during a reference write:
     // 1. mutator dirties the card (write barrier)
@@ -285,8 +856,14 @@ void MarkSweep::MarkingPhase() {
   BindBitmaps();
   FindDefaultSpaceBitmap();
   // Process dirty cards and add dirty cards to mod union tables.
-  // If the GC type is non sticky, then we just clear the cards instead of ageing them.
-  heap_->ProcessCards(GetTimings(), false, true, GetGcType() != kGcTypeSticky);
+  // If the GC type is non sticky, then we just clear the cards instead of aging them.
+  // Generational Copying GC doesn't have sticky GC. And it doesn't need
+  // dirty cards of bump pointer spaces if it's not concurrent.
+  if (IsCopying()) {
+    heap_->ProcessCards(GetTimings(), true, true, true);
+  } else {
+    heap_->ProcessCards(GetTimings(), false, true, GetGcType() != kGcTypeSticky);
+  }
   WriterMutexLock mu(self, *Locks::heap_bitmap_lock_);
   MarkRoots(self);
   MarkReachableObjects();
@@ -342,11 +919,13 @@ void MarkSweep::MarkReachableObjects() {
 void MarkSweep::ReclaimPhase() {
   TimingLogger::ScopedTiming t(__FUNCTION__, GetTimings());
   Thread* const self = Thread::Current();
-  // Process the references concurrently.
-  ProcessReferences(self);
-  SweepSystemWeaks(self);
   Runtime* const runtime = Runtime::Current();
-  runtime->AllowNewSystemWeaks();
+  if (!IsCopying()) {
+    // Process the references concurrently.
+    ProcessReferences(self);
+    SweepSystemWeaks(self);
+    runtime->AllowNewSystemWeaks();
+  }
   // Clean up class loaders after system weaks are swept since that is how we know if class
   // unloading occurred.
   runtime->GetClassLinker()->CleanupClassLoaders();
@@ -371,12 +950,13 @@ void MarkSweep::FindDefaultSpaceBitmap() {
     // We want to have the main space instead of non moving if possible.
     if (bitmap != nullptr &&
         space->GetGcRetentionPolicy() == space::kGcRetentionPolicyAlwaysCollect) {
-      current_space_bitmap_ = bitmap;
-      // If we are not the non moving space exit the loop early since this will be good enough.
-      if (space != heap_->GetNonMovingSpace()) {
-        break;
+      if (space->IsRosAllocSpace()) {
+        current_space_bitmap_ = bitmap;
       }
     }
+  }
+  if (GetCollectorType() == kCollectorTypeGenCopying) {
+    current_space_bitmap_ = objects_before_forwarding_.get();
   }
   CHECK(current_space_bitmap_ != nullptr) << "Could not find a default mark bitmap\n"
       << heap_->DumpSpaces();
@@ -402,6 +982,10 @@ void MarkSweep::ResizeMarkStack(size_t new_size) {
 
 mirror::Object* MarkSweep::MarkObject(mirror::Object* obj) {
   MarkObject(obj, nullptr, MemberOffset(0));
+  mirror::Object* forward_address = GetMarkedForwardAddress(obj);
+  if (forward_address != nullptr) {
+    return forward_address;
+  }
   return obj;
 }
 
@@ -418,7 +1002,17 @@ inline void MarkSweep::MarkObjectNonNullParallel(mirror::Object* obj) {
 }
 
 bool MarkSweep::IsMarkedHeapReference(mirror::HeapReference<mirror::Object>* ref) {
-  return IsMarked(ref->AsMirrorPtr());
+  mirror::Object* obj = ref->AsMirrorPtr();
+  mirror::Object* new_obj = IsMarked(obj);
+  if (new_obj == nullptr) {
+    return false;
+  }
+  if (new_obj != obj) {
+    // Write barrier is not necessary since it still points to the same object, just at a different
+    // address.
+    ref->Assign(new_obj);
+  }
+  return true;
 }
 
 class MarkSweep::MarkObjectSlowPath {
@@ -570,6 +1164,9 @@ inline bool MarkSweep::MarkObjectParallel(mirror::Object* obj) {
 
 void MarkSweep::MarkHeapReference(mirror::HeapReference<mirror::Object>* ref) {
   MarkObject(ref->AsMirrorPtr(), nullptr, MemberOffset(0));
+  if (updating_reference_) {
+    UpdateHeapReference(ref);
+  }
 }
 
 // Used to mark objects when processing the mark stack. If an object is null, it is not marked.
@@ -582,19 +1179,6 @@ inline void MarkSweep::MarkObject(mirror::Object* obj,
     ++mark_null_count_;
   }
 }
-
-class MarkSweep::VerifyRootMarkedVisitor : public SingleRootVisitor {
- public:
-  explicit VerifyRootMarkedVisitor(MarkSweep* collector) : collector_(collector) { }
-
-  void VisitRoot(mirror::Object* root, const RootInfo& info) OVERRIDE
-      SHARED_REQUIRES(Locks::mutator_lock_, Locks::heap_bitmap_lock_) {
-    CHECK(collector_->IsMarked(root) != nullptr) << info.ToString();
-  }
-
- private:
-  MarkSweep* const collector_;
-};
 
 void MarkSweep::VisitRoots(mirror::Object*** roots,
                            size_t count,
@@ -630,6 +1214,17 @@ class MarkSweep::VerifyRootVisitor : public SingleRootVisitor {
 void MarkSweep::VerifyRoots() {
   VerifyRootVisitor visitor;
   Runtime::Current()->GetThreadList()->VisitRoots(&visitor);
+}
+
+inline bool MarkSweep::IsMarkedAfterCopying(const mirror::Object* object) const {
+  if (immune_spaces_.ContainsObject(object)) {
+    return true;
+  }
+  if (objects_after_forwarding_ != nullptr &&
+             objects_after_forwarding_->HasAddress(object)) {
+    return objects_after_forwarding_->Test(object);
+  }
+  return mark_bitmap_->Test(object);
 }
 
 void MarkSweep::MarkRoots(Thread* self) {
@@ -875,6 +1470,8 @@ void MarkSweep::ScanGrayObjects(bool paused, uint8_t minimum_age) {
   accounting::CardTable* card_table = GetHeap()->GetCardTable();
   ThreadPool* thread_pool = GetHeap()->GetThreadPool();
   size_t thread_count = GetHeap()->GetThreadCount(paused);
+  // The bump pointer space doesn't have mark bitmap. Use objects_before_forwarding_ instead.
+  accounting::ContinuousSpaceBitmap* mark_bitmap = nullptr;
   // The parallel version with only one thread is faster for card scanning, TODO: fix.
   if (kParallelCardScan && thread_count > 1) {
     Thread* self = Thread::Current();
@@ -892,7 +1489,16 @@ void MarkSweep::ScanGrayObjects(bool paused, uint8_t minimum_age) {
     const size_t mark_stack_delta = std::min(CardScanTask::kMaxSize / 2,
                                              mark_stack_size / mark_stack_tasks + 1);
     for (const auto& space : GetHeap()->GetContinuousSpaces()) {
-      if (space->GetMarkBitmap() == nullptr) {
+      // The dirty cards of below spaces are changed to dirty -1 during ProcessCards in Pause phase.
+      // TODO: No change the dirty cards to dirty - 1 in Pause phase to avoid CAS.
+      if (paused && (space->IsZygoteSpace() || space->IsImageSpace() || space->IsRosAllocSpace())) {
+        minimum_age = accounting::CardTable::kCardDirty - 1;
+      }
+      if (space->GetMarkBitmap() == nullptr && space == from_bps_) {
+          mark_bitmap = objects_before_forwarding_.get();
+      } else if (space->GetMarkBitmap() != nullptr) {
+          mark_bitmap = space->GetMarkBitmap();
+      } else {
         continue;
       }
       uint8_t* card_begin = space->Begin();
@@ -926,7 +1532,7 @@ void MarkSweep::ScanGrayObjects(bool paused, uint8_t minimum_age) {
         // Add the new task to the thread pool.
         auto* task = new CardScanTask(thread_pool,
                                       this,
-                                      space->GetMarkBitmap(),
+                                      mark_bitmap,
                                       card_begin,
                                       card_begin + card_increment,
                                       minimum_age,
@@ -947,39 +1553,49 @@ void MarkSweep::ScanGrayObjects(bool paused, uint8_t minimum_age) {
     thread_pool->StopWorkers(self);
   } else {
     for (const auto& space : GetHeap()->GetContinuousSpaces()) {
-      if (space->GetMarkBitmap() != nullptr) {
-        // Image spaces are handled properly since live == marked for them.
-        const char* name = nullptr;
-        switch (space->GetGcRetentionPolicy()) {
-        case space::kGcRetentionPolicyNeverCollect:
-          name = paused ? "(Paused)ScanGrayImageSpaceObjects" : "ScanGrayImageSpaceObjects";
-          break;
-        case space::kGcRetentionPolicyFullCollect:
-          name = paused ? "(Paused)ScanGrayZygoteSpaceObjects" : "ScanGrayZygoteSpaceObjects";
-          break;
-        case space::kGcRetentionPolicyAlwaysCollect:
-          name = paused ? "(Paused)ScanGrayAllocSpaceObjects" : "ScanGrayAllocSpaceObjects";
-          break;
-        default:
-          LOG(FATAL) << "Unreachable";
-          UNREACHABLE();
-        }
-        TimingLogger::ScopedTiming t(name, GetTimings());
-        ScanObjectVisitor visitor(this);
-        bool clear_card = paused && !space->IsZygoteSpace() && !space->IsImageSpace();
-        if (clear_card) {
-          card_table->Scan<true>(space->GetMarkBitmap(),
-                                 space->Begin(),
-                                 space->End(),
-                                 visitor,
-                                 minimum_age);
-        } else {
-          card_table->Scan<false>(space->GetMarkBitmap(),
-                                  space->Begin(),
-                                  space->End(),
-                                  visitor,
-                                  minimum_age);
-        }
+      // The dirty cards of below spaces are changed to dirty -1 during ProcessCards in Pause phase.
+      // TODO: No change the dirty cards to dirty - 1 in Pause phase to avoid CAS.
+      if (paused && (space->IsZygoteSpace() || space->IsImageSpace() || space->IsRosAllocSpace())) {
+        minimum_age = accounting::CardTable::kCardDirty - 1;
+      }
+      if (space->GetMarkBitmap() == nullptr && space == from_bps_) {
+          mark_bitmap = objects_before_forwarding_.get();
+      } else if (space->GetMarkBitmap() != nullptr) {
+          mark_bitmap = space->GetMarkBitmap();
+      } else {
+        continue;
+      }
+      // Image spaces are handled properly since live == marked for them.
+      const char* name = nullptr;
+      switch (space->GetGcRetentionPolicy()) {
+      case space::kGcRetentionPolicyNeverCollect:
+        name = paused ? "(Paused)ScanGrayImageSpaceObjects" : "ScanGrayImageSpaceObjects";
+        break;
+      case space::kGcRetentionPolicyFullCollect:
+        name = paused ? "(Paused)ScanGrayZygoteSpaceObjects" : "ScanGrayZygoteSpaceObjects";
+        break;
+      case space::kGcRetentionPolicyAlwaysCollect:
+        name = paused ? "(Paused)ScanGrayAllocSpaceObjects" : "ScanGrayAllocSpaceObjects";
+        break;
+      default:
+        LOG(FATAL) << "Unreachable";
+        UNREACHABLE();
+      }
+      TimingLogger::ScopedTiming t(name, GetTimings());
+      ScanObjectVisitor visitor(this);
+      bool clear_card = paused && !space->IsZygoteSpace() && !space->IsImageSpace();
+      if (clear_card) {
+        card_table->Scan<true>(mark_bitmap,
+                               space->Begin(),
+                               space->End(),
+                               visitor,
+                               minimum_age);
+      } else {
+        card_table->Scan<false>(mark_bitmap,
+                                space->Begin(),
+                                space->End(),
+                                visitor,
+                                minimum_age);
       }
     }
   }
@@ -1033,7 +1649,9 @@ void MarkSweep::RecursiveMark() {
       if ((space->GetGcRetentionPolicy() == space::kGcRetentionPolicyAlwaysCollect) ||
           (!partial && space->GetGcRetentionPolicy() == space::kGcRetentionPolicyFullCollect)) {
         current_space_bitmap_ = space->GetMarkBitmap();
-        if (current_space_bitmap_ == nullptr) {
+        if (current_space_bitmap_ == nullptr && space->IsBumpPointerSpace()) {
+          current_space_bitmap_ = objects_before_forwarding_.get();
+        } else {
           continue;
         }
         if (parallel) {
@@ -1319,7 +1937,8 @@ void MarkSweep::Sweep(bool swap_bitmaps) {
     DCHECK(mark_stack_->IsEmpty());
   }
   for (const auto& space : GetHeap()->GetContinuousSpaces()) {
-    if (space->IsContinuousMemMapAllocSpace()) {
+    // The free of bps is done separately.
+    if (space->IsContinuousMemMapAllocSpace() && !space->IsBumpPointerSpace()) {
       space::ContinuousMemMapAllocSpace* alloc_space = space->AsContinuousMemMapAllocSpace();
       TimingLogger::ScopedTiming split(
           alloc_space->IsZygoteSpace() ? "SweepZygoteSpace" : "SweepMallocSpace",
@@ -1458,7 +2077,16 @@ inline mirror::Object* MarkSweep::IsMarked(mirror::Object* object) {
     return object;
   }
   if (current_space_bitmap_->HasAddress(object)) {
-    return current_space_bitmap_->Test(object) ? object : nullptr;
+    if (!is_copying_) {
+      return current_space_bitmap_->Test(object) ? object : nullptr;
+    } else {
+      mirror::Object* obj = current_space_bitmap_->Test(object) ? object : nullptr;
+      if (obj == nullptr) {
+        return nullptr;
+      }
+      mirror::Object* new_obj = GetMarkedForwardAddress(const_cast<mirror::Object*>(obj));
+      return new_obj == nullptr ? obj : new_obj;
+    }
   }
   return mark_bitmap_->Test(object) ? object : nullptr;
 }
@@ -1497,10 +2125,18 @@ void MarkSweep::FinishPhase() {
   ReaderMutexLock mu(self, *Locks::mutator_lock_);
   WriterMutexLock mu2(self, *Locks::heap_bitmap_lock_);
   heap_->ClearMarkedObjects();
+  if (IsCopying()) {
+    objects_before_forwarding_.get()->Clear();
+    objects_before_forwarding_.reset(nullptr);
+    objects_after_forwarding_.get()->Clear();
+    objects_after_forwarding_.reset(nullptr);
+    to_bps_ = nullptr;
+    from_bps_ = nullptr;
+  }
 }
 
 void MarkSweep::RevokeAllThreadLocalBuffers() {
-  if (kRevokeRosAllocThreadLocalBuffersAtCheckpoint && IsConcurrent()) {
+  if (kRevokeRosAllocThreadLocalBuffersAtCheckpoint && (IsConcurrent() || IsCopying())) {
     // If concurrent, rosalloc thread-local buffers are revoked at the
     // thread checkpoint. Bump pointer space thread-local buffers must
     // not be in use.
