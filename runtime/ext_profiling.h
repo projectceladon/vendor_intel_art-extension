@@ -32,12 +32,11 @@ class OatTableManager;
 
 // These are defined outside of ExactProfiler, to be able to be used as a forward declaration.
 struct OneDexFile {
+  // Should be a multiple of 64 bits to align properly.
   uint32_t offset_to_dex_file_name;    // Offset to UTF-8 filename in 0xB00DDADB section.
   uint32_t dex_checksum;               // Checksum of Dex file.
   uint32_t num_methods;                // Number of methods defined in the Dex file.
-  uint32_t base_of_methods;            // Offset to first OneMethod for this dex file.
   uint32_t method_index_offsets;       // Offset to uint32_t[num_methods] of offsets.
-  uint32_t dummy;                      // Ensure multiple of 64 bits.
 };
 
 // Information about the class of a virtual/interface invoke.
@@ -151,17 +150,6 @@ struct OneMethod {
   // OneCallSite invokes[0 /* num_method_invokes */];
 
   /*
-   * Compute the address of the following OneMethod.
-   * @returns a pointer to the subsequent OneMethod.
-   */
-  OneMethod* Next() {
-    char* base = reinterpret_cast<char *>(this);
-    base += sizeof(OneMethod) + num_blocks * sizeof(CountType);
-    base += num_method_invokes * sizeof(OneCallSite);
-    return reinterpret_cast<OneMethod*>(base);
-  }
-
-  /*
    * Compute the necessary size to hold the profiling information.
    * @param num_blocks Number of Basic blocks in the method.
    * @param num_method_invokes Number of virtual/interface invokes in the method.
@@ -220,7 +208,8 @@ struct ExactProfileFile {
   uint32_t    variable_start_offset;     // Where the variable part of the file starts.
   uint32_t    padding;                   // Align to 64 bits.
   uint64_t    runtime_temp;              // Used by runtime to hold filename.
-  OneDexFile  dex_info[0 /* num_dex_files */];  // Information about each Dex file.
+  // offsets to each dex file.  0 for 'not present'.
+  uint32_t    offset_to_dex_infos[0 /* num_dex_files */];
 };
 
 class ExactProfiler {

@@ -112,7 +112,6 @@ static void ComputeClassNames(ExactProfileFile* hdr,
     // No Oat Table -> no invokes present in the file.
     return;
   }
-  DCHECK_NE(hdr->offset_to_oat_table, 0U);
   DCHECK_NE(hdr->offset_to_oat_string_table, 0U);
   OatTable* oat_table = reinterpret_cast<OatTable*>(base + hdr->offset_to_oat_table);
   OatLocationStringTable* string_table =
@@ -134,12 +133,21 @@ static void ComputeClassNames(ExactProfileFile* hdr,
   // Now walk the invokes and do the mapping.
   typedef std::pair<uint8_t, uint8_t> OatDexIndex;
   std::map<OatDexIndex, std::unique_ptr<const DexFile>> oat_dex_map;
-  OneDexFile* dex_files = hdr->dex_info;
+  uint32_t* dex_file_table = hdr->offset_to_dex_infos;
   for (uint32_t i = 0; i < hdr->num_dex_files; i++) {
-    OneDexFile& df = dex_files[i];
-    OneMethod* method_info = reinterpret_cast<OneMethod*>(base + df.base_of_methods);
+    if (dex_file_table[i] == 0) {
+      // Unallocated dex file.
+      continue;
+    }
+    OneDexFile& df = *reinterpret_cast<OneDexFile*>(base + dex_file_table[i]);
+    uint32_t* method_table = reinterpret_cast<uint32_t*>(base + df.method_index_offsets);
 
     for (uint32_t j = 0; j < df.num_methods; j++) {
+      if (method_table[j] == 0U) {
+        // Unallocated method.
+        continue;
+      }
+      OneMethod* method_info = reinterpret_cast<OneMethod*>(base + method_table[j]);
       for (uint32_t k = 0; k < method_info->num_method_invokes; k++) {
         OneCallSite* call_site = method_info->CallSiteAt(k);
         for (int l = 0; l < OneCallSite::kNumInvokeTargets; l++) {
@@ -180,9 +188,6 @@ static void ComputeClassNames(ExactProfileFile* hdr,
           }
         }
       }
-
-      // Bump to next method.
-      method_info = method_info->Next();
     }
   }
   for (auto oat_file : oat_table_files) {
@@ -288,9 +293,13 @@ static int DumpProfile(const ProfDumpArgs* args) {
   }
 
   // Dump each dex file.
-  OneDexFile* dex_files = hdr->dex_info;
+  uint32_t* dex_file_table = hdr->offset_to_dex_infos;
   for (uint32_t i = 0; i < hdr->num_dex_files; i++) {
-    OneDexFile& df = dex_files[i];
+    if (dex_file_table[i] == 0) {
+      // Unallocated dex file.
+      continue;
+    }
+    OneDexFile& df = *reinterpret_cast<OneDexFile*>(base + dex_file_table[i]);
     std::unique_ptr<const DexFile> real_dex_file;
     if (!no_oat_file) {
       const OatDexFile* oat_dex_file = oat_file->GetOatDexFiles()[i];
@@ -304,16 +313,18 @@ static int DumpProfile(const ProfDumpArgs* args) {
                 << "):\n";
       std::cout << "Checksum: 0x" << std::hex << df.dex_checksum << '\n' << std::dec;
       std::cout << "Number of methods: " << df.num_methods << '\n';
-      std::cout << "Offset to methods: " << df.base_of_methods << '\n';
       std::cout << "Offset to method index: " << df.method_index_offsets << '\n';
     }
-    OneMethod* method_info = reinterpret_cast<OneMethod*>(base + df.base_of_methods);
-    uint32_t* index_table =  reinterpret_cast<uint32_t*>(base + df.method_index_offsets);
+    uint32_t* method_table = reinterpret_cast<uint32_t*>(base + df.method_index_offsets);
 
     for (uint32_t j = 0; j < df.num_methods; j++) {
+      if (method_table[j] == 0U) {
+        // Unallocated method.
+        continue;
+      }
+      OneMethod* method_info = reinterpret_cast<OneMethod*>(base + method_table[j]);
       bool all_zero = true;
       bool header_printed = false;
-      OneMethod* prof_method = reinterpret_cast<OneMethod*>(base + index_table[j]);
       std::string method_name;
       if (args->method_counts_only_) {
         if (real_dex_file != nullptr) {
@@ -327,16 +338,6 @@ static int DumpProfile(const ProfDumpArgs* args) {
           method_name += ' ';
         }
         method_name += "(index " + std::to_string(j) + ')';
-      }
-      if (prof_method != method_info) {
-          std::cerr << "Method " << method_name
-                    << ": index table value = " << index_table[j]
-                    << "\nMethod " << j << " address mismatch: "
-                    << reinterpret_cast<char*>(prof_method) - base
-                    << " and "
-                    << reinterpret_cast<char*>(method_info) - base
-                    << '\n';
-        return EXIT_FAILURE;
       }
       if (args->method_counts_only_) {
         OneMethod::CountType count = method_info->counts[0];
@@ -405,9 +406,6 @@ static int DumpProfile(const ProfDumpArgs* args) {
           memset(call_site->targets, '\0', sizeof(call_site->targets));
         }
       }
-
-      // Bump to next method.
-      method_info = method_info->Next();
     }
   }
 

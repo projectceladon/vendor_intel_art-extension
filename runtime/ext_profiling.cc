@@ -289,7 +289,9 @@ bool ExactProfiler::WriteProfileFile(bool update_checksum_if_needed) {
   }
 
   // Remember where we are for offset to first method in dex file.
-  uint32_t current_offset = sizeof(ExactProfileFile) + sizeof(OneDexFile) * prof_file.num_dex_files;
+  uint32_t current_offset =
+      sizeof(ExactProfileFile) +                     // Header.
+      sizeof(uint32_t) * prof_file.num_dex_files;    // Offsets to dex files.
 
   std::vector<OneDexFile> dex_file_data;
   dex_file_data.reserve(prof_file.num_dex_files);
@@ -297,6 +299,14 @@ bool ExactProfiler::WriteProfileFile(bool update_checksum_if_needed) {
   one_method_data.reserve(total_num_methods * 10);
   std::vector<char> name_buffer;
   PerMethodInformation empty_method_info;
+
+  // Calculate the offsets to the dex files.
+  std::vector<uint32_t> offset_to_dex_files;
+  offset_to_dex_files.reserve(prof_file.num_dex_files);
+  for (uint32_t i = 0; i < prof_file.num_dex_files; i++) {
+    offset_to_dex_files.push_back(current_offset);
+    current_offset += sizeof(OneDexFile);
+  }
 
   // Process each Dex file in the OAT.
   for (auto it : oat_dex_files) {
@@ -329,14 +339,13 @@ bool ExactProfiler::WriteProfileFile(bool update_checksum_if_needed) {
     df_info.offset_to_dex_file_name = name_buffer.size();
     const std::string& dex_name = df->GetLocation();
     VLOG(exact_profiler) << "Processing dex file: " << dex_file_name
-                         << ", num methods = " << df->NumMethodIds();
+                         << ", num methods = " << df->NumMethodIds()
+                         << ", current_offset = 0x" << std::hex << current_offset;
     // Insert dex file name, NUL terminated.
     name_buffer.insert(name_buffer.end(), dex_name.begin(), dex_name.end());
     name_buffer.push_back('\0');
     df_info.dex_checksum = it->GetDexFileLocationChecksum();
     df_info.num_methods = df->NumMethodIds();
-    df_info.base_of_methods = current_offset;
-    df_info.dummy = 0;
     std::vector<uint32_t> method_offsets;
     method_offsets.reserve(df_info.num_methods);
 
@@ -433,12 +442,17 @@ bool ExactProfiler::WriteProfileFile(bool update_checksum_if_needed) {
     return false;
   }
 
+  // Offsets to dex files.
+  if (!checked_write(fd, reinterpret_cast<const char *>(&offset_to_dex_files[0]),
+                     offset_to_dex_files.size() * sizeof(uint32_t), prof_file_name_)) {
+    return false;
+  }
+
   // Dex file information.
   if (!checked_write(fd, reinterpret_cast<const char *>(&dex_file_data[0]),
                      dex_file_data.size() * sizeof(OneDexFile), prof_file_name_)) {
     return false;
   }
-
 
   // Per method information.
   if (!checked_write(fd, reinterpret_cast<const char *>(&one_method_data[0]),
@@ -492,12 +506,20 @@ std::string ExactProfiler::GetRelativeProfileFileName() const {
 
 static void ZeroCounts(ExactProfileFile* hdr) {
   char *const base = reinterpret_cast<char *>(hdr);
-  OneDexFile* dex_files = hdr->dex_info;
+  uint32_t* dex_file_table = hdr->offset_to_dex_infos;
   for (uint32_t i = 0; i < hdr->num_dex_files; i++) {
-    OneDexFile& df = dex_files[i];
-    OneMethod* method_info = reinterpret_cast<OneMethod*>(base + df.base_of_methods);
-
+    if (dex_file_table[i] == 0) {
+      // Unallocated dex file.
+      continue;
+    }
+    OneDexFile& df = *reinterpret_cast<OneDexFile*>(base + dex_file_table[i]);
+    uint32_t* method_table = reinterpret_cast<uint32_t*>(base + df.method_index_offsets);
     for (uint32_t j = 0; j < df.num_methods; j++) {
+      if (method_table[j] == 0U) {
+        // Unallocated method.
+        continue;
+      }
+      OneMethod* method_info = reinterpret_cast<OneMethod*>(base + method_table[j]);
       for (uint32_t k = 0; k < method_info->num_blocks; k++) {
         method_info->counts[k] = 0;
       }
@@ -506,9 +528,6 @@ static void ZeroCounts(ExactProfileFile* hdr) {
         OneCallSite* call_site = method_info->CallSiteAt(k);
         memset(call_site->targets, '\0', sizeof(call_site->targets));
       }
-
-      // Bump to next method.
-      method_info = method_info->Next();
     }
   }
 }
@@ -982,28 +1001,38 @@ static void UpdateOneProfileFile(ExactProfileFile* hdr,
   // Handle each Dex file.
   char *base = reinterpret_cast<char*>(hdr);
   char *file_base = reinterpret_cast<char*>(file_hdr);
-  OneDexFile* dex_files = hdr->dex_info;
-  OneDexFile* file_dex_files = file_hdr->dex_info;
+  uint32_t* dex_file_table = hdr->offset_to_dex_infos;
+  uint32_t* file_dex_file_table = file_hdr->offset_to_dex_infos;
 
   VLOG(exact_profiler) << "Total number of counters = " << hdr->total_num_counters;
   VLOG(exact_profiler) << "Total number of methods = " << hdr->total_num_methods;
 
   ReaderMutexLock mu(Thread::Current(), *Locks::mutator_lock_);
   for (uint32_t i = 0; i < hdr->num_dex_files; i++) {
-    OneDexFile& df = dex_files[i];
-    OneDexFile& file_df = file_dex_files[i];
-    OneMethod* method_info = reinterpret_cast<OneMethod*>(base + df.base_of_methods);
-    OneMethod* file_method_info = reinterpret_cast<OneMethod*>(file_base + file_df.base_of_methods);
-    int32_t* index_table = reinterpret_cast<int32_t*>(base + df.method_index_offsets);
-    int32_t* file_index_table = reinterpret_cast<int32_t*>(file_base + file_df.method_index_offsets);
+    if (dex_file_table[i] == 0) {
+      // Unallocated dex file.
+      continue;
+    }
+    OneDexFile& df = *reinterpret_cast<OneDexFile*>(base + dex_file_table[i]);
+    DCHECK_NE(file_dex_file_table[i], 0U);
+    OneDexFile& file_df = *reinterpret_cast<OneDexFile*>(file_base + file_dex_file_table[i]);
+    uint32_t* method_table = reinterpret_cast<uint32_t*>(base + df.method_index_offsets);
+    uint32_t* file_method_table = reinterpret_cast<uint32_t*>(file_base + df.method_index_offsets);
     if (df.num_methods != file_df.num_methods) {
       LOG(WARNING) << "Number of methods mismatch on profile file '" << profile_file_name << ", dex file index: " << i;
       return;
     }
 
     for (uint32_t j = 0; j < df.num_methods; j++) {
-      DCHECK_EQ(index_table[j], file_index_table[j]);
-      DCHECK_EQ(index_table[j], reinterpret_cast<char*>(method_info) - base);
+      if (method_table[j] == 0U) {
+        // Unallocated method.
+        continue;
+      }
+      OneMethod* method_info = reinterpret_cast<OneMethod*>(base + method_table[j]);
+      // Don't know how to handle this now.
+      DCHECK_NE(file_method_table[j], 0U);
+      OneMethod* file_method_info =
+          reinterpret_cast<OneMethod*>(file_base + file_method_table[j]);
       DCHECK_EQ(method_info->num_blocks, file_method_info->num_blocks);
       for (uint32_t k = 0; k < method_info->num_blocks; k++) {
         OneMethod::CountType count = method_info->counts[k];
@@ -1024,10 +1053,6 @@ static void UpdateOneProfileFile(ExactProfileFile* hdr,
 
       // Check on the invoke types.
       MergeInvokes(oat_table, method_info, file_method_info, zero_counters);
-
-      // Bump to next method.
-      method_info = method_info->Next();
-      file_method_info = file_method_info->Next();
     }
   }
 }
@@ -1116,7 +1141,10 @@ void ExactProfiler::AllocateProfileCounters(ArtMethod* method,
     SHARED_REQUIRES(Locks::mutator_lock_) REQUIRES(Locks::profiler_lock_) {
   // Allocate memory for one method.
   DCHECK_LT(static_cast<uint32_t>(dex_file_index), hdr->num_dex_files);
-  OneDexFile& dex_info = hdr->dex_info[dex_file_index];
+  uint32_t* dex_file_table = hdr->offset_to_dex_infos;
+  CHECK_NE(dex_file_table[dex_file_index], 0U);
+  OneDexFile& dex_info =
+    *reinterpret_cast<OneDexFile*>(reinterpret_cast<char*>(hdr) + dex_file_table[dex_file_index]);
   DCHECK_LT(method_index, dex_info.num_methods);
   uint32_t method_idx = method->GetDexMethodIndex();
   std::pair<const DexFile*, uint32_t> method_ref(dex_file, method_idx);
@@ -1161,8 +1189,12 @@ void ExactProfiler::AllocateProfileCounters(ExactProfileFile* hdr,
 
   CHECK(art_methods != nullptr);
   DCHECK_LT(static_cast<uint32_t>(dex_file_index), hdr->num_dex_files);
-  OneDexFile& dex_info = hdr->dex_info[dex_file_index];
-  char* dex_file_name = reinterpret_cast<char*>(hdr) + dex_info.offset_to_dex_file_name;
+  uint32_t* dex_file_table = hdr->offset_to_dex_infos;
+  DCHECK_NE(dex_file_table[dex_file_index], 0U);
+  char* base = reinterpret_cast<char*>(hdr);
+  OneDexFile& dex_info = *reinterpret_cast<OneDexFile*>(base + dex_file_table[dex_file_index]);
+  uint32_t* method_table = reinterpret_cast<uint32_t*>(base + dex_info.method_index_offsets);
+  char* dex_file_name = base + dex_info.offset_to_dex_file_name;
 
   // Some more checks for correctness.
   if (dex_file_location != dex_file_name) {
@@ -1178,13 +1210,15 @@ void ExactProfiler::AllocateProfileCounters(ExactProfileFile* hdr,
   }
 
   // Populate the profile_counters_ map.
-  OneMethod* prof_method =
-      reinterpret_cast<OneMethod*>(
-        reinterpret_cast<char *>(hdr) + dex_info.base_of_methods);
   Runtime::ProfileBuffersMap& prof_counters = Runtime::Current()->GetProfileBuffers();
   DCHECK_EQ(num_methods, static_cast<size_t>(dex_info.num_methods));
   size_t ptr_size = Runtime::Current()->GetClassLinker()->GetImagePointerSize();
   for (size_t j = 0; j < num_methods; ++j) {
+    if (method_table[j] == 0U) {
+      // Unallocated method.
+      continue;
+    }
+    OneMethod* method_info = reinterpret_cast<OneMethod*>(base + method_table[j]);
     ArtMethod* method = mirror::DexCache::GetElementPtrSize<ArtMethod*>(art_methods, j, ptr_size);
     uint32_t method_idx = method->GetDexMethodIndex();
     std::pair<const DexFile*, uint32_t> method_ref(dex_file, method_idx);
@@ -1193,14 +1227,11 @@ void ExactProfiler::AllocateProfileCounters(ExactProfileFile* hdr,
     auto it = prof_counters.find(method_ref);
 
     if (it == prof_counters.end()) {
-      prof_counters.Put(method_ref, prof_method);
-    } else if (it->second->num_blocks < prof_method->num_blocks) {
+      prof_counters.Put(method_ref, method_info);
+    } else if (it->second->num_blocks < method_info->num_blocks) {
       // We have already seen this method. Switch to using this one, which is bigger.
-      prof_counters.Overwrite(method_ref, prof_method);
+      prof_counters.Overwrite(method_ref, method_info);
     }
-
-    // And bump to the next method.
-    prof_method = prof_method->Next();
   }
 }
 
@@ -1584,9 +1615,13 @@ OneMethod* ExactProfiler::FindMethodCounts(HGraph* graph) {
   for (auto prof : existing_profiles_) {
     // Try to match the dex file name.
     char *base = reinterpret_cast<char*>(prof);
-    OneDexFile* dex_files = prof->dex_info;
+    uint32_t* dex_file_table = prof->offset_to_dex_infos;
     for (uint32_t i = 0; i < prof->num_dex_files; i++) {
-      OneDexFile& df = dex_files[i];
+      if (dex_file_table[i] == 0) {
+        // Unallocated dex file.
+        continue;
+      }
+      OneDexFile& df = *reinterpret_cast<OneDexFile*>(base + dex_file_table[i]);
 #if MORE_DEBUG
       VLOG(exact_profiler) << "Try to match with: " << base + df.offset_to_dex_file_name;
 #endif
@@ -1673,21 +1708,27 @@ void ExactProfiler::VisitRoots(SafeMap<const OatFile*, ExactProfileFile*>& profi
   for (auto& it : profiles) {
     ExactProfileFile* hdr = it.second;
     char *base = reinterpret_cast<char*>(hdr);
-    OneDexFile* dex_files = hdr->dex_info;
+    uint32_t* dex_file_table = hdr->offset_to_dex_infos;
 
     for (uint32_t i = 0; i < hdr->num_dex_files; i++) {
-      OneDexFile& df = dex_files[i];
-      OneMethod* method_info = reinterpret_cast<OneMethod*>(base + df.base_of_methods);
+      if (dex_file_table[i] == 0) {
+        // Unallocated dex file.
+        continue;
+      }
+      OneDexFile& df = *reinterpret_cast<OneDexFile*>(base + dex_file_table[i]);
+      uint32_t* method_table = reinterpret_cast<uint32_t*>(base + df.method_index_offsets);
       for (uint32_t j = 0; j < df.num_methods; j++) {
+        if (method_table[j] == 0U) {
+          // Unallocated method.
+          continue;
+        }
+        OneMethod* method_info = reinterpret_cast<OneMethod*>(base + method_table[j]);
         for (uint32_t k = 0; k < method_info->num_method_invokes; k++) {
           OneCallSite* call_site = method_info->CallSiteAt(k);
           for (int l = 0; l < OneCallSite::kNumInvokeTargets; l++) {
             call_site->targets[l].klass.VisitRootIfNonNull(visitor, root_info);
           }
         }
-
-        // Bump to next method.
-        method_info = method_info->Next();
       }
     }
   }
