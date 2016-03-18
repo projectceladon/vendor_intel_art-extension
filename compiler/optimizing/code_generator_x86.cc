@@ -5353,11 +5353,15 @@ void InstructionCodeGeneratorX86::VisitArraySet(HArraySet* instruction) {
           ? Address(array, (index.GetConstant()->AsIntConstant()->GetValue() << TIMES_4) + offset)
           : Address(array, index.AsRegister<Register>(), TIMES_4, offset);
 
-      if (!value.IsRegister()) {
+      if (instruction->InputAt(2)->IsNullConstant()) {
         // Just setting null.
-        DCHECK(instruction->InputAt(2)->IsNullConstant());
-        DCHECK(value.IsConstant()) << value;
-        __ movl(address, Immediate(0));
+        if (!value.IsRegister()) {
+          DCHECK(value.IsConstant()) << value;
+          __ movl(address, Immediate(0));
+        } else {
+          DCHECK(use_non_temporal);
+          __ movntl(address, value.AsRegister<Register>());
+        }
         codegen_->MaybeRecordImplicitNullCheck(instruction);
         DCHECK(!needs_write_barrier);
         DCHECK(!may_need_runtime_call_for_type_check);
