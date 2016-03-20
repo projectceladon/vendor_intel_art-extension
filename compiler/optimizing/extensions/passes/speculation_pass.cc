@@ -351,7 +351,8 @@ void HSpeculationPass::Run() {
       }
 
       if (success) {
-        if (HandleSpeculation(candidate)) {
+        bool guard_inserted = !NeedsNoRecovery(recovery);
+        if (HandleSpeculation(candidate, guard_inserted)) {
           RecordSpeculation();
         }
       }

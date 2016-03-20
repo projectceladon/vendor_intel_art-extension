@@ -267,7 +267,7 @@ HSpeculationGuard* HDevirtualization::InsertSpeculationGuard(HInstruction* instr
   return guard;
 }
 
-bool HDevirtualization::HandleSpeculation(HInstruction* instr) {
+bool HDevirtualization::HandleSpeculation(HInstruction* instr, bool guard_inserted) {
   HInvoke* invoke = instr->AsInvoke();
   uint32_t method_index = 0u;
 
@@ -278,38 +278,48 @@ bool HDevirtualization::HandleSpeculation(HInstruction* instr) {
     TypeHandle type = GetPrimaryType(invoke);
     ClassLinker* cl = Runtime::Current()->GetClassLinker();
     size_t pointer_size = cl->GetImagePointerSize();
-
-    // We repeat the same check as in "InsertSpeculationGuard" which checks that
-    // the current class can be found in current dex file. The reason we do this
-    // is that precise types do not require guard - but currently we cannot support
-    // when class' dex file is not the same one as we are handling right now.
     const DexFile& caller_dex_file = *compilation_unit_.GetDexFile();
-    uint32_t class_index = FindClassIndexIn(type.Get(), caller_dex_file,
-                                            compilation_unit_.GetDexCache());
-    if (class_index == DexFile::kDexNoIndex) {
-      PRINT_PASS_OSTREAM_MESSAGE(this, "Sharpening failed because we cannot find " <<
-                                 PrettyClass(type.Get()) << " in the dex cache for " <<
-                                 invoke);
-      return false;
+
+    if (!guard_inserted || kIsDebugBuild) {
+      // We repeat the same check as in "InsertSpeculationGuard" which checks that
+      // the current class can be found in current dex file. The reason we do this
+      // is that precise types do not require guard.
+      uint32_t class_index = FindClassIndexIn(type.Get(), caller_dex_file,
+                                              compilation_unit_.GetDexCache());
+      if (kIsDebugBuild && guard_inserted) {
+        CHECK_NE(class_index, DexFile::kDexNoIndex);
+      } else if (class_index == DexFile::kDexNoIndex) {
+        PRINT_PASS_OSTREAM_MESSAGE(this, "Sharpening failed because we cannot find " <<
+                                   PrettyClass(type.Get()) << " in the dex cache for " <<
+                                   invoke);
+        return false;
+      }
     }
 
     ArtMethod* resolved_method =
         compilation_unit_.GetDexCache().Get()->GetResolvedMethod(invoke->GetDexMethodIndex(),
                                                                  pointer_size);
+    // We only sharpen for resolved invokes.
     DCHECK(resolved_method != nullptr);
 
+    ArtMethod* actual_method = resolved_method;
     if (!IsMethodOrDeclaringClassFinal(resolved_method)) {
       if (invoke->IsInvokeInterface()) {
-        resolved_method = type->FindVirtualMethodForInterface(resolved_method, pointer_size);
+        actual_method = type->FindVirtualMethodForInterface(resolved_method, pointer_size);
       } else {
         DCHECK(invoke->IsInvokeVirtual());
-        resolved_method = type->FindVirtualMethodForVirtual(resolved_method, pointer_size);
+        actual_method = type->FindVirtualMethodForVirtual(resolved_method, pointer_size);
       }
     }
-    DCHECK(resolved_method != nullptr);
 
+    if (actual_method == nullptr) {
+      PRINT_PASS_OSTREAM_MESSAGE(this, "Sharpening failed because we cannot find " <<
+                                 PrettyMethod(resolved_method) << " in the class " <<
+                                 PrettyClass(type.Get()) <<  " for " << invoke);
+      return false;
+    }
 
-    method_index = FindMethodIndexIn(resolved_method,
+    method_index = FindMethodIndexIn(actual_method,
                                      caller_dex_file,
                                      invoke->GetDexMethodIndex());
     if (method_index == DexFile::kDexNoIndex) {

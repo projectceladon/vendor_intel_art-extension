@@ -47,7 +47,7 @@ class HDevirtualization : public HSpeculationPass {
   bool IsPredictionSame(HInstruction* instr, HInstruction* instr2) OVERRIDE;
   HSpeculationGuard* InsertSpeculationGuard(HInstruction* instr_guarded,
                                             HInstruction* instr_cursor) OVERRIDE;
-  bool HandleSpeculation(HInstruction* instr) OVERRIDE;
+  bool HandleSpeculation(HInstruction* instr, bool guard_inserted) OVERRIDE;
   void RecordSpeculation() OVERRIDE {
     MaybeRecordStat(kIntelDevirtualized);
   }
