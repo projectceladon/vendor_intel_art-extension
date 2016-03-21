@@ -256,11 +256,17 @@ class LiveInterval : public ArenaObject<kArenaAllocSsaLiveness> {
     // Set the use within the instruction.
     size_t position = actual_user->GetLifetimePosition() + 1;
     if (!is_environment) {
-      if (locations->IsFixedInput(input_index) || locations->OutputUsesSameAs(input_index)) {
+      if (locations->IsFixedInput(input_index) || locations->OutputUsesSameAs(input_index) ||
+        (input_index > 0 && instruction->InputAt(input_index) == instruction->InputAt(0) &&
+         !locations->HasTemps() && locations->OutputUsesSameAs(0))) {
         // For fixed inputs and output same as input, the register allocator
         // requires to have inputs die at the instruction, so that input moves use the
         // location of the input just before that instruction (and not potential moves due
         // to splitting).
+        // If we are not first input but equal to first one and it is the same as output
+        // then it makes sense to die at the instruction as well but only if there is no
+        // temps, otherwise temp might be allocated to the same register as input if it
+        // is appeared that second input is allocated to other register than the first one.
         DCHECK_EQ(instruction, actual_user);
         position = actual_user->GetLifetimePosition();
       } else if (!locations->InAt(input_index).IsValid()) {
