@@ -108,7 +108,7 @@ class TLEVisitor : public HGraphVisitor {
   }
 
 #define INTEGRAL_TO_FP_CONV(vmin, vmax, cast, value) \
-  (static_cast<cast>(std::isnan(value) ? 0 : (value >= vmax ? vmax : (value <= vmin ? vmin : value))))
+  (std::isnan(value) ? 0 : (value >= vmax ? vmax : (value <= vmin ? vmin : static_cast<cast>(value))))
   void VisitTypeConversion(HTypeConversion* instr) OVERRIDE {
     NOTHING_IF_ERROR;
     HInstruction* input = instr->InputAt(0);
