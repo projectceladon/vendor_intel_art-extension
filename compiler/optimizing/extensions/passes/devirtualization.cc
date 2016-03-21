@@ -15,9 +15,8 @@
  */
 
 #include "devirtualization.h"
-#include "driver/compiler_driver-inl.h"
-#include "driver/compiler_options.h"
 #include "driver/dex_compilation_unit.h"
+#include "ext_profiling.h"
 #include "ext_utility.h"
 #include "utils/dex_cache_arrays_layout-inl.h"
 #include "scoped_thread_state_change.h"
@@ -44,6 +43,10 @@ HDevirtualization::~HDevirtualization() {
 }
 
 bool HDevirtualization::IsCandidate(HInstruction* instr) {
+  // Have we already been devirtualized?
+  if (instr->IsInvoke() && instr->AsInvoke()->IsDevirtualized()) {
+    return false;
+  }
   if (instr->IsInvokeVirtual() || instr->IsInvokeInterface()) {
     // If the invoke is already marked as intrinsic, we do not need to sharpen it.
     return !instr->AsInvoke()->IsIntrinsic();
@@ -92,7 +95,7 @@ bool HDevirtualization::HasPrediction(HInstruction* instr, bool update) {
         DCHECK(type.GetReference() != nullptr);
 
         precise_prediction_.Put(invoke, type);
-        PRINT_PASS_OSTREAM_MESSAGE(this, "Found precise type " << PrettyClass(type.Get()) <<
+        PRINT_PASS_OSTREAM_MESSAGE(this, "Found precise type " << PrettyDescriptor(type.Get()) <<
                                    " for " << invoke);
       }
       return true;
@@ -107,7 +110,7 @@ bool HDevirtualization::HasPrediction(HInstruction* instr, bool update) {
           if (this->IsVerbose()) {
             std::string potential_types = "";
             for (auto it : possible_targets) {
-              potential_types.append(PrettyClass(it.Get()));
+              potential_types.append(PrettyDescriptor(it.Get()));
               potential_types.append(",");
             }
             PRINT_PASS_OSTREAM_MESSAGE(this, "Found imprecise types " <<
@@ -179,11 +182,40 @@ uint64_t HDevirtualization::GetProfit(HInstruction* instr) {
 }
 
 std::vector<HDevirtualization::TypeHandle> HDevirtualization::FindTypesFromProfile(
-    HInvoke* invoke ATTRIBUTE_UNUSED, ArtMethod* caller_method ATTRIBUTE_UNUSED) {
-  // TODO Implement either ability to look up type profiles or ability to look
-  // up type via Class Hierarchy Analysis.
+    HInvoke* invoke, ArtMethod* caller_method) {
+  std::vector<TypeHandle> results;
+  if (use_exact_profiles_) {
+    ProfilingInfo* prof_info = ExactProfiler::FindProfileForMethod(caller_method);
+    if (prof_info != nullptr) {
+      // We have something to look at.  Does it have any information for this invoke?
+      PRINT_PASS_OSTREAM_MESSAGE(this, "prof_info = " << prof_info
+                                       << ", dex_pc = 0x" << std::hex << invoke->GetDexPc());
+      const InlineCache& ic = *prof_info->GetInlineCache(invoke->GetDexPc());
+      if (ic.IsMonomorphic()) {
+        mirror::Class* invoke_type = ic.GetMonomorphicType();
+        PRINT_PASS_OSTREAM_MESSAGE(this, "Found monomorphic type "
+                                         << PrettyDescriptor(invoke_type)
+                                         << " for " << invoke);
+        results.push_back(handles_->NewHandle(ic.GetMonomorphicType()));
+      } else if (ic.IsPolymorphic()) {
+        for (size_t i = 0; i < InlineCache::kIndividualCacheSize; ++i) {
+          mirror::Class* invoke_type = ic.GetTypeAt(i);
+          if (invoke_type == nullptr) {
+            break;
+          }
+          PRINT_PASS_OSTREAM_MESSAGE(this, "Found polymorphic type (" << i << ") "
+                                           << PrettyDescriptor(invoke_type)
+                                           << " for " << invoke);
+          results.push_back(handles_->NewHandle(ic.GetTypeAt(i)));
+        }
+      }
+    }
+  }
+
+  // Unable to find a way to narrow down the choices.
+  // TODO Implement ability to look up type via Class Hierarchy Analysis.
   // TODO When getting a new handle - do not forget to update "handles_".
-  return std::vector<TypeHandle>();
+  return results;
 }
 
 HDevirtualization::TypeHandle HDevirtualization::GetPrimaryType(HInvoke* invoke) const {
@@ -227,7 +259,7 @@ HSpeculationGuard* HDevirtualization::InsertSpeculationGuard(HInstruction* instr
   if (class_index == DexFile::kDexNoIndex) {
     // Seems we cannot find current type in the dex cache.
     PRINT_PASS_OSTREAM_MESSAGE(this, "Guard insertion failed because we cannot find " <<
-                               PrettyClass(type.Get()) << " in the dex cache for " <<
+                               PrettyDescriptor(type.Get()) << " in the dex cache for " <<
                                invoke);
     return nullptr;
   }
@@ -277,7 +309,9 @@ HSpeculationGuard* HDevirtualization::InsertSpeculationGuard(HInstruction* instr
   return guard;
 }
 
-bool HDevirtualization::HandleSpeculation(HInstruction* instr, bool guard_inserted) {
+bool HDevirtualization::HandleSpeculation(HInstruction* instr,
+                                          HInstruction* instr_copy,
+                                          bool guard_inserted) {
   HInvoke* invoke = instr->AsInvoke();
   uint32_t method_index = 0u;
 
@@ -300,7 +334,7 @@ bool HDevirtualization::HandleSpeculation(HInstruction* instr, bool guard_insert
         CHECK_NE(class_index, DexFile::kDexNoIndex);
       } else if (class_index == DexFile::kDexNoIndex) {
         PRINT_PASS_OSTREAM_MESSAGE(this, "Sharpening failed because we cannot find " <<
-                                   PrettyClass(type.Get()) << " in the dex cache for " <<
+                                   PrettyDescriptor(type.Get()) << " in the dex cache for " <<
                                    invoke);
         return false;
       }
@@ -329,7 +363,7 @@ bool HDevirtualization::HandleSpeculation(HInstruction* instr, bool guard_insert
     if (actual_method == nullptr) {
       PRINT_PASS_OSTREAM_MESSAGE(this, "Sharpening failed because we cannot find " <<
                                  PrettyMethod(resolved_method) << " in the class " <<
-                                 PrettyClass(type.Get()) <<  " for " << invoke);
+                                 PrettyDescriptor(type.Get()) <<  " for " << invoke);
       return false;
     }
 
@@ -377,6 +411,11 @@ bool HDevirtualization::HandleSpeculation(HInstruction* instr, bool guard_insert
   }
   // No need to copy intrinsic information - these should not be candidates.
   DCHECK(!invoke->IsIntrinsic());
+
+  if (instr_copy != nullptr) {
+    DCHECK(instr_copy->IsInvoke());
+    instr_copy->AsInvoke()->SetDevirtualized();
+  }
 
   invoke->GetBlock()->ReplaceAndRemoveInstructionWith(invoke, new_invoke);
   new_invoke->CopyEnvironmentFrom(invoke->GetEnvironment());

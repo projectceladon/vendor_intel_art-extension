@@ -1159,6 +1159,14 @@ class HBasicBlock : public ArenaObject<kArenaAllocBasicBlock> {
   bool EndsWithTryBoundary() const;
   bool HasSinglePhi() const;
 
+  bool HasBlockCount() const { return block_count_ != 0; }
+  uint64_t GetBlockCount() const {
+    DCHECK_NE(block_count_, 0U);
+    return block_count_ - 1;
+  }
+  void SetBlockCount(uint64_t count) { block_count_ = count + 1; }
+  void SetBlockCount(HBasicBlock* other) { block_count_ = other->block_count_; }
+
  private:
   HGraph* graph_;
   ArenaVector<HBasicBlock*> predecessors_;
@@ -1174,6 +1182,7 @@ class HBasicBlock : public ArenaObject<kArenaAllocBasicBlock> {
   size_t lifetime_start_;
   size_t lifetime_end_;
   TryCatchInformation* try_catch_information_;
+  uint64_t block_count_ = 0;
 
   friend class HGraph;
   friend class HInstruction;
@@ -3712,6 +3721,10 @@ class HInvoke : public HInstruction {
 
   bool IsIntrinsic() const { return intrinsic_ != Intrinsics::kNone; }
 
+  void SetDevirtualized() { SetPackedFlag<kDevirtualized>(true); }
+
+  bool IsDevirtualized() { return GetPackedFlag<kDevirtualized>(); }
+
   DECLARE_ABSTRACT_INSTRUCTION(Invoke);
 
  protected:
@@ -3723,7 +3736,8 @@ class HInvoke : public HInstruction {
   static constexpr size_t kFieldReturnTypeSize =
       MinimumBitsToStore(static_cast<size_t>(Primitive::kPrimLast));
   static constexpr size_t kFlagCanThrow = kFieldReturnType + kFieldReturnTypeSize;
-  static constexpr size_t kNumberOfInvokePackedBits = kFlagCanThrow + 1;
+  static constexpr size_t kDevirtualized = kFlagCanThrow + 1;
+  static constexpr size_t kNumberOfInvokePackedBits = kDevirtualized + 1;
   static_assert(kNumberOfInvokePackedBits <= kMaxNumberOfPackedBits, "Too many packed fields.");
   using OriginalInvokeTypeField =
       BitField<InvokeType, kFieldOriginalInvokeType, kFieldOriginalInvokeTypeSize>;

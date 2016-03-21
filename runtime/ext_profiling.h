@@ -20,15 +20,22 @@
 #include "base/mutex.h"
 #include "oat_file.h"
 #include "safe_map.h"
+#include <ostream>
 
 namespace art {
 
+namespace mirror {
+  class Class;
+}
+
+class CompilerDriver;
 class DexFile;
 class ExactProfileSaver;
 class HGraph;
 class HGraph_X86;
 class HBasicBlock;
-class OatTableManager;
+class OatDexTableManager;
+class ProfilingInfo;
 
 // These are defined outside of ExactProfiler, to be able to be used as a forward declaration.
 struct OneDexFile {
@@ -116,6 +123,8 @@ struct PersistentClassIndex {
   }
 };
 
+std::ostream& operator<<(std::ostream& os, const PersistentClassIndex& index);
+
 // Information about one invoke.
 struct OneInvoke {
   typedef uint32_t CountType;
@@ -177,7 +186,7 @@ struct OneMethod {
 // Information about one OAT file for invoke class targets.
 struct OneOatIndex {
   uint32_t oat_checksum;                   // Use instead of string compares?
-  uint32_t offset_of_oat_location_string;  // in OatLocationStringTable.
+  uint32_t offset_of_oat_location_string;  // in LocationStringTable.
 };
 
 // Table of all OAT file targets.
@@ -187,9 +196,24 @@ struct OatTable {
   OneOatIndex oat_locations[0 /* num_allocated_oat_locations */];
  };
 
-// Strings for OAT locations.  Will grow dynamically as new OAT locations added.
+// Information about one Dex file for invoke class targets.
+struct OneDexIndex {
+  uint32_t dex_index_in_oat;               // Index of Dex file in OAT.
+  uint32_t dex_checksum;                   // Use instead of string compares.
+  uint32_t dex_loc_checksum;               // Use instead of string compares for boot.
+  uint32_t offset_of_dex_location_string;  // in LocationStringTable.
+};
+
+// Table of all Dex file targets.
+struct DexTable {
+  uint32_t num_dex_locations;              // Number of used Dex locations.
+  uint32_t num_allocated_dex_locations;    // Number of allocated Dex locations.
+  OneDexIndex dex_locations[0 /* num_allocated_dex_locations */];
+ };
+
+// Strings for OAT/Dex locations.  Will grow dynamically as new OAT/Dex locations added.
 // Locations are NUL terminated UTF-8 strings.
-struct OatLocationStringTable {
+struct LocationStringTable {
   uint32_t num_string_chars;            // Number of string characters in use.
   uint32_t num_allocated_string_chars;  // Number of string characters in allocated.
   char strings[0 /* num_allocated_string_chars */];
@@ -204,10 +228,13 @@ struct ExactProfileFile {
   uint32_t    total_num_counters;        // Total number of counters.
   uint32_t    total_num_methods;         // Total number of methods.
   uint32_t    offset_to_oat_table;       // Offset from base to OAT table.
-  uint32_t    offset_to_oat_string_table;  // Offset from base to OAT string table.
+  uint32_t    offset_to_dex_table;       // Offset from base to Dex table.
+  uint32_t    offset_to_string_table;    // Offset from base to OAT/Dex string table.
   uint32_t    variable_start_offset;     // Where the variable part of the file starts.
-  uint32_t    padding;                   // Align to 64 bits.
   uint64_t    runtime_temp;              // Used by runtime to hold filename.
+  uint32_t    generating_profile;        // Used by runtime to remember if OAT file
+                                         // is generating profiling information.
+  uint32_t    dummy_align;               // Ensure non-varying is multiple of 64 bits.
   // offsets to each dex file.  0 for 'not present'.
   uint32_t    offset_to_dex_infos[0 /* num_dex_files */];
 };
@@ -224,11 +251,12 @@ class ExactProfiler {
   /*
    * Destructor
    */
-  ~ExactProfiler() {
-    for (auto it : existing_profiles_) {
-      delete it;
-    }
-  }
+  ~ExactProfiler();
+
+  /*
+   * @brief Map from an OatFile to the matching ExactProfileFile.
+   */
+  typedef SafeMap<const OatFile*, ExactProfileFile*> OatToExactProfileFileMap;
 
   /*
    * @brief Register a method with the profiler.
@@ -250,8 +278,8 @@ class ExactProfiler {
    * @param profiles Map from OatFile to ExactProfileFile with new counts.
    * @param zero_counters 'true' if the counters need to be zero'ed after writing.
    */
-  static void UpdateProfileFiles(SafeMap<const OatFile*, ExactProfileFile*>& profiles,
-                                 bool zero_counters = false);
+  static void UpdateProfileFiles(OatToExactProfileFileMap& profiles, bool zero_counters = false)
+      SHARED_REQUIRES(Locks::mutator_lock_);
 
   /*
    * @brief Return the file name for the profiling data file.
@@ -363,6 +391,16 @@ class ExactProfiler {
   }
 
   /*
+   * @brief Map from an index to a matching mirror:Class*.
+   * @note This is used for AOT use-profile to populate the JIT invoke map.
+   * @param driver The compiler driver for this compilation.
+   * @param index The saved class index for this invoke type.
+   * @returns The matching Class* if found, or 'nullptr'.
+   */
+  mirror::Class* FindClass(const CompilerDriver* driver, PersistentClassIndex index)
+      REQUIRES(!method_lock_) SHARED_REQUIRES(Locks::mutator_lock_);
+
+  /*
    * @brief Locate the correct ExactProfiler that matches the method being compiled.
    * @param eps vector of possible ExactProfiler(s).
    * @param graph HGraph for the method being compiled.
@@ -379,14 +417,41 @@ class ExactProfiler {
       REQUIRES(!method_lock_);
 
   /*
+   * @brief Clear the class map used to map from indicies to mirror::Class*.
+   */
+  void ClearClassMap()
+      REQUIRES(!method_lock_);
+
+  /*
    * @brief Visit all roots in the profiling buffers.
    * @param profiles Profiles currently active in the runtime.
    * @param visitor root visitor to be invoked for each root.
    */
   // NO_THREAD_SAFETY_ANALYSIS since we don't know what the callback requires.
-  static void VisitRoots(SafeMap<const OatFile*, ExactProfileFile*>& profiles,
-                         RootVisitor* visitor)
+  static void VisitRoots(OatToExactProfileFileMap& profiles, RootVisitor* visitor)
       NO_THREAD_SAFETY_ANALYSIS;
+
+  /*
+   * @brief Associate a ProfilingInfo with an ArtMethod to hold invoke information.
+   * @param method ArtMethod being compiled.
+   * @param profile Profiling information for the method.
+   */
+  static void SetProfileForMethod(ArtMethod* method, ProfilingInfo* profile)
+      REQUIRES(!Locks::profiler_lock_);
+
+  /*
+   * @brief Return the ProfilingInfo for an ArtMethod to hold invoke information.
+   * @param method ArtMethod being compiled.
+   * @returns Profiling information for the method, or nullptr if not present.
+   */
+  static ProfilingInfo* FindProfileForMethod(ArtMethod* method)
+      REQUIRES(!Locks::profiler_lock_);
+
+  /*
+   * @brief Clear the profile map used to map from ArtMethod* to ProfileInformation.
+   */
+  static void ClearProfileInfos()
+      REQUIRES(!Locks::profiler_lock_);
 
  private:
   mutable Mutex method_lock_ DEFAULT_MUTEX_ACQUIRED_AFTER;
@@ -420,12 +485,29 @@ class ExactProfiler {
 
   // Return the file descriptor of the open file, or -1 on failure.
   static int OpenProfileFile(const OatFile& oat_file,
-                             bool read_write,
-                             bool is_image,
-                             std::string& prof_name);
+      bool read_write,
+      bool is_image,
+      std::string& prof_name);
 
   bool ContainsDexFile(const DexFile& dex_file);
 
+  static bool GeneratingProfile(const OatFile& oat_file);
+
+  std::unique_ptr<OatDexTableManager> use_oat_dex_table_;
+
+  // Remember all ExactProfiler(s) so we can GC the class_map_(s).
+  static std::set<ExactProfiler*> all_exact_profiles_ GUARDED_BY(Locks::profiler_lock_);
+
+  // Map for invoke target classes.
+  std::map<PersistentClassIndex, GcRoot<mirror::Class>> class_map_ GUARDED_BY(method_lock_);
+
+  // Map for associating ProfilingInfo with an ArtMethod.
+  typedef std::map<ArtMethod*, std::unique_ptr<ProfilingInfo>> MethodProfileMap;
+  static MethodProfileMap profile_infos_ GUARDED_BY(Locks::profiler_lock_);
+
+  // Map for saving DexFiles that were matched in FindClass from Boot oatfiles.
+  typedef std::map<uint32_t, std::unique_ptr<const DexFile>> BootDexMap;
+  BootDexMap saved_boot_dex_files_;
 };
 
 }  // namespace art

@@ -112,18 +112,26 @@ static void ComputeClassNames(ExactProfileFile* hdr,
     // No Oat Table -> no invokes present in the file.
     return;
   }
-  DCHECK_NE(hdr->offset_to_oat_string_table, 0U);
+  DCHECK_NE(hdr->offset_to_string_table, 0U);
   OatTable* oat_table = reinterpret_cast<OatTable*>(base + hdr->offset_to_oat_table);
-  OatLocationStringTable* string_table =
-      reinterpret_cast<OatLocationStringTable*>(base + hdr->offset_to_oat_string_table);
+  LocationStringTable* string_table =
+      reinterpret_cast<LocationStringTable*>(base + hdr->offset_to_string_table);
+
   // Collect all the OAT files we need.
   std::vector<OatFile*> oat_table_files;
+  std::map<std::string, OatFile*> oat_map;
   std::string error_msg;
   for (uint32_t i = 0; i < oat_table->num_oat_locations; i++) {
     OneOatIndex& oat_index = oat_table->oat_locations[i];
     char *oat_name = &string_table->strings[oat_index.offset_of_oat_location_string];
+    auto it = oat_map.find(oat_name);
+    if (it != oat_map.end()) {
+      oat_table_files.push_back(it->second);
+      continue;
+    }
     OatFile* oat =
-        OatFile::Open(oat_name, oat_name, nullptr, nullptr, false, nullptr, &error_msg);
+        OatFile::Open(oat_name, oat_name, nullptr, nullptr, false, false, nullptr, &error_msg);
+    oat_map.insert(std::pair<std::string, OatFile*>(oat_name, oat));
     oat_table_files.push_back(oat);
     if (oat == nullptr) {
       std::cerr << "Unable to open OAT file: " << oat_name << ": " << error_msg << '\n';
@@ -134,6 +142,7 @@ static void ComputeClassNames(ExactProfileFile* hdr,
   typedef std::pair<uint8_t, uint8_t> OatDexIndex;
   std::map<OatDexIndex, std::unique_ptr<const DexFile>> oat_dex_map;
   uint32_t* dex_file_table = hdr->offset_to_dex_infos;
+  DexTable* dex_table = reinterpret_cast<DexTable*>(base + hdr->offset_to_dex_table);
   for (uint32_t i = 0; i < hdr->num_dex_files; i++) {
     if (dex_file_table[i] == 0) {
       // Unallocated dex file.
@@ -166,32 +175,44 @@ static void ComputeClassNames(ExactProfileFile* hdr,
             dex_file = it->second.get();
           } else if (oat_file != nullptr) {
             // Need to look it up.
-            const OatDexFile* oat_dex_file = oat_file->GetOatDexFiles().at(invoke.DexIndex());
-            if (oat_dex_file != nullptr) {
-              std::unique_ptr<const DexFile> dex_file_ptr =
-                  oat_dex_file->OpenDexFile(&error_msg);
-              dex_file = dex_file_ptr.get();
-              oat_dex_map.insert(std::make_pair(odi,std::move(dex_file_ptr)));
+            DCHECK_LT(invoke.DexIndex(), dex_table->num_dex_locations);
+            uint32_t invoke_dex_index =
+                dex_table->dex_locations[invoke.DexIndex()].dex_index_in_oat;
+            const std::vector<const OatDexFile*>& oat_dex_files = oat_file->GetOatDexFiles();
+            if (invoke_dex_index < oat_dex_files.size()) {
+              const OatDexFile* oat_dex_file = oat_dex_files.at(invoke_dex_index);
+              if (oat_dex_file != nullptr) {
+                std::unique_ptr<const DexFile> dex_file_ptr =
+                    oat_dex_file->OpenDexFile(&error_msg);
+                dex_file = dex_file_ptr.get();
+                oat_dex_map.insert(std::make_pair(odi,std::move(dex_file_ptr)));
+              }
             }
           }
-          if (dex_file == nullptr) {
-            std::ostringstream ss;
-            ss << '<' << static_cast<int>(invoke.OatIndex())
-               << ':' << static_cast<int>(invoke.DexIndex())
-               << ':' << static_cast<int>(invoke.DexIndex()) << '>';
-            map.insert(std::make_pair(invoke, ss.str()));
-          } else {
-            std::string class_name =
-                std::string(dex_file->StringByTypeIdx(invoke.ClassDefIndex()));
-            class_name = PrettyDescriptor(class_name.c_str());
-            map.insert(std::make_pair(invoke, class_name));
+          if (dex_file != nullptr) {
+            if (invoke.ClassDefIndex() < dex_file->NumClassDefs()) {
+              const DexFile::ClassDef& class_def = dex_file->GetClassDef(invoke.ClassDefIndex());
+              std::string class_name = PrettyDescriptor(dex_file->GetClassDescriptor(class_def));
+              map.insert(std::make_pair(invoke, class_name));
+            }
+            continue;
           }
+
+          // Something failed.  Remember it anyways.
+          std::ostringstream ss;
+          if (dex_file != nullptr) {
+            // Something went wrong with the class index.
+            ss << "Invalid class index " << invoke.ClassDefIndex()
+               << '/' << dex_file->NumClassDefs() << ' ';
+          }
+          ss << invoke;
+          map.insert(std::make_pair(invoke, ss.str()));
         }
       }
     }
   }
-  for (auto oat_file : oat_table_files) {
-    delete oat_file;
+  for (auto it : oat_map) {
+    delete it.second;
   }
 }
 
@@ -234,7 +255,7 @@ static int DumpProfile(const ProfDumpArgs* args) {
     }
   } else {
     fname = args->oat_filename_;
-    oat_file = OatFile::Open(fname, fname, nullptr, nullptr, false, nullptr, &error_msg);
+    oat_file = OatFile::Open(fname, fname, nullptr, nullptr, false, false, nullptr, &error_msg);
     if (oat_file == nullptr) {
       std::cerr << "Unable to open OAT file: " << fname << ": " << error_msg;
       return EXIT_FAILURE;
@@ -249,7 +270,7 @@ static int DumpProfile(const ProfDumpArgs* args) {
       // Unfortunately, we have a problem with multiple open OAT files.
       delete oat_file;
       ComputeClassNames(hdr, class_name_map);
-      oat_file = OatFile::Open(fname, fname, nullptr, nullptr, false, nullptr, &error_msg);
+      oat_file = OatFile::Open(fname, fname, nullptr, nullptr, false, false, nullptr, &error_msg);
       DCHECK(oat_file != nullptr);
     }
   }
@@ -274,21 +295,36 @@ static int DumpProfile(const ProfDumpArgs* args) {
     std::cout << "Total Number of counters: " << hdr->total_num_counters << '\n';
     std::cout << "Total Number of methods: " << hdr->total_num_methods << '\n';
     std::cout << "Offset to oat table: " << hdr->offset_to_oat_table << '\n';
-    std::cout << "Offset to oat string table: " << hdr->offset_to_oat_string_table << '\n';
+    std::cout << "Offset to dex table: " << hdr->offset_to_dex_table << '\n';
+    std::cout << "Offset to oat string table: " << hdr->offset_to_string_table << '\n';
     std::cout << "Variable start offset: 0x" << std::hex
               << hdr->variable_start_offset << std::dec << '\n';
+    LocationStringTable* string_table =
+        reinterpret_cast<LocationStringTable*>(base + hdr->offset_to_string_table);
     if (hdr->offset_to_oat_table != 0U) {
-      DCHECK_NE(hdr->offset_to_oat_string_table, 0U);
+      DCHECK_NE(hdr->offset_to_string_table, 0U);
       OatTable* oat_table = reinterpret_cast<OatTable*>(base + hdr->offset_to_oat_table);
-      OatLocationStringTable* string_table =
-          reinterpret_cast<OatLocationStringTable*>(base + hdr->offset_to_oat_string_table);
       for (uint32_t i = 0; i < oat_table->num_oat_locations; i++) {
         OneOatIndex& oat_index = oat_table->oat_locations[i];
         char *oat_name = &string_table->strings[oat_index.offset_of_oat_location_string];
         std::cout << "Oat index(" << i << "): " << oat_name
                   << ", checksum = 0x" << std::hex << oat_index.oat_checksum
                   << std::dec << '\n';
-        }
+      }
+    }
+
+    if (hdr->offset_to_dex_table != 0U) {
+      DCHECK_NE(hdr->offset_to_string_table, 0U);
+      DexTable* dex_table = reinterpret_cast<DexTable*>(base + hdr->offset_to_dex_table);
+      for (uint32_t i = 0; i < dex_table->num_dex_locations; i++) {
+        OneDexIndex& dex_index = dex_table->dex_locations[i];
+        char *dex_name = &string_table->strings[dex_index.offset_of_dex_location_string];
+        std::cout << "Dex index(" << i << "): " << dex_name
+                  << ", index_in_oat = 0x" << dex_index.dex_index_in_oat
+                  << ", checksum = 0x" << std::hex << dex_index.dex_checksum
+                  << ", location checksum = 0x" << std::hex << dex_index.dex_loc_checksum
+                  << std::dec << '\n';
+      }
     }
   }
 
@@ -302,10 +338,18 @@ static int DumpProfile(const ProfDumpArgs* args) {
     OneDexFile& df = *reinterpret_cast<OneDexFile*>(base + dex_file_table[i]);
     std::unique_ptr<const DexFile> real_dex_file;
     if (!no_oat_file) {
-      const OatDexFile* oat_dex_file = oat_file->GetOatDexFiles()[i];
-      real_dex_file = oat_dex_file->OpenDexFile(&error_msg);
-      if (real_dex_file == nullptr) {
-        std::cerr << "Error opening dex file: " << error_msg;
+      const std::vector<const OatDexFile*>& oat_dex_files = oat_file->GetOatDexFiles();
+      if (i < oat_dex_files.size()) {
+        const OatDexFile* oat_dex_file = oat_dex_files.at(i);
+        if (oat_dex_file != nullptr) {
+
+          real_dex_file = oat_dex_file->OpenDexFile(&error_msg);
+          if (real_dex_file == nullptr) {
+            std::cerr << "Error opening dex file: " << error_msg << '\n';
+          }
+        } else {
+          std::cerr << "No OatDexFile for dex file: " << base + df.offset_to_dex_file_name << '\n';
+        }
       }
     }
     if (!args->method_counts_only_) {
@@ -387,8 +431,14 @@ static int DumpProfile(const ProfDumpArgs* args) {
                 std::cout << "  Dex pc: 0x" << std::hex << call_site->dex_pc << std::dec;
               }
               auto it = class_name_map.find(invoke.class_index);
-              DCHECK(it != class_name_map.end());
-              std::cout << ' ' << it->second << " count: " << invoke.count;
+              if (it != class_name_map.end()) {
+                std::cout << ' ' << it->second << " count: " << invoke.count;
+              } else {
+                std::cout << " Missed <" << static_cast<int>(invoke.class_index.OatIndex())
+                          << ':' << static_cast<int>(invoke.class_index.DexIndex())
+                          << ':' << static_cast<int>(invoke.class_index.ClassDefIndex()) << '>'
+                          << " count: " << invoke.count;
+              }
             }
             if (hdr_printed) {
               std::cout << '\n';

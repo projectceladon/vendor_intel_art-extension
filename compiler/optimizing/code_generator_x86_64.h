@@ -21,6 +21,7 @@
 #include "code_generator.h"
 #include "dex/compiler_enums.h"
 #include "driver/compiler_options.h"
+#include "graph_x86.h"
 #include "nodes.h"
 #include "parallel_move_resolver.h"
 #include "utils/x86_64/assembler_x86_64.h"
@@ -379,6 +380,7 @@ class CodeGeneratorX86_64 : public CodeGenerator {
 
   void Initialize() OVERRIDE {
     block_labels_ = CommonInitializeLabels<Label>();
+    GRAPH_TO_GRAPH_X86(GetGraph())->UpdateBlockOrder();
   }
 
   bool NeedsTwoRegisters(Primitive::Type type ATTRIBUTE_UNUSED) const OVERRIDE {

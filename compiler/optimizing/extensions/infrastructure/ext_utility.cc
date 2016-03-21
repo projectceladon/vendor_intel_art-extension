@@ -21,6 +21,7 @@
  */
 
 #include "ext_utility.h"
+#include "graph_x86.h"
 #include "nodes.h"
 #include "optimization.h"
 #include "speculation.h"
@@ -366,4 +367,32 @@ namespace art {
 
     DumpBasicBlock("Exit", loop->GetExitBlock());
   }
+
+BlockHotness GetBlockHotness(HBasicBlock* block) {
+  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(block->GetGraph());
+  if (graph->GetProfileCountKind() != HGraph_X86::kBasicBlockCounts) {
+    // We don't have enough information to tell.
+    return kUnknown;
+  }
+
+  const HBasicBlock* entry_block = graph->GetEntryBlock();
+  if (!entry_block->HasBlockCount() || entry_block->GetBlockCount() == 0 ||
+      !block->HasBlockCount()) {
+    // Still not enough to tell.
+    return kUnknown;
+  }
+  const uint64_t entry_count = entry_block->GetBlockCount();
+  const uint64_t block_count = block->GetBlockCount();
+  if (entry_count / kColdBlockFactor > block_count) {
+    return kCold;
+  }
+
+  if (block_count / kHotBlockFactor > entry_count) {
+    return kHot;
+  }
+
+  // Everything else must be warm.
+  return kWarm;
+}
+
 }  // namespace art

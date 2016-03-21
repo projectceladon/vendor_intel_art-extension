@@ -76,10 +76,10 @@ static void CantFindMethod(Runtime::ProfileBuffersMap& prof_counters,
                            uint32_t method_idx,
                            const DexFile* dex_file)
     SHARED_REQUIRES(Locks::mutator_lock_) {
-  LOG(INFO)  << "Entries in counters: " << prof_counters.size();
-  LOG(INFO)  << "Method*: " << method << ", idx = " << method_idx
-          << ", dex_file = " << dex_file << ", location = " << dex_file->GetLocation()
-          << ", dex_file checksum = 0x" << std::hex << dex_file->GetHeader().checksum_;
+  LOG(INFO) << "Entries in counters: " << prof_counters.size();
+  LOG(INFO) << "Method*: " << method << ", idx = " << method_idx
+            << ", dex_file = " << dex_file << ", location = " << dex_file->GetLocation()
+            << ", dex_file checksum = 0x" << std::hex << dex_file->GetHeader().checksum_;
   LOG(FATAL) << "Failed to locate counters for method: " << PrettyMethod(method, true);
 }
 
@@ -90,7 +90,7 @@ static OneMethod* GetOneMethodFromArtMethod(art::ArtMethod* method, art::Thread*
   method = method->GetInterfaceMethodIfProxy(sizeof(void*));
   uint32_t method_idx = method->GetDexMethodIndex();
   const DexFile* dex_file = method->GetDexFile();
-  std::pair<const DexFile*, uint32_t> method_ref(dex_file, method_idx);
+  MethodReference method_ref(dex_file, method_idx);
   MutexLock mu_prof(self, *Locks::profiler_lock_);
   auto it = prof_counters.find(method_ref);
   if (UNLIKELY(it == prof_counters.end())) {

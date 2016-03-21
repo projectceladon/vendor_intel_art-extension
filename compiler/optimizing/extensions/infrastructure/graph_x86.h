@@ -196,6 +196,56 @@ class HGraph_X86 : public HGraph {
     return profiled_invokes_;
   }
 
+  enum HasExactProfileInformation {
+    kNoCounts,          // No information at all.
+    kMethodCount,       // Just a count of the method.
+    kBasicBlockCounts,  // Counts for all (initial) basic blocks.
+  };
+
+  /*
+   * @brief What kind of profiling is available for use?
+   * @returns the available profiling kind.
+   */
+  HasExactProfileInformation GetProfileCountKind() const {
+    return exact_profile_kind_;
+  }
+
+  /*
+   * @brief Set the kind of profiling available for use.
+   * @param kind the available profiling kind.
+   */
+  void SetProfileCountKind(HasExactProfileInformation kind) {
+    exact_profile_kind_ = kind;
+  }
+
+  /*
+   * @brief Is this method hot?
+   * @returns 'true' if the method was executed frequently.
+   */
+  bool IsHot() const {
+    return hot_;
+  }
+
+  /*
+   * @brief Set the hotness of this method.
+   * @param hot Whether or not the method was frequently executed.
+   */
+  void SetHot(bool hot) {
+    hot_ = hot;
+  }
+
+  /*
+   * @brief Return the 'cold' blocks in a method.
+   * @param blocks Set to the set of all cold blocks in the method.
+   * @returns 'true' if any cold blocks are returned.
+   */
+  bool GetColdBlocks(std::set<HBasicBlock*>& blocks) const;
+
+  /*
+   * @brief Update the block order to move cold blocks out of line.
+   */
+  void UpdateBlockOrder();
+
  protected:
 #ifndef NDEBUG
   uint32_t down_cast_checker_;
@@ -212,6 +262,10 @@ class HGraph_X86 : public HGraph {
    * @brief Used to record the dex_pcs for virtual/interface invoke calls.
    */
   ArenaVector<uint16_t> profiled_invokes_;
+
+  HasExactProfileInformation exact_profile_kind_ = kNoCounts;
+
+  bool hot_ = false;
 };
 
 /**

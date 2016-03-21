@@ -606,7 +606,7 @@ static void RunOptimizations(HGraph* graph,
 
   // TODO: Move to pass framework when all optimizations processed by RunOptimizationsX86.
   {
-    HInsertProfiling insert_profiling(graph, driver, stats);
+    HInsertProfiling insert_profiling(graph, driver, /* locked */ false, stats);
     HOptimization* add_profiling[] = {
       &insert_profiling,
     };

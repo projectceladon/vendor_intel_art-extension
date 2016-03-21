@@ -21,11 +21,13 @@
 #include "base/scoped_flock.h"
 #include "base/unix_file/fd_file.h"
 #include "dex_file.h"
+#include "driver/compiler_driver.h"
 #include "graph_x86.h"
 #include "mirror/object-inl.h"
 #include "thread.h"
 #include "nodes.h"
 #include "oat_file.h"
+#include "oat_file_manager.h"
 #include "os.h"
 #include "runtime.h"
 #include <sys/file.h>
@@ -58,6 +60,9 @@ namespace art {
 #endif
     }
   } foobar_init;
+
+std::set<ExactProfiler*> ExactProfiler::all_exact_profiles_;
+ExactProfiler::MethodProfileMap ExactProfiler::profile_infos_;
 
 ExactProfiler::ExactProfiler(const std::string& oat_file_name)
     : method_lock_("method info lock"),
@@ -98,6 +103,16 @@ ExactProfiler::ExactProfiler(const std::string& oat_file_name)
     prof_file_name_ += oat_file_name.substr(last_slash, last_dot - last_slash);
   }
   prof_file_name_ += ".prof";
+
+  // Register this profile for GC.
+  MutexLock mu(nullptr, method_lock_);
+  all_exact_profiles_.insert(this);
+}
+
+ExactProfiler::~ExactProfiler() {
+  for (auto it : existing_profiles_) {
+    delete it;
+  }
 }
 
 void ExactProfiler::RegisterMethod(HGraph_X86& graph) {
@@ -148,9 +163,6 @@ static int do_mkdir(const char *path, mode_t mode) {
   } else if (!S_ISDIR(st.st_mode)) {
     errno = ENOTDIR;
     status = -1;
-  } else {
-    VLOG(exact_profiler) << "path: " << path << ", mode: " << std::oct << st.st_mode
-        << ", uid: " << std::dec << st.st_uid << ", gid: " << st.st_gid;
   }
 
   return status;
@@ -269,6 +281,7 @@ bool ExactProfiler::WriteProfileFile(bool update_checksum_if_needed) {
   prof_file.magic1 = Magic1_;
   prof_file.version = CurrentVersion_;
   prof_file.runtime_temp = 0;
+  prof_file.generating_profile = 0;
 
   // Fields to be accumulated.
   prof_file.total_num_counters = 0;
@@ -276,7 +289,8 @@ bool ExactProfiler::WriteProfileFile(bool update_checksum_if_needed) {
 
   // Support for OAT class information for invokes.
   prof_file.offset_to_oat_table = 0;
-  prof_file.offset_to_oat_string_table = 0;
+  prof_file.offset_to_dex_table = 0;
+  prof_file.offset_to_string_table = 0;
 
   const std::vector<const OatDexFile*>& oat_dex_files = oat->GetOatDexFiles();
   prof_file.num_dex_files = oat_dex_files.size();
@@ -344,7 +358,7 @@ bool ExactProfiler::WriteProfileFile(bool update_checksum_if_needed) {
     // Insert dex file name, NUL terminated.
     name_buffer.insert(name_buffer.end(), dex_name.begin(), dex_name.end());
     name_buffer.push_back('\0');
-    df_info.dex_checksum = it->GetDexFileLocationChecksum();
+    df_info.dex_checksum = df->GetHeader().checksum_;
     df_info.num_methods = df->NumMethodIds();
     std::vector<uint32_t> method_offsets;
     method_offsets.reserve(df_info.num_methods);
@@ -416,10 +430,9 @@ bool ExactProfiler::WriteProfileFile(bool update_checksum_if_needed) {
   prof_file.variable_start_offset = after_magic3;
 
   // Ensure that the directory is available.
-  VLOG(exact_profiler) << "directory: " << prof_dir_name_;
-  mkpath(prof_dir_name_.c_str(), 0775);
+  mkpath(prof_dir_name_.c_str(), 0777);
   // Ensure it is readable by everyone, even if umask forced above 0775 to change.
-  if (chmod(prof_dir_name_.c_str(), 0775) < 0) {
+  if (chmod(prof_dir_name_.c_str(), 0777) < 0) {
     VLOG(exact_profiler) << "chmod " << prof_dir_name_ << " failed: " << strerror(errno);
   }
 
@@ -613,13 +626,16 @@ int ExactProfiler::OpenProfileFile(const OatFile& oat_file,
 
   // Okay, we have a file name.  Now let us (re-)confirm that we have a valid file.
   if (ret < 0 || static_cast<size_t>(file_info.st_size) < sizeof(ExactProfileFile)) {
-    LOG(INFO) << "Oat filename: " << oat_file_name << ", is_image " << is_image;
-    if (ret < 0) {
-      LOG(INFO) << "Unable to open file: " << strerror(errno);
-    } else {
-      LOG(INFO) << "File too small: " << static_cast<size_t>(file_info.st_size);
+    if (GeneratingProfile(oat_file)) {
+      // Only log the problem if we need the file to be present.
+      LOG(INFO) << "Oat filename: " << oat_file_name << ", is_image " << is_image;
+      if (ret < 0) {
+        LOG(INFO) << "Unable to open file: " << strerror(errno);
+      } else {
+        LOG(INFO) << "File too small: " << static_cast<size_t>(file_info.st_size);
+      }
+      LOG(ERROR) << "Non-existent or too small profile file: " << orig_prof_name;
     }
-    LOG(ERROR) << "Non-existent or too small profile file: " << orig_prof_name;
     return -1;
   }
 
@@ -647,6 +663,10 @@ ExactProfileFile* ExactProfiler::GetProfileFile(const OatFile& oat_file,
     // We failed to open the profile file.  Was this a serious failure?
     if (prof_name.empty()) {
       // No profile file exists.
+      return nullptr;
+    }
+    if (!GeneratingProfile(oat_file)) {
+      // We are not generating profiling information, so we don't need it.
       return nullptr;
     }
 
@@ -695,9 +715,10 @@ ExactProfileFile* ExactProfiler::GetProfileFile(const OatFile& oat_file,
 
   // Checksum may differ if we have both x86 and x86_64 versions of the files compiled.
   if (prof->oat_checksum != oat_file.GetOatHeader().GetChecksum()) {
-    LOG(DEBUG) << "Checksum mismatch for " << prof_name << " and "
-        << oat_file.GetLocation() << ", found 0x" << std::hex << prof->oat_checksum
-        << ", expected 0x" << oat_file.GetOatHeader().GetChecksum();
+    VLOG(exact_profiler) << "Checksum mismatch for " << prof_name << " and "
+                         << oat_file.GetLocation() << ", found 0x" << std::hex
+                         << prof->oat_checksum << ", expected 0x"
+                         << oat_file.GetOatHeader().GetChecksum();
   }
 
   // Ensure that all the counters are zeroed, or we may incorrectly double existing values.
@@ -715,28 +736,38 @@ ExactProfileFile* ExactProfiler::GetProfileFile(const OatFile& oat_file,
   char **runtime_temp_as_ptr = reinterpret_cast<char **>(&prof->runtime_temp);
   *runtime_temp_as_ptr = name;
 
+  // Are we generating profile information for this OAT file?
+  prof->generating_profile = GeneratingProfile(oat_file);
+
   // Good enough for now.
   return prof.release();
 }
 
-class OatTableManager {
+std::ostream& operator<<(std::ostream& os, const PersistentClassIndex& index) {
+  os << '<' << static_cast<int>(index.OatIndex()) << ':'
+     << static_cast<int>(index.DexIndex()) << ':'
+     << index.ClassDefIndex() << '>';
+  return os;
+}
+
+class OatDexTableManager {
   public:
     /*
-     * @brief Load an OAT table from a file image.
+     * @brief Load OAT and Dex tables from a file image.
      * @param hdr ExactProfile image start.
      */
-    OatTableManager(ExactProfileFile* hdr);
+    OatDexTableManager(ExactProfileFile* hdr);
 
     /*
-     * @brief Add a reference to a class to the OAT table.
+     * @brief Add a reference to a class to the OAT/Dex table.
      * @param klass Class type to add.
-     * @returns an index into the oat table representing the type.
+     * @returns an index into the oat/dex tables representing the type.
      */
     PersistentClassIndex AddClassType(mirror::Class* klass)
         SHARED_REQUIRES(Locks::mutator_lock_);
 
     /*
-     * @brief Add a string to the OAT string table.
+     * @brief Add a string to the OAT/Dex string table.
      * @param string String to be added.
      * @returns an offset into the string table.
      */
@@ -747,21 +778,21 @@ class OatTableManager {
      * @param offset Offset into string table.
      * @returns the string at that offset.
      */
-    std::string GetStringLocation(uint32_t offset) {
+    std::string GetStringLocation(uint32_t offset) const {
       return &string_table_[offset];
     }
 
     /*
-     * Is the OatTable empty?
-     * @returns 'true' if there is nothing in the OAT table.
+     * Is the OatDexTable empty?
+     * @returns 'true' if there is nothing in the OAT/Dex table.
      */
     bool IsEmpty() const {
       return oat_map_.empty();
     }
 
     /*
-     * Has the OatTable been updated since initialization?
-     * @returns 'true' if something has been added to the OatTable.
+     * Has the OatDexTable been updated since initialization?
+     * @returns 'true' if something has been added to the OatDexTable.
      */
     bool Updated() const {
       return updated_;
@@ -776,6 +807,14 @@ class OatTableManager {
     }
 
     /*
+     * Return the vector of OneDexIndex.
+     * @returns vector of OneDexIndex.
+     */
+    const std::vector<OneDexIndex>& GetDexIndicies() const {
+      return dexs_;
+    }
+
+    /*
      * Return the string table.
      * @returns the string table.
      */
@@ -783,49 +822,208 @@ class OatTableManager {
       return string_table_;
     }
 
+    /*
+     * Return the OAT file name for a given index.
+     * @param index OAT file index.
+     * @returns the matching OAT name or an empty string.
+     */
+    const std::string GetOatFileName(uint32_t index) const {
+      if (index < oats_.size()) {
+        return GetStringLocation(oats_[index].offset_of_oat_location_string);
+      }
+      return "";
+    }
+
+    /*
+     * Return the OAT checksum for a given index.
+     * @param index OAT file index.
+     * @returns the matching OAT checksum or -1.
+     */
+    uint32_t GetOatChecksum(uint32_t index) const {
+      if (index < oats_.size()) {
+        return oats_[index].oat_checksum;
+      }
+      return -1;
+    }
+
+    /*
+     * Return the Dex file name for a given index.
+     * @param index Dex file index.
+     * @returns the matching Dex name or an empty string.
+     */
+    const std::string GetDexFileName(uint32_t index) const {
+      if (index < dexs_.size()) {
+        return GetStringLocation(dexs_[index].offset_of_dex_location_string);
+      }
+      return "";
+    }
+
+    /*
+     * Return the Dex checksum for a given index.
+     * @param index Dex file index.
+     * @returns the matching Dex checksum or -1 for an invalid index.
+     */
+    uint32_t GetDexChecksum(uint32_t index) const {
+      if (index < dexs_.size()) {
+        return dexs_[index].dex_checksum;
+      }
+      return 0xFFFFFFFFU;
+    }
+
+    /*
+     * Return the DexFile location checksum for a given index.
+     * @param index Dex file index.
+     * @returns the matching DexFile location checksum or -1 for an invalid index.
+     */
+    uint32_t GetDexLocChecksum(uint32_t index) const {
+      if (index < dexs_.size()) {
+        return dexs_[index].dex_loc_checksum;
+      }
+      return 0xFFFFFFFFU;
+    }
+
   private:
     std::map<mirror::Class*, PersistentClassIndex> class_map_;
     std::map<const OatFile*, uint32_t> oat_map_;
+    std::map<std::pair<const DexFile*, uint32_t>, uint32_t> dex_map_;
     std::vector<OneOatIndex> oats_;
+    std::vector<OneDexIndex> dexs_;
     std::vector<char> string_table_;
+    std::map<std::string, uint32_t> string_offset_map_;
     bool updated_;
+    uint32_t FindOatFile(const OatFile* oat_file)
+        SHARED_REQUIRES(Locks::mutator_lock_);
+    uint32_t FindDexFile(const DexFile& dex_file, uint32_t index_in_oat)
+        SHARED_REQUIRES(Locks::mutator_lock_);
 };
 
-uint32_t OatTableManager::AddStringLocation(const std::string& string) {
+uint32_t OatDexTableManager::AddStringLocation(const std::string& string) {
+  // Already present?
+  auto it = string_offset_map_.find(string);
+  if (it != string_offset_map_.end()) {
+    return it->second;
+  }
+
+  // Nope.  Need to add it in.
   uint32_t index = string_table_.size();
   const char* c_str = string.c_str();
   // Ensure that the trailing NUL is included.
   string_table_.insert(string_table_.end(), c_str, c_str + string.length() + 1);
+  string_offset_map_.insert(std::pair<std::string, uint32_t>(string, index));
   return index;
 }
 
-OatTableManager::OatTableManager(ExactProfileFile* hdr)
+OatDexTableManager::OatDexTableManager(ExactProfileFile* hdr)
     : updated_(false) {
-  if (hdr->offset_to_oat_table == 0 || hdr->offset_to_oat_string_table == 0) {
+  // Is there anything to read?
+  if (hdr->offset_to_oat_table == 0 ||
+      hdr->offset_to_dex_table == 0 ||
+      hdr->offset_to_string_table == 0) {
     return;
   }
 
   // We have some data already in the Profile file.  Read it in and populate the
   // tables.
   char* base = reinterpret_cast<char*>(hdr);
-  OatTable* oat_table = reinterpret_cast<OatTable*>(base + hdr->offset_to_oat_table);
-  OatLocationStringTable* oat_location_table =
-      reinterpret_cast<OatLocationStringTable*>(base + hdr->offset_to_oat_string_table);
 
   // Copy the OneOatIndex table.
-  oats_.reserve(oat_location_table->num_string_chars * 2);
+  OatTable* oat_table = reinterpret_cast<OatTable*>(base + hdr->offset_to_oat_table);
+  oats_.reserve(oat_table->num_oat_locations * 2);
   oats_.insert(oats_.end(),
                &oat_table->oat_locations[0],
                &oat_table->oat_locations[oat_table->num_oat_locations]);
 
+  // Copy the OneDexIndex table.
+  DexTable* dex_table = reinterpret_cast<DexTable*>(base + hdr->offset_to_dex_table);
+  dexs_.reserve(dex_table->num_dex_locations * 2);
+  dexs_.insert(dexs_.end(),
+               &dex_table->dex_locations[0],
+               &dex_table->dex_locations[dex_table->num_dex_locations]);
+
   // Copy the string table.
-  string_table_.reserve(oat_location_table->num_string_chars * 2);
+  LocationStringTable* location_table =
+      reinterpret_cast<LocationStringTable*>(base + hdr->offset_to_string_table);
+  string_table_.reserve(location_table->num_string_chars * 2);
   string_table_.insert(string_table_.end(),
-                       &oat_location_table->strings[0],
-                       &oat_location_table->strings[oat_location_table->num_string_chars]);
+                       &location_table->strings[0],
+                       &location_table->strings[location_table->num_string_chars]);
+  // Recreate the string map.
+  char *string_start = &location_table->strings[0];
+  char *p = string_start;
+  while (static_cast<uint32_t>((p - string_start)) < location_table->num_string_chars) {
+    uint32_t len = strlen(p);
+    string_offset_map_.insert(std::pair<std::string, uint32_t>(p, p-string_start));
+    p += len + 1;
+  }
 }
 
-PersistentClassIndex OatTableManager::AddClassType(mirror::Class* klass) {
+uint32_t OatDexTableManager::FindOatFile(const OatFile* oat_file) {
+  auto it2 = oat_map_.find(oat_file);
+  if (it2 != oat_map_.end()) {
+    return it2->second;
+  }
+
+  // Need to add it to the list.  Is it pre-loaded?
+  uint32_t oat_index = 0;
+  const std::string& oat_location = oat_file->GetLocation();
+  uint32_t oat_check_sum = oat_file->GetOatHeader().GetChecksum();
+  for (uint32_t e = oats_.size(); oat_index < e; oat_index++) {
+    const OneOatIndex& ooi = oats_[oat_index];
+    if (ooi.oat_checksum == oat_check_sum) {
+      // Ensure we find it quickly next time.
+      oat_map_.insert(std::pair<const OatFile*, uint32_t>(oat_file, oat_index));
+      return oat_index;
+    }
+  }
+
+  // Need to add a new OAT file to the OAT table.
+  OneOatIndex new_oat_index;
+  new_oat_index.oat_checksum = oat_check_sum;
+  new_oat_index.offset_of_oat_location_string = AddStringLocation(oat_location);
+  oat_index = oats_.size();
+  oats_.push_back(new_oat_index);
+  oat_map_.insert(std::pair<const OatFile*, uint32_t>(oat_file, oat_index));
+  updated_ = true;
+  return oat_index;
+}
+
+uint32_t OatDexTableManager::FindDexFile(const DexFile& dex_file,
+                                         uint32_t index_in_oat) {
+  std::pair<const DexFile*, uint32_t> dex_index_pair(&dex_file, index_in_oat);
+  auto it2 = dex_map_.find(dex_index_pair);
+  if (it2 != dex_map_.end()) {
+    return it2->second;
+  }
+
+  // Need to add it to the list.  Is it pre-loaded?
+  uint32_t dex_index = 0;
+  const std::string& dex_location = dex_file.GetLocation();
+  uint32_t dex_check_sum = dex_file.GetHeader().checksum_;
+  uint32_t dex_loc_check_sum = dex_file.GetLocationChecksum();
+  for (uint32_t e = dexs_.size(); dex_index < e; dex_index++) {
+    const OneDexIndex& odi = dexs_[dex_index];
+    if (odi.dex_checksum == dex_check_sum && odi.dex_index_in_oat == index_in_oat) {
+      DCHECK_EQ(odi.dex_loc_checksum, dex_loc_check_sum);
+      // Ensure we find it quickly next time.
+      dex_map_.insert(std::make_pair(dex_index_pair, dex_index));
+      return dex_index;
+    }
+  }
+
+  // Need to add a new OAT file to the OAT table.
+  OneDexIndex new_dex_index;
+  new_dex_index.dex_index_in_oat = index_in_oat;
+  new_dex_index.dex_checksum = dex_check_sum;
+  new_dex_index.dex_loc_checksum = dex_loc_check_sum;
+  new_dex_index.offset_of_dex_location_string = AddStringLocation(dex_location);
+  dex_index = dexs_.size();
+  dexs_.push_back(new_dex_index);
+  dex_map_.insert(std::make_pair(dex_index_pair, dex_index));
+  updated_ = true;
+  return dex_index;
+}
+
+PersistentClassIndex OatDexTableManager::AddClassType(mirror::Class* klass) {
   // Have we seen this class already?
   CHECK(klass != nullptr);
   auto it = class_map_.find(klass);
@@ -840,43 +1038,16 @@ PersistentClassIndex OatTableManager::AddClassType(mirror::Class* klass) {
   const OatFile* oat_file = oat_dex_file->GetOatFile();
   CHECK(oat_file != nullptr) << PrettyDescriptor(klass);
 
-  // Can we find a match for the OAT file?
-  auto it2 = oat_map_.find(oat_file);
-  uint32_t oat_index = 0;
-  if (it2 != oat_map_.end()) {
-    oat_index = it2->second;
-  } else {
-    // Need to add it to the list.  Is it pre-loaded?
-    const std::string& oat_location = oat_file->GetLocation();
-    uint32_t oat_check_sum = oat_file->GetOatHeader().GetChecksum();
-    for (uint32_t e = oats_.size(); oat_index < e; oat_index++) {
-      const OneOatIndex& ooi = oats_[oat_index];
-      if (ooi.oat_checksum == oat_check_sum) {
-        CHECK_EQ(oat_location, GetStringLocation(ooi.offset_of_oat_location_string))
-            << PrettyDescriptor(klass);
-        break;
-      }
-    }
-    if (oat_index == oats_.size()) {
-      // Need to add a new OAT file to the OAT table.
-      OneOatIndex new_oat_index;
-      new_oat_index.oat_checksum = oat_check_sum;
-      new_oat_index.offset_of_oat_location_string = AddStringLocation(oat_location);
-      oat_index = oats_.size();
-      oats_.push_back(new_oat_index);
-      oat_map_.insert(std::pair<const OatFile*, uint32_t>(oat_file, oat_index));
-      updated_ = true;
-    }
-  }
-
-  CHECK_LT(oat_index, oats_.size());
+  // Find a match for the OAT file.
+  uint32_t oat_index = FindOatFile(oat_file);
+  CHECK_LT(oat_index, oats_.size()) << PrettyDescriptor(klass);
 
   // Find the dex file index in the OAT file.
   const std::vector<const OatDexFile*>& oat_dex_files =
       oat_dex_file->GetOatFile()->GetOatDexFiles();
   auto index_in_oat = std::find(oat_dex_files.begin(), oat_dex_files.end(), oat_dex_file);
-  CHECK(index_in_oat != oat_dex_files.end());
-  uint32_t dex_index = index_in_oat - oat_dex_files.begin();
+  CHECK(index_in_oat != oat_dex_files.end()) << PrettyDescriptor(klass);
+  uint32_t dex_index = FindDexFile(dex_file, index_in_oat - oat_dex_files.begin());
 
   // Remember this for next time this class is used.
   PersistentClassIndex index(oat_index, dex_index, class_def_index);
@@ -885,7 +1056,7 @@ PersistentClassIndex OatTableManager::AddClassType(mirror::Class* klass) {
   return index;
 }
 
-static void MergeInvokes(OatTableManager& oat_table,
+static void MergeInvokes(OatDexTableManager& oat_dex_table,
                          OneMethod* method_info,
                          OneMethod* file_method_info,
                          bool zero_counters)
@@ -915,7 +1086,7 @@ static void MergeInvokes(OatTableManager& oat_table,
         continue;
       }
 
-      PersistentClassIndex class_index = oat_table.AddClassType(klass);
+      PersistentClassIndex class_index = oat_dex_table.AddClassType(klass);
       // Is this class already known?
       bool seen_class = false;
       int k;
@@ -973,9 +1144,10 @@ static void MergeInvokes(OatTableManager& oat_table,
 
 static void UpdateOneProfileFile(ExactProfileFile* hdr,
                                  ExactProfileFile* file_hdr,
-                                 OatTableManager& oat_table,
+                                 OatDexTableManager& oat_table,
                                  char *profile_file_name,
-                                 bool zero_counters) {
+                                 bool zero_counters)
+    SHARED_REQUIRES(Locks::mutator_lock_) {
   if (hdr->version != file_hdr->version) {
     LOG(WARNING) << "Version mismatch on profile file '" << profile_file_name << '\'';
     return;
@@ -1007,7 +1179,6 @@ static void UpdateOneProfileFile(ExactProfileFile* hdr,
   VLOG(exact_profiler) << "Total number of counters = " << hdr->total_num_counters;
   VLOG(exact_profiler) << "Total number of methods = " << hdr->total_num_methods;
 
-  ReaderMutexLock mu(Thread::Current(), *Locks::mutator_lock_);
   for (uint32_t i = 0; i < hdr->num_dex_files; i++) {
     if (dex_file_table[i] == 0) {
       // Unallocated dex file.
@@ -1057,8 +1228,9 @@ static void UpdateOneProfileFile(ExactProfileFile* hdr,
   }
 }
 
-void ExactProfiler::UpdateProfileFiles(SafeMap<const OatFile*, ExactProfileFile*>& profiles,
-                                       bool zero_counters) {
+void ExactProfiler::UpdateProfileFiles(OatToExactProfileFileMap& profiles,
+                                       bool zero_counters)
+    SHARED_REQUIRES(Locks::mutator_lock_) {
   VLOG(exact_profiler) << "ExactProfiler::UpdateProfileFiles()";
   for (auto it : profiles) {
     ExactProfileFile* hdr = it.second;
@@ -1086,12 +1258,11 @@ void ExactProfiler::UpdateProfileFiles(SafeMap<const OatFile*, ExactProfileFile*
       } else {
         // Update the information in the file.
         ExactProfileFile *file_hdr = reinterpret_cast<ExactProfileFile*>(memmap_addr);
-        OatTableManager oat_table(file_hdr);
-        UpdateOneProfileFile(hdr, file_hdr, oat_table, *profile_file_name, zero_counters);
+        OatDexTableManager oat_dex_table(file_hdr);
+        UpdateOneProfileFile(hdr, file_hdr, oat_dex_table, *profile_file_name, zero_counters);
 
-
-        // Update the OAT location information, if needed.
-        if (!oat_table.IsEmpty() && oat_table.Updated()) {
+        // Update the OAT/Dex location information, if needed.
+        if (!oat_dex_table.IsEmpty() && oat_dex_table.Updated()) {
           // For now, just re-write the tables each time.
           // Ensure that we don't mess up due to mapped pages, as we may be
           // overwriting part of the file which was mmap'ed.
@@ -1099,11 +1270,18 @@ void ExactProfiler::UpdateProfileFiles(SafeMap<const OatFile*, ExactProfileFile*
           DCHECK_EQ(file_hdr->variable_start_offset % getpagesize(), 0U);
 
           // Update the offsets to our areas.
-          const std::vector<OneOatIndex>& oats = oat_table.GetOatIndicies();
-          size_t tab_size = sizeof(OneOatIndex) * oats.size();
+          const std::vector<OneOatIndex>& oats = oat_dex_table.GetOatIndicies();
+          size_t oat_tab_size = sizeof(OneOatIndex) * oats.size();
           file_hdr->offset_to_oat_table = file_hdr->variable_start_offset;
-          file_hdr->offset_to_oat_string_table =
-            file_hdr->offset_to_oat_table + sizeof(OatTable) + tab_size;
+
+          const std::vector<OneDexIndex>& dexs = oat_dex_table.GetDexIndicies();
+          size_t dex_tab_size = sizeof(OneDexIndex) * dexs.size();
+          file_hdr->offset_to_dex_table =
+              file_hdr->offset_to_oat_table + sizeof(OatTable) + oat_tab_size;
+
+          file_hdr->offset_to_string_table =
+              file_hdr->offset_to_dex_table + sizeof(DexTable) + dex_tab_size;
+
           // We no longer need the memory mapped image of the file. This will write
           // any changes to disk.
           ::lseek(fd, file_hdr->variable_start_offset, SEEK_SET);
@@ -1114,10 +1292,19 @@ void ExactProfiler::UpdateProfileFiles(SafeMap<const OatFile*, ExactProfileFile*
           oat_tab.num_oat_locations = oats.size();
           oat_tab.num_allocated_oat_locations = oat_tab.num_oat_locations;
           (void) ::write(fd, &oat_tab, sizeof(oat_tab));
-          (void) ::write(fd, &oats[0], tab_size);
+          (void) ::write(fd, &oats[0], oat_tab_size);
 
-          const std::vector<char>& strings = oat_table.GetStringTable();
-          OatLocationStringTable string_tab;
+          // Then write the Dex table.
+          DexTable dex_tab;
+          dex_tab.num_dex_locations = dexs.size();
+          dex_tab.num_allocated_dex_locations = dex_tab.num_dex_locations;
+
+          (void) ::write(fd, &dex_tab, sizeof(dex_tab));
+          (void) ::write(fd, &dexs[0], dex_tab_size);
+
+          // Finally write the oat/dex string table.
+          const std::vector<char>& strings = oat_dex_table.GetStringTable();
+          LocationStringTable string_tab;
           string_tab.num_string_chars = strings.size();
           string_tab.num_allocated_string_chars = string_tab.num_string_chars;
           (void) ::write(fd, &string_tab, sizeof(string_tab));
@@ -1147,21 +1334,21 @@ void ExactProfiler::AllocateProfileCounters(ArtMethod* method,
     *reinterpret_cast<OneDexFile*>(reinterpret_cast<char*>(hdr) + dex_file_table[dex_file_index]);
   DCHECK_LT(method_index, dex_info.num_methods);
   uint32_t method_idx = method->GetDexMethodIndex();
-  std::pair<const DexFile*, uint32_t> method_ref(dex_file, method_idx);
+  MethodReference method_ref(dex_file, method_idx);
 
   char* base = reinterpret_cast<char *>(hdr);
 
   // Locate the method index table.
   uint32_t* index_table = reinterpret_cast<uint32_t*>(base + dex_info.method_index_offsets);
-  OneMethod* prof_method =
+  OneMethod* method_info =
       reinterpret_cast<OneMethod*>(base + index_table[method_index]);
   Runtime::ProfileBuffersMap& prof_counters = Runtime::Current()->GetProfileBuffers();
   auto it = prof_counters.find(method_ref);
   if (it == prof_counters.end()) {
-    prof_counters.Put(method_ref, prof_method);
-  } else if (it->second->num_blocks < prof_method->num_blocks) {
+    prof_counters.Put(method_ref, method_info);
+  } else if (it->second->num_blocks < method_info->num_blocks) {
     // We have already seen this method. Switch to using this one, which is bigger.
-    prof_counters.Overwrite(method_ref, prof_method);
+    prof_counters.Overwrite(method_ref, method_info);
   }
 }
 
@@ -1202,10 +1389,10 @@ void ExactProfiler::AllocateProfileCounters(ExactProfileFile* hdr,
                << ", found " << dex_file_location;
     UNREACHABLE();
   }
-  if (dex_info.dex_checksum != dex_file->GetOatDexFile()->GetDexFileLocationChecksum()) {
+  if (dex_info.dex_checksum != dex_file->GetHeader().checksum_) {
     LOG(FATAL) << "Expected dex file " << dex_file_index << " checksum 0x" << std::hex
-               << dex_info.dex_checksum << ", found "
-               << dex_file->GetOatDexFile()->GetDexFileLocationChecksum();
+               << dex_info.dex_checksum << ", found 0x"
+               << dex_file->GetHeader().checksum_;
     UNREACHABLE();
   }
 
@@ -1221,7 +1408,12 @@ void ExactProfiler::AllocateProfileCounters(ExactProfileFile* hdr,
     OneMethod* method_info = reinterpret_cast<OneMethod*>(base + method_table[j]);
     ArtMethod* method = mirror::DexCache::GetElementPtrSize<ArtMethod*>(art_methods, j, ptr_size);
     uint32_t method_idx = method->GetDexMethodIndex();
-    std::pair<const DexFile*, uint32_t> method_ref(dex_file, method_idx);
+    if (method_idx >= dex_file->NumMethodIds()) {
+      // Invalid method index.
+      continue;
+    }
+
+    MethodReference method_ref(dex_file, method_idx);
 
     // Use the counters in the ExactProfile for this Method.
     auto it = prof_counters.find(method_ref);
@@ -1406,7 +1598,7 @@ void ExactProfileSaver::Run() REQUIRES(!wait_lock_) {
     }
 
     ReaderMutexLock mu(self, *Locks::mutator_lock_);
-    SafeMap<const OatFile*, ExactProfileFile*>& profiles = Runtime::Current()->GetProfilers();
+    ExactProfiler::OatToExactProfileFileMap& profiles = Runtime::Current()->GetProfilers();
     if (!profiles.empty()) {
       ExactProfiler::UpdateProfileFiles(profiles);
     }
@@ -1440,7 +1632,7 @@ ExactProfileFile* ExactProfiler::AddProfileFile(const std::string& oat_location,
     // 1. oat_location is similar to:
     //    -Ximage:/media/Dev/oam/out/host/linux-x86/framework/core.art
     //    -Ximage:/system/framework/boot.art
-    oat_file_name = oat_file_name.substr(9);
+    oat_file_name = oat_file_name.substr(1);
 
     // Remove leading '/' if present.
     if (oat_file_name[0] == '/') {
@@ -1566,6 +1758,9 @@ ExactProfileFile* ExactProfiler::AddProfileFile(const std::string& oat_location,
 
   // Lets keep it.
   existing_profiles_.push_back(prof.get());
+
+  // Read in the OAT table, if present.
+  use_oat_dex_table_.reset(new OatDexTableManager(prof.get()));
   return prof.release();
 }
 
@@ -1579,7 +1774,7 @@ OneMethod* ExactProfiler::FindMethodCounts(HGraph* graph) {
   VLOG(exact_profiler) << "Dex file location: " << dex_file.GetLocation();
   VLOG(exact_profiler) << "Dex method idx: " << method_idx;
   VLOG(exact_profiler) << "Dex base file location: " << dex_file.GetBaseLocation();
-  VLOG(exact_profiler) << "Checksum: 0x" << std::hex << dex_file.GetLocationChecksum();
+  VLOG(exact_profiler) << "Checksum: 0x" << std::hex << dex_file.GetHeader().checksum_;
 #endif
   OneMethod* method_data = nullptr;
 
@@ -1595,7 +1790,7 @@ OneMethod* ExactProfiler::FindMethodCounts(HGraph* graph) {
 #if MORE_DEBUG
       VLOG(exact_profiler) << "Try to match with: " << base + df->offset_to_dex_file_name;
 #endif
-      DCHECK_EQ(df->dex_checksum, dex_file.GetLocationChecksum());
+      DCHECK_EQ(df->dex_checksum, dex_file.GetHeader().checksum_);
       DCHECK_EQ(location, base + df->offset_to_dex_file_name);
 #if MORE_DEBUG
       VLOG(exact_profiler) << "1: Matched profile: Checksum = 0x" << std::hex << df->dex_checksum;
@@ -1625,7 +1820,7 @@ OneMethod* ExactProfiler::FindMethodCounts(HGraph* graph) {
 #if MORE_DEBUG
       VLOG(exact_profiler) << "Try to match with: " << base + df.offset_to_dex_file_name;
 #endif
-      if (df.dex_checksum != dex_file.GetLocationChecksum()) {
+      if (df.dex_checksum != dex_file.GetHeader().checksum_) {
         // Can't possibly match.
         continue;
       }
@@ -1694,14 +1889,25 @@ void ExactProfiler::SetContainsDexFile(const DexFile* dex_file)
   dex_files_.insert(dex_file);
 }
 
+void ExactProfiler::ClearClassMap()
+    REQUIRES(!method_lock_) {
+  MutexLock mu(nullptr, method_lock_);
+  class_map_.clear();
+}
+
+void ExactProfiler::ClearProfileInfos()
+    REQUIRES(!Locks::profiler_lock_) {
+  MutexLock mu(Thread::Current(), *Locks::profiler_lock_);
+  profile_infos_.clear();
+}
+
 bool ExactProfiler::ContainsDexFile(const DexFile& dex_file)
     NO_THREAD_SAFETY_ANALYSIS {
   MutexLock mu(nullptr, method_lock_);
   return dex_files_.find(&dex_file) != dex_files_.end();
 }
 
-void ExactProfiler::VisitRoots(SafeMap<const OatFile*, ExactProfileFile*>& profiles,
-                               RootVisitor* visitor)
+void ExactProfiler::VisitRoots(OatToExactProfileFileMap& profiles, RootVisitor* visitor)
     NO_THREAD_SAFETY_ANALYSIS {
   VLOG(exact_profiler) << "ExactProfiler::VisitRoots() Start";
   RootInfo root_info(kRootUnknown);
@@ -1732,7 +1938,131 @@ void ExactProfiler::VisitRoots(SafeMap<const OatFile*, ExactProfileFile*>& profi
       }
     }
   }
+  VLOG(exact_profiler) << "ExactProfiler::VisitRoots() Visit class maps";
+  {
+    for (auto it : all_exact_profiles_) {
+      MutexLock mu(nullptr, it->method_lock_);
+      for (auto& it2 : it->class_map_) {
+        it2.second.VisitRootIfNonNull(visitor, root_info);
+      }
+    }
+  }
+  VLOG(exact_profiler) << "ExactProfiler::VisitRoots() Visit method profiles";
+  {
+    MutexLock mu(Thread::Current(), *Locks::profiler_lock_);
+    BufferedRootVisitor<kDefaultBufferedRootCount> buffered_visitor(visitor, root_info);
+    for (auto& it : profile_infos_) {
+      it.second->VisitRoots(buffered_visitor);
+    }
+  }
   VLOG(exact_profiler) << "ExactProfiler::VisitRoots() End";
 }
+
+mirror::Class* ExactProfiler::FindClass(const CompilerDriver* driver, PersistentClassIndex index)
+    REQUIRES(!method_lock_) SHARED_REQUIRES(Locks::mutator_lock_) {
+  if (use_oat_dex_table_ == nullptr) {
+    // Nothing that we can do.
+    return nullptr;
+  }
+
+  // Have we seen this already?
+  Thread* thread = Thread::Current();
+  {
+    MutexLock mu(thread, method_lock_);
+    {
+      auto it = class_map_.find(index);
+      if (it != class_map_.end()) {
+        return it->second.Read();
+      }
+    }
+  }
+
+  mirror::Class* result = nullptr;
+
+  uint32_t dex_checksum = use_oat_dex_table_->GetDexChecksum(index.DexIndex());
+  const DexFile* found_dex_file = nullptr;
+  for (const DexFile* dex_file : driver->GetDexFilesForOatFile()) {
+    if (dex_file->GetHeader().checksum_ == dex_checksum) {
+      found_dex_file = dex_file;
+      break;
+    }
+  }
+
+  if (found_dex_file == nullptr) {
+    // We didn't match in the file we are compiling.  Let's try to boot OAT(s).
+// if (index.DexIndex() == 0) asm("int3");
+    auto it = saved_boot_dex_files_.find(index.DexIndex());
+    if (it != saved_boot_dex_files_.end()) {
+      found_dex_file = it->second.get();
+    } else {
+      uint32_t dex_loc_checksum = use_oat_dex_table_->GetDexLocChecksum(index.DexIndex());
+      OatFileManager& oat_mgr = Runtime::Current()->GetOatFileManager();
+      for (const OatFile* oat_file : oat_mgr.GetBootOatFiles()) {
+        for (const OatDexFile* oat_dex_file : oat_file->GetOatDexFiles()) {
+
+          if (oat_dex_file->GetDexFileLocationChecksum() == dex_loc_checksum) {
+            // Open the Dex file and save for later use.
+            std::string error_message;
+            std::unique_ptr<const DexFile> dex_file(oat_dex_file->OpenDexFile(&error_message));
+            if (dex_file != nullptr) {
+              found_dex_file = dex_file.get();
+              saved_boot_dex_files_.insert(
+                  BootDexMap::value_type(index.DexIndex(), std::move(dex_file)));
+              break;
+            }
+          }
+        }
+        if (found_dex_file != nullptr) {
+          break;
+        }
+      }
+    }
+  }
+
+  // Did we get anything?
+  if (found_dex_file != nullptr && index.ClassDefIndex() < found_dex_file->NumClassDefs()) {
+    const DexFile::ClassDef& class_def = found_dex_file->GetClassDef(index.ClassDefIndex());
+    const char* class_descriptor = found_dex_file->GetClassDescriptor(class_def);
+    std::vector<mirror::Class*> classes;
+    Runtime::Current()->GetClassLinker()->LookupClasses(class_descriptor, classes);
+    // Find a matching class with the right DexFile checksum.
+    for (auto it : classes) {
+      const DexFile* found_dex = &it->GetDexFile();
+      if (dex_checksum == found_dex->GetHeader().checksum_) {
+        // We have a match!
+        result = it;
+        break;
+      }
+    }
+  }
+
+  // Remember the result for the next query.
+  MutexLock mu(thread, method_lock_);
+  class_map_.insert(std::pair<PersistentClassIndex, GcRoot<mirror::Class>>(index, GcRoot<mirror::Class>(result)));
+  return result;
+}
+
+void ExactProfiler::SetProfileForMethod(ArtMethod* method, ProfilingInfo* profile)
+    REQUIRES(!Locks::profiler_lock_) {
+  MutexLock mu(nullptr, *Locks::profiler_lock_);
+  profile_infos_[method] = std::unique_ptr<ProfilingInfo>(profile);
+}
+
+ProfilingInfo* ExactProfiler::FindProfileForMethod(ArtMethod* method)
+    REQUIRES(!Locks::profiler_lock_) {
+  MutexLock mu(nullptr, *Locks::profiler_lock_);
+  auto it = profile_infos_.find(method);
+  if (it == profile_infos_.end()) {
+    return nullptr;
+  }
+  return it->second.get();
+}
+
+bool ExactProfiler::GeneratingProfile(const OatFile& oat_file) {
+  const char* profile_generate =
+      oat_file.GetOatHeader().GetStoreValueByKey("profile-generate");
+  return profile_generate != nullptr && strcmp(profile_generate, "true") == 0;
+}
+
 
 }  // namespace art

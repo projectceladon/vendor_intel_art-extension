@@ -33,6 +33,10 @@
 #include <sys/utsname.h>
 #endif
 
+#ifdef __ANDROID__
+#include "cutils/properties.h"
+#endif
+
 #include "arch/instruction_set_features.h"
 #include "arch/mips/instruction_set_features_mips.h"
 #include "art_method-inl.h"
@@ -894,6 +898,7 @@ class Dex2Oat FINAL {
 
     compiler_options_->verbose_methods_ = verbose_methods_.empty() ? nullptr : &verbose_methods_;
     compiler_options_->profiling_counts_ = profiling_counts_;
+    compiler_options_->use_exact_profiles_ = use_exact_profiles_;
 
     if (!IsBootImage() && multi_image_) {
       Usage("--multi-image can only be used when creating boot images");
@@ -1211,10 +1216,39 @@ class Dex2Oat FINAL {
         } else {
           Usage("Unknown profile option: %s", prof_str.data());
         }
+      } else if (option == "--use-profile") {
+        use_exact_profiles_ = true;
       } else if (!compiler_options_->ParseCompilerOption(option, Usage)) {
         Usage("Unknown argument %s", option.data());
       }
     }
+
+#ifdef __ANDROID__
+    const char* propertyName = "exact.profiling";
+    char bar[PROPERTY_VALUE_MAX];
+    if (property_get(propertyName, bar, "") > 0) {
+      if (strcmp(bar, "generate") == 0) {
+        profiling_counts_ = CompilerOptions::kProfilingBasicBlocks;
+      } else if (strcmp(bar, "use") == 0) {
+        use_exact_profiles_ = true;
+      } else if (strcmp(bar, "generate:use") == 0) {
+        profiling_counts_ = CompilerOptions::kProfilingBasicBlocks;
+        use_exact_profiles_ = true;
+      }
+    }
+#else
+    char *bar = getenv("EXACT_PROFILING");
+    if (bar != nullptr) {
+      if (strcmp(bar, "generate") == 0) {
+        profiling_counts_ = CompilerOptions::kProfilingBasicBlocks;
+      } else if (strcmp(bar, "use") == 0) {
+        use_exact_profiles_ = true;
+      } else if (strcmp(bar, "generate:use") == 0) {
+        profiling_counts_ = CompilerOptions::kProfilingBasicBlocks;
+        use_exact_profiles_ = true;
+      }
+    }
+#endif
 
     // Only support profiling for boot.oat.
     if (image_classes_filename_ == nullptr) {
@@ -1344,6 +1378,22 @@ class Dex2Oat FINAL {
     }
   }
 
+  void AddProfileFile(ExactProfiler* ep, const std::string oat_file_name) {
+    if (ep->AddProfileFile(oat_file_name,
+                           /* is_image */ true,
+                           /* is_bool_image_option */ false) == nullptr) {
+      LOG(WARNING) << "Unable to locate profile file for " << oat_file_name;
+    }
+    if (!IsBootImage() && !boot_image_filename_.empty()) {
+      if (ep->AddProfileFile(boot_image_filename_,
+                             /* is_image */ false,
+                             /* is_bool_image_option */ true,
+                             instruction_set_) == nullptr) {
+        LOG(WARNING) << "Unable to locate boot image profile file for " << boot_image_filename_;
+      }
+    }
+  }
+
   // Set up the environment for compilation. Includes starting the runtime and loading/opening the
   // boot class path.
   bool Setup() {
@@ -1372,15 +1422,34 @@ class Dex2Oat FINAL {
       return false;
     }
 
-    if (compiler_options_->GetProfilingCounts() != CompilerOptions::kProfilingNone) {
+    if (compiler_options_->GetProfilingCounts() != CompilerOptions::kProfilingNone ||
+        use_exact_profiles_) {
       if (!oat_filenames_.empty()) {
         // Multiple oat files.
+        bool found_at_least_one = false;
         for (auto& oat_file_name : oat_filenames_) {
           exact_profilers_.emplace_back(new ExactProfiler(oat_file_name));
+          ExactProfiler* ep = exact_profilers_.back().get();
+          if (use_exact_profiles_) {
+            AddProfileFile(ep, oat_file_name);
+            if (ep->HasExistingProfiles()) {
+              found_at_least_one = true;
+            }
+          }
+        }
+        if (!found_at_least_one) {
+          use_exact_profiles_ = false;
         }
       } else {
         DCHECK(!oat_location_.empty());
         exact_profilers_.emplace_back(new ExactProfiler(oat_location_));
+        ExactProfiler* ep = exact_profilers_.back().get();
+        if (use_exact_profiles_) {
+          AddProfileFile(ep, oat_location_);
+          if (!ep->HasExistingProfiles()) {
+            use_exact_profiles_ = false;
+          }
+        }
       }
     }
 
@@ -1452,8 +1521,15 @@ class Dex2Oat FINAL {
         rodata_.push_back(elf_writers_[i]->StartRoData());
         ExactProfiler* ep = nullptr;
         if (!exact_profilers_.empty()) {
-          ep =  exact_profilers_[i].get();
-          key_value_store_->Overwrite("profile", ep->GetRelativeProfileFileName());
+          if (exact_profilers_.size() > i) {
+            ep = exact_profilers_[i].get();
+            if (ep != nullptr) {
+              key_value_store_->Overwrite("profile", ep->GetRelativeProfileFileName());
+              if (profiling_counts_ != CompilerOptions::kProfilingNone) {
+                key_value_store_->Overwrite("profile-generate", OatHeader::kTrueValue);
+              }
+            }
+          }
         }
         // Unzip or copy dex files straight to the oat file.
         std::unique_ptr<MemMap> opened_dex_files_map;
@@ -1648,10 +1724,24 @@ class Dex2Oat FINAL {
                                      compiler_phases_timings_.get(),
                                      swap_fd_,
                                      profile_compilation_info_.get(),
-                                     &exact_profilers_));
+                                     &exact_profilers_,
+                                     use_exact_profiles_));
 
     driver_->SetDexFilesForOatFile(dex_files_);
     driver_->CompileAll(class_loader_, dex_files_, timings_);
+  }
+
+  void ClearExactProfileReferences() {
+    // Ensure that the Exact Profiling class maps for 'use profiling' are cleared
+    // before we write the image.
+    if (!use_exact_profiles_) {
+      return;
+    }
+
+    for (auto& exact_profile : exact_profilers_) {
+      exact_profile->ClearClassMap();
+    }
+    ExactProfiler::ClearProfileInfos();
   }
 
   // Notes on the interleaving of creating the images and oat files to
@@ -1721,6 +1811,10 @@ class Dex2Oat FINAL {
   //       case (when the file will be explicitly erased).
   bool WriteOatFiles() {
     TimingLogger::ScopedTiming t("dex2oat Oat", timings_);
+
+    ClearExactProfileReferences();
+    // The JIT needs to be shutdown as well, in order to release the JIT profile
+    // invoke classes.
 
     // Sync the data to the file, in case we did dex2dex transformations.
     for (const std::unique_ptr<MemMap>& map : opened_dex_files_maps_) {
@@ -2009,9 +2103,11 @@ class Dex2Oat FINAL {
 
   int WriteProfileFile() {
     int result = EXIT_SUCCESS;
-    for (auto& exact_profile : exact_profilers_) {
-      if (!exact_profile->WriteProfileFile(false)) {
-        result = EXIT_FAILURE;
+    if (profiling_counts_ != CompilerOptions::kProfilingNone) {
+      for (auto& exact_profile : exact_profilers_) {
+        if (!exact_profile->WriteProfileFile(use_exact_profiles_)) {
+          result = EXIT_FAILURE;
+        }
       }
     }
     return result;
@@ -2607,7 +2703,7 @@ class Dex2Oat FINAL {
   bool force_determinism_;
   std::vector<std::unique_ptr<ExactProfiler>> exact_profilers_;
   CompilerOptions::ProfilingCounts profiling_counts_ = CompilerOptions::kProfilingNone;
-  std::unique_ptr<ExactProfileFile> existing_profile_;
+  bool use_exact_profiles_ = false;
 
   DISALLOW_IMPLICIT_CONSTRUCTORS(Dex2Oat);
 };

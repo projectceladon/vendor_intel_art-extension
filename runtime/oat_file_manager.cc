@@ -100,6 +100,16 @@ const OatFile* OatFileManager::FindOpenedOatFileFromOatLocationLocked(
   return nullptr;
 }
 
+std::vector<const OatFile*> OatFileManager::GetOatFiles() const
+    REQUIRES(!Locks::oat_file_manager_lock_) {
+  std::vector<const OatFile*> oat_files;
+  ReaderMutexLock mu(Thread::Current(), *Locks::oat_file_manager_lock_);
+  for (const std::unique_ptr<const OatFile>& oat_file : oat_files_) {
+    oat_files.push_back(oat_file.get());
+  }
+  return oat_files;
+}
+
 std::vector<const OatFile*> OatFileManager::GetBootOatFiles() const {
   std::vector<const OatFile*> oat_files;
   std::vector<gc::space::ImageSpace*> image_spaces =

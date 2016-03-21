@@ -438,6 +438,7 @@ void HFormBottomLoops::DoCFGTransformation(HGraph_X86* graph,
     pre_header_loop->AddToAll(split_exit_block);
   }
   split_exit_block->InsertBetween(back_block, exit_block);
+  split_exit_block->SetBlockCount(exit_block);
 
   // We also need to ensure that the branch around the loop isn't a critical edge.
   HBasicBlock* around_block = graph->CreateNewBasicBlock();
@@ -447,6 +448,7 @@ void HFormBottomLoops::DoCFGTransformation(HGraph_X86* graph,
     pre_header_loop->AddToAll(around_block);
   }
   around_block->InsertBetween(loop_header, exit_block);
+  around_block->SetBlockCount(exit_block);
 
   // We also need to ensure that the branch to the top of the loop isn't a critical edge.
   HBasicBlock* top_block = graph->CreateNewBasicBlock();
@@ -454,6 +456,7 @@ void HFormBottomLoops::DoCFGTransformation(HGraph_X86* graph,
   top_block->AddInstruction(new (graph->GetArena()) HGoto());
   loop->AddToAll(top_block);
   top_block->InsertBetween(back_block, first_block);
+  top_block->SetBlockCount(back_block);
   loop->ReplaceBackEdge(back_block, top_block);
   DCHECK(top_block->GetLoopInformation() == loop);
 
@@ -469,6 +472,7 @@ void HFormBottomLoops::DoCFGTransformation(HGraph_X86* graph,
       pre_header_loop->AddToAll(new_block);
     }
     new_block->InsertBetween(loop_header, first_block);
+    new_block->SetBlockCount(pre_header);
   }
 
   // Fix the loop.

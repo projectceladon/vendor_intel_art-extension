@@ -22,20 +22,36 @@
 namespace art {
 
 class CompilerDriver;
+class ExactProfiler;
 
 class HInsertProfiling : public HOptimization_X86 {
  public:
+  /*
+   * @brief Insert information from exact profiler into the graph.
+   * @param graph Method being compiled.
+   * @param driver Compiler driver for compilation.
+   * @param locked 'true' if Locks::mutator_lock_ already acquired.
+   * @param stats Optimization statistics.
+   */
   HInsertProfiling(HGraph* graph,
                    const CompilerDriver* driver,
+                   bool locked,
                    OptimizingCompilerStats* stats = nullptr)
-    : HOptimization_X86(graph, kInsertProfiling, stats), driver_(driver) {}
+    : HOptimization_X86(graph, kInsertProfiling, stats),
+      driver_(driver),
+      locked_(locked) {}
 
   void Run() OVERRIDE;
 
  private:
   static constexpr const char* kInsertProfiling = "insert_profiling";
 
+  void InsertProfilingInformationFromProfile(ExactProfiler* ep)
+      NO_THREAD_SAFETY_ANALYSIS;
+
   const CompilerDriver* driver_;
+
+  const bool locked_;
 
   DISALLOW_COPY_AND_ASSIGN(HInsertProfiling);
 };

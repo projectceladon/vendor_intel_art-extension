@@ -289,7 +289,7 @@ static inline JValue Execute(
     if (UNLIKELY(!profile_counters.empty())) {
       uint32_t method_idx = method->GetDexMethodIndex();
       const DexFile* dex_file = method->GetDexFile();
-      std::pair<const DexFile*, uint32_t> method_ref(dex_file, method_idx);
+      MethodReference method_ref(dex_file, method_idx);
       auto it = profile_counters.find(method_ref);
       if (it != profile_counters.end()) {
         it->second->counts[0]++;

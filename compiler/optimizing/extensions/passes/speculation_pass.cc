@@ -205,6 +205,11 @@ void HSpeculationPass::CodeVersioningHelper(HInstruction* candidate,
       candidate->ReplaceWith(phi);
       phi->AddInput(cloner.GetClone(candidate));
       phi->AddInput(candidate);
+
+      // Ensure we set the RTI to something valid.
+      if (candidate->GetType() == Primitive::kPrimNot) {
+        phi->SetReferenceTypeInfo(candidate->GetReferenceTypeInfo());
+      }
     }
   }
 
@@ -435,7 +440,7 @@ void HSpeculationPass::Run() {
       if (success) {
         bool guard_inserted = !NeedsNoRecovery(recovery);
         size_t candidates_handled = 0;
-        if (HandleSpeculation(candidate, guard_inserted)) {
+        if (HandleSpeculation(candidate, cloner.GetClone(candidate), guard_inserted)) {
           if (guard_inserted) {
             PRINT_PASS_OSTREAM_MESSAGE(this, "Successfully speculated for " << candidate <<
                                        " via " << recovery);
@@ -447,7 +452,7 @@ void HSpeculationPass::Run() {
         }
 
         for (auto similar : *similar_candidates) {
-          if (HandleSpeculation(similar, guard_inserted)) {
+          if (HandleSpeculation(similar, cloner.GetClone(similar), guard_inserted)) {
             PRINT_PASS_OSTREAM_MESSAGE(this, "Successfully speculated for " << similar <<
                                        " by using guard used for " << candidate);
             candidates_handled++;

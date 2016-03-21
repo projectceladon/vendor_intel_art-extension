@@ -371,7 +371,8 @@ CompilerDriver::CompilerDriver(
     CumulativeLogger* timer,
     int swap_fd,
     const ProfileCompilationInfo* profile_compilation_info,
-    std::vector<std::unique_ptr<ExactProfiler>>* exact_profilers)
+    std::vector<std::unique_ptr<ExactProfiler>>* exact_profilers,
+    bool use_exact_profiles)
     : compiler_options_(compiler_options),
       verification_results_(verification_results),
       method_inliner_map_(method_inliner_map),
@@ -404,7 +405,8 @@ CompilerDriver::CompilerDriver(
       dex_to_dex_references_lock_("dex-to-dex references lock"),
       dex_to_dex_references_(),
       current_dex_to_dex_methods_(nullptr),
-      exact_profilers_(exact_profilers) {
+      exact_profilers_(exact_profilers),
+      use_exact_profiles_(use_exact_profiles) {
   DCHECK(compiler_options_ != nullptr);
   DCHECK(method_inliner_map_ != nullptr);
 

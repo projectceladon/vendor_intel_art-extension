@@ -81,6 +81,7 @@ class CompilerOptions FINAL {
                   bool implicit_suspend_checks,
                   bool compile_pic,
                   ProfilingCounts profiling_counts_,
+                  bool use_exact_profiles,
                   const std::vector<std::string>* verbose_methods,
                   std::ostream* init_failure_output,
                   bool abort_on_hard_verifier_failure,
@@ -90,6 +91,10 @@ class CompilerOptions FINAL {
 
   ProfilingCounts GetProfilingCounts() const {
     return profiling_counts_;
+  }
+
+  bool UseExactProfiles() const {
+    return use_exact_profiles_;
   }
 
   CompilerFilter::Filter GetCompilerFilter() const {
@@ -322,6 +327,7 @@ class CompilerOptions FINAL {
   bool implicit_suspend_checks_;
   bool compile_pic_;
   ProfilingCounts profiling_counts_ = kProfilingNone;
+  bool use_exact_profiles_ = false;
 
   // Vector of methods to have verbose output enabled for.
   const std::vector<std::string>* verbose_methods_;

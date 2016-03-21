@@ -183,4 +183,141 @@ HGraph_X86* CreateX86CFG(ArenaAllocator* allocator,
   return graph;
 }
 
-}  // namespace art
+bool HGraph_X86::GetColdBlocks(std::set<HBasicBlock*>& blocks) const {
+  if (GetProfileCountKind() != kBasicBlockCounts &&
+      !(Runtime::Current() != nullptr && Runtime::Current()->UseJitCompilation())) {
+    // We don't have enough information to tell.
+    return false;
+  }
+
+  if (!entry_block_->HasBlockCount() || entry_block_->GetBlockCount() == 0) {
+    // Still not enough to tell.
+    return false;
+  }
+
+  // A cold block is executed at least kColdBlockFactor times LESS than the method.
+  const uint64_t entry_count = entry_block_->GetBlockCount();
+  uint64_t cold_count = entry_count / kColdBlockFactor;
+
+  if (entry_count <= kColdBlockFactor) {
+    // Minimal assumption.  Execution counts of 0 are cold blocks.
+    cold_count = 1;
+  }
+
+  // Add each cold block in the method to the set of cold blocks.
+  for (HBasicBlock* block : blocks_) {
+    if (block == nullptr) {
+      continue;
+    }
+
+    // We don't want Goto blocks to be marked as cold, as they aren't generated.
+    // IsSingleGoto isn't quite what we need.
+    if (block->GetPhis().IsEmpty() &&
+        block->GetFirstInstruction() == block->GetLastInstruction() &&
+        block->GetLastInstruction()->IsGoto()) {
+      continue;
+    }
+
+    // Ignore blocks without counts.
+    if (!block->HasBlockCount()) {
+      continue;
+    }
+
+    // If we are less frequent than the 'cold count' then we are a cold block.
+    // Ignore blocks that have no count, as they may be false alarms.
+    uint64_t block_count = block->GetBlockCount();
+    if (block_count < cold_count) {
+      blocks.insert(block);
+      continue;
+    }
+
+    // We are also cold if we are in a loop execute much less frequently than
+    // the loop header.
+    HLoopInformation* loop_info = block->GetLoopInformation();
+    if (loop_info != nullptr) {
+      HBasicBlock* header = loop_info->GetHeader();
+      if (header->HasBlockCount()) {
+        uint64_t header_count = header->GetBlockCount();
+        if (block_count < header_count / kColdLoopBlockFactor) {
+          blocks.insert(block);
+          continue;
+        }
+      }
+    }
+  }
+
+  // Did we find any blocks?
+  return !blocks.empty();
+}
+
+void HGraph_X86::UpdateBlockOrder() {
+  // If we have BB counts, move the cold blocks to the end of the method.
+  // For cold loop blocks, move them to after the loop.
+  std::set<HBasicBlock*> cold_blocks;
+  if (!GetColdBlocks(cold_blocks)) {
+    // Nothing to do.
+    return;
+  }
+
+  // Remember the non-cold block for each block.  Use the loop information to
+  // figure out which loop (if any) the block belongs to.
+  std::map<HLoopInformation*, size_t> last_block;
+
+  // We have a list of cold blocks.  Run through the order twice, and move the cold
+  // ones to the back of the new list.  This preserves the relative order.
+  size_t num_blocks = linear_order_.size();
+  ArenaVector<HBasicBlock*> updated_block_order(GetArena()->Adapter(kArenaAllocBlockList));
+  updated_block_order.reserve(num_blocks);
+
+  // First, blocks that are not cold.
+  for (size_t i = 0; i < num_blocks; i++) {
+    HBasicBlock* block = linear_order_[i];
+    if (block != nullptr && cold_blocks.find(block) == cold_blocks.end()) {
+      // Remember the index of the last block in each loop for later.
+      HLoopInformation* loop_info = block->GetLoopInformation();
+      if (loop_info != nullptr) {
+        last_block[loop_info] = updated_block_order.size();
+      }
+      updated_block_order.push_back(block);
+    }
+  }
+
+  // Then insert the blocks that are cold into the right location.
+  for (size_t i = 0; i < num_blocks; i++) {
+    HBasicBlock* block = linear_order_[i];
+    if (block != nullptr && cold_blocks.find(block) != cold_blocks.end()) {
+      HLoopInformation* loop_info = block->GetLoopInformation();
+      if (loop_info == nullptr) {
+        // Just add to the end of the method.
+        updated_block_order.push_back(block);
+        continue;
+      }
+
+      // Add the block to the correct location, and fix all the indices.
+      auto it = last_block.find(loop_info);
+      if (it == last_block.end()) {
+        // The whole loop must have been cold.
+        // Just add to the end of the method.
+        updated_block_order.push_back(block);
+        continue;
+      }
+
+      // Add it after the matching loop.
+      size_t last_existing_index = it->second;
+      DCHECK_LT(last_existing_index, updated_block_order.size());
+      updated_block_order.insert(updated_block_order.begin() + last_existing_index + 1, block);
+
+      // Bump all the indices at or after this index to account for the insertion.
+      for (auto& it2 : last_block) {
+        if (it2.second >= last_existing_index) {
+          it2.second++;
+        }
+      }
+    }
+  }
+
+  // Now use the new order.
+  linear_order_ = updated_block_order;
+}
+
+ }  // namespace art

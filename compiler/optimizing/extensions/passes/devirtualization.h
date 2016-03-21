@@ -18,6 +18,8 @@
 #define ART_COMPILER_OPTIMIZING_EXTENSIONS_PASSES_DEVIRTUALIZATION_H_
 
 #include "dex_file.h"
+#include "driver/compiler_driver-inl.h"
+#include "driver/compiler_options.h"
 #include "safe_map.h"
 #include "speculation_pass.h"
 
@@ -38,7 +40,10 @@ class HDevirtualization : public HSpeculationPass {
                          compiler_driver,
                          stats),
         handles_(handles),
-        after_inlining_(after_inlining) { }
+        after_inlining_(after_inlining),
+        use_exact_profiles_(
+            !after_inlining &&
+            compiler_driver->GetCompilerOptions().UseExactProfiles()) {}
   ~HDevirtualization();
 
   static constexpr const char* kDevirtualizationPassName = "devirtualization";
@@ -57,7 +62,8 @@ class HDevirtualization : public HSpeculationPass {
   bool IsPredictionSame(HInstruction* instr, HInstruction* instr2) OVERRIDE;
   HSpeculationGuard* InsertSpeculationGuard(HInstruction* instr_guarded,
                                             HInstruction* instr_cursor) OVERRIDE;
-  bool HandleSpeculation(HInstruction* instr, bool guard_inserted) OVERRIDE;
+  bool HandleSpeculation(HInstruction* instr, HInstruction* instr_copy,
+                         bool guard_inserted) OVERRIDE;
   void RecordSpeculation(size_t count = 1u) OVERRIDE {
     MaybeRecordStat(kIntelDevirtualized, count);
   }
@@ -123,7 +129,8 @@ class HDevirtualization : public HSpeculationPass {
    * @returns Returns an ordered list of types provided by profile.
    */
   std::vector<TypeHandle> FindTypesFromProfile(HInvoke* invoke,
-                                               ArtMethod* caller_method);
+                                               ArtMethod* caller_method)
+      SHARED_REQUIRES(Locks::mutator_lock_);
 
   /**
    * @brief Used to find the primary type for this invoke.
@@ -138,6 +145,7 @@ class HDevirtualization : public HSpeculationPass {
   SafeMap<HInstruction*, std::vector<TypeHandle>> imprecise_predictions_;
   StackHandleScopeCollection* const handles_;
   const bool after_inlining_;
+  const bool use_exact_profiles_;
 
   // Ideally, we would use a cost framework for this. But since it does not
   // exist, for now simply estimate these.

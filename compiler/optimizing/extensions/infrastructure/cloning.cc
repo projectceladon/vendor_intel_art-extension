@@ -1297,6 +1297,20 @@ void HInstructionCloner::VisitX86BoundsCheckMemory(HX86BoundsCheckMemory* instr)
   }
 }
 
+void HInstructionCloner::VisitX86IncrementExecutionCount(HX86IncrementExecutionCount* instr) {
+  if (cloning_enabled_) {
+    DCHECK(!instr->HasEnvironment());
+    HInstruction* input;
+    GetInputsForUnary(instr, &input);
+    DCHECK(input->IsX86ReturnExecutionCountTable());
+    HX86IncrementExecutionCount* clone =
+        new (arena_) HX86IncrementExecutionCount(instr->GetBlockNumber(),
+                                                 input->AsX86ReturnExecutionCountTable(),
+                                                 instr->GetDexPc());
+    CommitClone(instr, clone);
+  }
+}
+
 void HInstructionCloner::VisitX86ProfileInvoke(HX86ProfileInvoke* instr) {
   if (cloning_enabled_) {
     DCHECK(!instr->HasEnvironment());

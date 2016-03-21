@@ -678,7 +678,7 @@ class Runtime {
     return profiles_;
   }
 
-  typedef SafeMap<std::pair<const DexFile*, uint32_t>, OneMethod*> ProfileBuffersMap;
+  typedef SafeMap<MethodReference, OneMethod*, MethodReferenceComparator> ProfileBuffersMap;
   ProfileBuffersMap& GetProfileBuffers() SHARED_REQUIRES(Locks::mutator_lock_) {
     return profile_counters_;
   }

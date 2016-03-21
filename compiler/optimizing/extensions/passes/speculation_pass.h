@@ -211,10 +211,14 @@ class HSpeculationPass : public HOptimization_X86 {
    * @brief Used after speculation guard is inserted to actually cause speculation
    * replacement/motion to happen.
    * @param instr The instruction being speculated.
+   * @param instr_copy The copy of instruction in the case where code versioning was used.
+   * Can be null.
    * @param guard_inserted Whether this speculation was done via guard insertion.
    * @return Returns true if the speculation was properly generated.
    */
-  virtual bool HandleSpeculation(HInstruction* instr, bool guard_inserted) = 0;
+  virtual bool HandleSpeculation(HInstruction* instr,
+                                 HInstruction* instr_copy,
+                                 bool guard_inserted) = 0;
 
   // For deopt, put a high cost because we resume with interpreter.
   static constexpr uint32_t kCostOfDeopt = 100u;

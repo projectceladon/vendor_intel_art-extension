@@ -26,6 +26,8 @@
 #include "code_generator.h"
 #include "dead_code_elimination.h"
 #include "disassembler.h"
+#include "ext_utility.h"
+#include "graph_x86.h"
 #include "inliner.h"
 #include "licm.h"
 #include "nodes.h"
@@ -499,6 +501,10 @@ class HGraphVisualizerPrinter : public HGraphDelegateVisitor {
   void VisitX86ProfileInvoke(HX86ProfileInvoke* instruction) OVERRIDE {
     StartAttributeStream("index") << instruction->GetIndex();
   }
+
+  void VisitX86IncrementExecutionCount(HX86IncrementExecutionCount* inc) OVERRIDE {
+    StartAttributeStream("block") << inc->GetBlockNumber();
+  }
 #endif
 
 #if defined(ART_ENABLE_CODEGEN_arm) || defined(ART_ENABLE_CODEGEN_arm64)
@@ -751,6 +757,23 @@ class HGraphVisualizerPrinter : public HGraphDelegateVisitor {
       PrintInt("from_bci", -1);
       PrintInt("to_bci", -1);
     }
+    if (block->HasBlockCount()) {
+      PrintInt("count", block->GetBlockCount());
+      const char* hotness = nullptr;
+      switch (GetBlockHotness(block)) {
+        case kUnknown: hotness = "unknown"; break;
+        case kCold: hotness = "cold"; break;
+        case kWarm: hotness = "warm"; break;
+        case kHot: hotness = "hot"; break;
+      }
+      PrintProperty("hotness", hotness);
+    } else if (!block->IsExitBlock() &&
+        (GRAPH_TO_GRAPH_X86(GetGraph())->GetProfileCountKind()) ==
+        HGraph_X86::kBasicBlockCounts) {
+      // Help find missing counts.
+      PrintProperty("hotness", "MISSING");
+    }
+
     PrintPredecessors(block);
     PrintSuccessors(block);
     PrintExceptionHandlers(block);

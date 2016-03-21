@@ -314,6 +314,7 @@ HBasicBlock* HGraph::SplitEdge(HBasicBlock* block, HBasicBlock* successor) {
   // Use `InsertBetween` to ensure the predecessor index and successor index of
   // `block` and `successor` are preserved.
   new_block->InsertBetween(block, successor);
+  new_block->SetBlockCount(successor);
   return new_block;
 }
 
@@ -1877,6 +1878,16 @@ void HBasicBlock::MergeWith(HBasicBlock* other) {
   other->instructions_.SetBlockOfInstructions(this);
   other->instructions_.Clear();
 
+  if (other->HasBlockCount()) {
+    // Merge the block counts.
+    if (!HasBlockCount()) {
+      SetBlockCount(other);
+    } else {
+      // They both have block counts.
+      SetBlockCount(std::max(GetBlockCount(), other->GetBlockCount()));
+    }
+  }
+
   // Remove `other` from the loops it is included in.
   for (HLoopInformationOutwardIterator it(*other); !it.Done(); it.Advance()) {
     HLoopInformation* loop_info = it.Current();
@@ -2072,6 +2083,7 @@ HInstruction* HGraph::InlineInto(HGraph* outer_graph, HInvoke* invoke) {
     HBasicBlock* at = invoke->GetBlock();
     // Note that we split before the invoke only to simplify polymorphic inlining.
     HBasicBlock* to = at->SplitBeforeForInlining(invoke);
+    to->SetBlockCount(at);
 
     HBasicBlock* first = entry_block_->GetSuccessors()[0];
     DCHECK(!first->IsInLoop());

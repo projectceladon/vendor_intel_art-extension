@@ -15,7 +15,6 @@
  */
 
 #include "prepare_for_register_allocation.h"
-#include "ext_utility.h"
 
 namespace art {
 

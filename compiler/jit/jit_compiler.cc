@@ -109,6 +109,7 @@ JitCompiler::JitCompiler() {
       /* implicit_suspend_checks */ false,
       /* pic */ true,  // TODO: Support non-PIC in optimizing.
       /* profile_counts */ CompilerOptions::kProfilingNone,
+      /* use_exact_profile */ false,
       /* verbose_methods */ nullptr,
       /* init_failure_output */ nullptr,
       /* abort_on_hard_verifier_failure */ false,

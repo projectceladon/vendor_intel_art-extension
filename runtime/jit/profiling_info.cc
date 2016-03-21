@@ -56,7 +56,10 @@ ProfilingInfo::ProfilingInfo(ArtMethod* method,
   DCHECK(!holding_class_.IsNull());
 }
 
-bool ProfilingInfo::Create(Thread* self, ArtMethod* method, bool retry_allocation) {
+void ProfilingInfo::ExtractInformation(ArtMethod* method,
+                                       std::vector<uint32_t>& entries,
+                                       std::vector<uint32_t>& dex_pcs)
+    SHARED_REQUIRES(Locks::mutator_lock_) {
   // Walk over the dex instructions of the method and keep track of
   // instructions we are interested in profiling.
   DCHECK(!method->IsNative());
@@ -66,7 +69,6 @@ bool ProfilingInfo::Create(Thread* self, ArtMethod* method, bool retry_allocatio
   const uint16_t* code_end = code_item.insns_ + code_item.insns_size_in_code_units_;
 
   uint32_t dex_pc = 0;
-  std::vector<uint32_t> entries;
   std::set<uint32_t> dex_pc_bb_starts;
   // Method entry starts a block.
   dex_pc_bb_starts.insert(0);
@@ -151,10 +153,16 @@ bool ProfilingInfo::Create(Thread* self, ArtMethod* method, bool retry_allocatio
   }
 
   // Create the list of BB targets from the set.
-  std::vector<uint32_t> dex_pcs;
+  dex_pcs.reserve(dex_pc_bb_starts.size());
   for (auto i : dex_pc_bb_starts) {
     dex_pcs.push_back(i);
   }
+}
+
+bool ProfilingInfo::Create(Thread* self, ArtMethod* method, bool retry_allocation) {
+  std::vector<uint32_t> entries;
+  std::vector<uint32_t> dex_pcs;
+  ExtractInformation(method, entries, dex_pcs);
 
   // We always create a `ProfilingInfo` object, even if there is no instruction we are
   // interested in. The JIT code cache internally uses it.
@@ -162,6 +170,24 @@ bool ProfilingInfo::Create(Thread* self, ArtMethod* method, bool retry_allocatio
   // Allocate the `ProfilingInfo` object int the JIT's data space.
   jit::JitCodeCache* code_cache = Runtime::Current()->GetJit()->GetCodeCache();
   return code_cache->AddProfilingInfo(self, method, entries, dex_pcs, retry_allocation) != nullptr;
+}
+
+ProfilingInfo* ProfilingInfo::Create(ArtMethod* method) {
+  std::vector<uint32_t> entries;
+  std::vector<uint32_t> dex_pcs;
+  ExtractInformation(method, entries, dex_pcs);
+
+  size_t profile_info_size = RoundUp(
+      sizeof(ProfilingInfo) + sizeof(InlineCache) * entries.size() +
+          sizeof(ProfilingInfo::BBCounts) * dex_pcs.size(),
+      sizeof(void*));
+
+  uint8_t* data = new uint8_t[profile_info_size];
+  if (data == nullptr) {
+    return nullptr;
+  }
+  memset(data, 0, profile_info_size);
+  return new(data) ProfilingInfo(method, entries, dex_pcs);
 }
 
 InlineCache* ProfilingInfo::GetInlineCache(uint32_t dex_pc) {

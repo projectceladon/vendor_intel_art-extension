@@ -150,6 +150,14 @@ class InlineCache {
     return class_counts_;
   }
 
+  void SetClassIndex(size_t i, mirror::Class* klass, uint32_t count) {
+    if (i < kIndividualCacheSize) {
+      DCHECK(classes_[i].IsNull());
+      classes_[i] = GcRoot<mirror::Class>(klass);
+      class_counts_[i] = count;
+    }
+  }
+
   static constexpr uint16_t kIndividualCacheSize = 5;
 
  private:
@@ -178,6 +186,10 @@ class ProfilingInfo {
   // Create a ProfilingInfo for 'method'. Return whether it succeeded, or if it is
   // not needed in case the method does not have virtual/interface invocations.
   static bool Create(Thread* self, ArtMethod* method, bool retry_allocation)
+      SHARED_REQUIRES(Locks::mutator_lock_);
+
+  // Create a ProfilingInfo for 'method', for use with the AOT exact profiling.
+  static ProfilingInfo* Create(ArtMethod* method)
       SHARED_REQUIRES(Locks::mutator_lock_);
 
   // Add information from an executed INVOKE instruction to the profile.
@@ -273,6 +285,11 @@ class ProfilingInfo {
   ProfilingInfo(ArtMethod* method,
                 const std::vector<uint32_t>& entries,
                 const std::vector<uint32_t>& dex_pcs);
+
+  static void ExtractInformation(ArtMethod* method,
+                                 std::vector<uint32_t>& entries,
+                                 std::vector<uint32_t>& dex_pcs)
+      SHARED_REQUIRES(Locks::mutator_lock_);
 
   // Number of instructions we are profiling in the ArtMethod.
   const uint32_t number_of_inline_caches_;

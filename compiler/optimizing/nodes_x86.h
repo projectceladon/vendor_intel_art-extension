@@ -362,7 +362,7 @@ class HX86IncrementExecutionCount : public HExpression<1> {
   HX86IncrementExecutionCount(uint32_t block_number,
                               HX86ReturnExecutionCountTable* count_table,
                               uint32_t dex_pc = kNoDexPc)
-      : HExpression(Primitive::kPrimVoid, SideEffects::AllWritesAndReads(), dex_pc),
+      : HExpression(Primitive::kPrimVoid, SideEffects::None(), dex_pc),
         block_number_(block_number) {
     SetRawInputAt(0, count_table);
   }

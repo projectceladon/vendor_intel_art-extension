@@ -1634,7 +1634,7 @@ bool ClassLinker::AddImageSpace(
       return false;
     }
 
-    if (exact_profiling.get() != nullptr) {
+    if (exact_profiling.get() != nullptr && exact_profiling->generating_profile) {
       // Allocate the counters for the dex file.
       MutexLock mu_prof(self, *Locks::profiler_lock_);
       ExactProfiler::AllocateProfileCounters(exact_profiling.get(), i, dex_file_location,
@@ -3135,7 +3135,7 @@ void ClassLinker::LoadClassMembers(Thread* self,
         last_dex_method_index = it_method_index;
         last_class_def_method_index = class_def_method_index;
       }
-      if (exact_profile != nullptr) {
+      if (exact_profile != nullptr && exact_profile->generating_profile) {
         MutexLock mu_prof(Thread::Current(), *Locks::profiler_lock_);
         ExactProfiler::AllocateProfileCounters(method, exact_profile, &dex_file,
                                                exact_it->second.second, it.GetMemberIndex());
@@ -3147,7 +3147,7 @@ void ClassLinker::LoadClassMembers(Thread* self,
       LoadMethod(self, dex_file, it, klass, method);
       DCHECK_EQ(class_def_method_index, it.NumDirectMethods() + i);
       LinkCode(method, oat_class, class_def_method_index);
-      if (exact_profile != nullptr) {
+      if (exact_profile != nullptr && exact_profile->generating_profile) {
         MutexLock mu_prof(Thread::Current(), *Locks::profiler_lock_);
         ExactProfiler::AllocateProfileCounters(method, exact_profile, &dex_file,
                                                exact_it->second.second, it.GetMemberIndex());

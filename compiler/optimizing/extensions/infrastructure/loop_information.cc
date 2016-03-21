@@ -1374,4 +1374,32 @@ bool HLoopInformation_X86::IsOrHasIrreducibleLoop() const {
   return false;
 }
 
+uint64_t HLoopInformation_X86::AverageLoopIterationCount(bool& valid) const {
+  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  if (graph->GetProfileCountKind() != HGraph_X86::kBasicBlockCounts) {
+    valid = false;
+    return 0;
+  }
+
+  // We have BB information for this method.
+  HBasicBlock* preheader = this->GetPreHeader();
+  HBasicBlock* header = this->GetHeader();
+  if (!preheader->HasBlockCount() || !header->HasBlockCount()) {
+    valid = false;
+    return 0;
+  }
+
+  // We can now look at the values.
+  valid = true;
+  uint64_t preheader_count = preheader->HasBlockCount();
+  if (preheader_count != 0) {
+    // The average loop count is the number of iterations of the loop divided by
+    // the number of iterations of the pre-header of the loop.
+    return header->HasBlockCount() / preheader_count;
+  }
+
+  // We never entered the loop at all.
+  return 0;
+}
+
 }  // namespace art

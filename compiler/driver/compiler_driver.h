@@ -104,7 +104,8 @@ class CompilerDriver {
                  CumulativeLogger* timer,
                  int swap_fd,
                  const ProfileCompilationInfo* profile_compilation_info,
-                 std::vector<std::unique_ptr<ExactProfiler>>* exact_profilers = nullptr);
+                 std::vector<std::unique_ptr<ExactProfiler>>* exact_profilers = nullptr,
+                 bool use_exact_profiles = false);
 
   ~CompilerDriver();
 
@@ -489,6 +490,10 @@ class CompilerDriver {
     return exact_profilers_;
   }
 
+  bool UseExactProfiles() const {
+    return use_exact_profiles_;
+  }
+
  private:
   // Return whether the declaring class of `resolved_member` is
   // available to `referrer_class` for read or write access using two
@@ -728,6 +733,8 @@ class CompilerDriver {
 
   ExactProfiler* exact_profiler_;
   std::vector<std::unique_ptr<ExactProfiler>>* exact_profilers_;
+
+  bool use_exact_profiles_;
 
   friend class CompileClassVisitor;
 

@@ -73,6 +73,10 @@ class OatFileManager {
   // Returns the boot image oat files.
   std::vector<const OatFile*> GetBootOatFiles() const;
 
+  // Returns the registered oat files.
+  std::vector<const OatFile*> GetOatFiles() const
+      REQUIRES(!Locks::oat_file_manager_lock_);
+
   // Returns the first non-image oat file in the class path.
   const OatFile* GetPrimaryOatFile() const REQUIRES(!Locks::oat_file_manager_lock_);
 

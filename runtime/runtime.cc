@@ -297,7 +297,8 @@ Runtime::~Runtime() {
 
   if (profiles_.size() != 0) {
     ExactProfiler::StopProfileSaver();
-    ExactProfiler::UpdateProfileFiles(GetProfilersUnlocked());
+    ReaderMutexLock mu(self, *Locks::mutator_lock_);
+    ExactProfiler::UpdateProfileFiles(GetProfilers());
   }
 
   // Make sure to let the GC complete if it is running.

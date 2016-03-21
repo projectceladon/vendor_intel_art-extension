@@ -7914,7 +7914,7 @@ void LocationsBuilderX86::VisitX86ProfileInvoke(HX86ProfileInvoke* instr) {
 void InstructionCodeGeneratorX86::VisitX86ProfileInvoke(HX86ProfileInvoke* instr) {
   LocationSummary* locations = instr->GetLocations();
   // Push object*.
-  __ pushl(locations->InAt(0).AsRegister<Register>());
+  __ pushl(locations->InAt(1).AsRegister<Register>());
   // Push index.
   __ pushl(Immediate(instr->GetIndex()));
   // Push Thread::self.

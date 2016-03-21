@@ -247,5 +247,31 @@ class HAllUseIterator {
    * @param loop The loop to dump.
    */
   void DumpLoop(HLoopInformation_X86* loop);
+
+  enum {
+    kHotMethodCount = 50,            // How often must a method be called to be hot?
+    kHotMethodBlockCountSum = 2000,  // Sum of all block counts for a method to be hot.
+    kColdBlockFactor = 3,            // A cold block is executed kColdBlockFactor times
+                                     // LESS than the entry block.
+    kColdLoopBlockFactor = 10,       // A cold block is executed kColdLoopBlockFactor times
+                                     // LESS than the loop header block.
+    kHotBlockFactor = 10,            // A hot block is executed kHotBlockFactor times
+                                     // MORE than the entry block.
+  };
+
+  enum BlockHotness {
+    kUnknown,   // No BB counts are available or the method has not been invoked.
+    kCold,      // Block is execute kColdBlockFactor less frequently than the method.
+    kWarm,      // Block is executed with the about the same as the method.
+    kHot,       // Block is executed kHotBlockFactor more frequently than the method.
+  };
+
+  /*
+   * @brief Return the 'hotness' of this basic block.
+   * @param block Block to check.
+   * @returns An indication of how often the block is executed per method invoke.
+   */
+  BlockHotness GetBlockHotness(HBasicBlock* block);
+
 }  // namespace art
 #endif  // COMPILER_OPTIMIZING_EXTENSIONS_INFRASTRUCTURE_EXT_UTILITIES_H

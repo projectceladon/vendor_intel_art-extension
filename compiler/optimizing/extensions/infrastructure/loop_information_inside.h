@@ -510,6 +510,15 @@ class HLoopInformation_X86 : public HLoopInformation {
    */
   bool IsOrHasIrreducibleLoop() const;
 
+  /*
+   * @brief Use exact profiling BB counts to determine the average loop iteration
+   * count of the loop.
+   * @param valid Set to 'true' if BB counts are available.
+   * @return The average number of times the loop is executed, or 0 if not available.
+   * @note A loop that is never executed sets valid to 'true' and returns 0.
+   */
+  uint64_t AverageLoopIterationCount(bool& valid) const;
+
  protected:
   /**
    * @brief Find the constant entry SSA associated to the Phi instruction.

@@ -239,6 +239,7 @@ class HInstructionCloner : public HGraphVisitor {
   void VisitXor(HXor* instr) OVERRIDE;
   void VisitX86SelectValue(HX86SelectValue* instr) OVERRIDE;
   void VisitX86ProfileInvoke(HX86ProfileInvoke* instr) OVERRIDE;
+  void VisitX86IncrementExecutionCount(HX86IncrementExecutionCount* instr) OVERRIDE;
   void VisitX86ComputeBaseMethodAddress(HX86ComputeBaseMethodAddress* instr) OVERRIDE {
     // Cloning does not make sense - this should only be done once per method.
     UnsupportedInstruction(instr);

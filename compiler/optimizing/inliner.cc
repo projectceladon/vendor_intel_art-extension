@@ -27,6 +27,7 @@
 #include "driver/compiler_driver-inl.h"
 #include "driver/compiler_options.h"
 #include "driver/dex_compilation_unit.h"
+#include "insert_profiling.h"
 #include "instruction_simplifier.h"
 #include "intrinsics.h"
 #include "jit/jit.h"
@@ -61,6 +62,9 @@ void HInliner::Run() {
   const CompilerOptions& compiler_options = compiler_driver_->GetCompilerOptions();
   if ((compiler_options.GetInlineDepthLimit() == 0)
       || (compiler_options.GetInlineMaxCodeUnits() == 0)) {
+    return;
+  }
+  if (compiler_options.GetProfilingCounts() != CompilerOptions::kProfilingNone) {
     return;
   }
   if (caller_compilation_unit_.GetCodeItem()->insns_size_in_code_units_ > kMaximumCodeUnitSize) {
@@ -303,6 +307,11 @@ bool HInliner::TryInline(HInvoke* invoke_instruction) {
       MaybeRecordStat(kInlinedInvokeVirtualOrInterface);
     }
     return result;
+  }
+
+  // Have we already devirtualized this?
+  if (invoke_instruction->IsDevirtualized()) {
+    return false;
   }
 
   DCHECK(!invoke_instruction->IsInvokeStaticOrDirect());
@@ -1296,6 +1305,12 @@ bool HInliner::TryBuildAndInlineHelper(HInvoke* invoke_instruction,
 size_t HInliner::RunOptimizations(HGraph* callee_graph,
                                   const DexFile::CodeItem* code_item,
                                   const DexCompilationUnit& dex_compilation_unit) {
+  {
+    // Add in profiling information for the method to be inlined.
+    HInsertProfiling insert_profiling(callee_graph, compiler_driver_, /* locked */ true, stats_);
+    insert_profiling.Run();
+  }
+
   // Note: if the outermost_graph_ is being compiled OSR, we should not run any
   // optimization that could lead to a HDeoptimize. The following optimizations do not.
   HDeadCodeElimination dce(callee_graph, stats_);
