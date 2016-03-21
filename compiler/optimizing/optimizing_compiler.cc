@@ -594,7 +594,8 @@ static void RunOptimizations(HGraph* graph,
   LoadStoreElimination* lse = new (arena) LoadStoreElimination(graph, *side_effects);
   HInductionVarAnalysis* induction = new (arena) HInductionVarAnalysis(graph);
   BoundsCheckElimination* bce = new (arena) BoundsCheckElimination(graph, *side_effects, induction);
-  HSharpening* sharpening = new (arena) HSharpening(graph, codegen, dex_compilation_unit, driver);
+  HSharpening* sharpening = new (arena) HSharpening(graph, codegen, dex_compilation_unit,
+                                                    driver, stats);
   InstructionSimplifier* simplify2 = new (arena) InstructionSimplifier(
       graph, stats, "instruction_simplifier_after_bce");
   InstructionSimplifier* simplify3 = new (arena) InstructionSimplifier(
@@ -663,6 +664,7 @@ static void RunOptimizations(HGraph* graph,
       opt_list.push_back(optimizations2[i]);
     }
     RunOptimizationsX86(graph,
+                        codegen,
                         driver,
                         stats,
                         opt_list,

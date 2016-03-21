@@ -35,8 +35,9 @@ class HSharpening : public HOptimization {
   HSharpening(HGraph* graph,
               CodeGenerator* codegen,
               const DexCompilationUnit& compilation_unit,
-              CompilerDriver* compiler_driver)
-      : HOptimization(graph, kSharpeningPassName),
+              CompilerDriver* compiler_driver,
+              OptimizingCompilerStats* stats = nullptr)
+      : HOptimization(graph, kSharpeningPassName, stats),
         codegen_(codegen),
         compilation_unit_(compilation_unit),
         compiler_driver_(compiler_driver) { }

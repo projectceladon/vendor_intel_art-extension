@@ -29,12 +29,21 @@ class HDevirtualization : public HSpeculationPass {
                     const DexCompilationUnit& compilation_unit,
                     CompilerDriver* compiler_driver,
                     StackHandleScopeCollection* handles,
+                    bool after_inlining,
                     OptimizingCompilerStats* stats = nullptr)
-      : HSpeculationPass(graph, kDevirtualizationPassName, compilation_unit,
-                         compiler_driver, stats),
-        handles_(handles) {
-  }
+      : HSpeculationPass(graph,
+                         (after_inlining ?
+                             kDevirtualizationAfterInliningPassName : kDevirtualizationPassName),
+                         compilation_unit,
+                         compiler_driver,
+                         stats),
+        handles_(handles),
+        after_inlining_(after_inlining) { }
   ~HDevirtualization();
+
+  static constexpr const char* kDevirtualizationPassName = "devirtualization";
+  static constexpr const char* kDevirtualizationAfterInliningPassName =
+      "devirtualization_after_inlining";
 
  protected:
   // For explanation on each of these methods, see HSpeculationPass.
@@ -52,7 +61,11 @@ class HDevirtualization : public HSpeculationPass {
     MaybeRecordStat(kIntelDevirtualized);
   }
   void RecordFoundCandidate() OVERRIDE {
-    MaybeRecordStat(kIntelDevirtualizationConsideration);
+    // We do not recount found candidate after inlining because we should have
+    // already counted it before and during inlining.
+    if (!after_inlining_) {
+      MaybeRecordStat(kIntelDevirtualizationConsideration);
+    }
   }
   SpeculationRecoveryApproach GetRecoveryMethod(HInstruction* instr) OVERRIDE;
 
@@ -123,8 +136,7 @@ class HDevirtualization : public HSpeculationPass {
   SafeMap<HInstruction*, TypeHandle> precise_prediction_;
   SafeMap<HInstruction*, std::vector<TypeHandle>> imprecise_predictions_;
   StackHandleScopeCollection* const handles_;
-
-  static constexpr const char* kDevirtualizationPassName = "devirtualization";
+  const bool after_inlining_;
 
   // Ideally, we would use a cost framework for this. But since it does not
   // exist, for now simply estimate these.

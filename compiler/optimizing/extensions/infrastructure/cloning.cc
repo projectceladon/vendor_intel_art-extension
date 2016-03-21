@@ -625,7 +625,7 @@ void HInstructionCloner::VisitInvokeStaticOrDirect(HInvokeStaticOrDirect* instr)
                                            instr->GetDexPc(),
                                            instr->GetDexMethodIndex(),
                                            instr->GetTargetMethod(),
-                                           instr->GetDispatchInfo(),
+                                           instr->GetDispatchInfoUnchecked(),
                                            instr->GetOriginalInvokeType(),
                                            instr->GetOptimizedInvokeType(),
                                            instr->GetClinitCheckRequirement());

@@ -65,6 +65,7 @@ enum MethodCompilationStat {
   kInlinedInvokeVirtualOrInterface,
   kImplicitNullCheckGenerated,
   kExplicitNullCheckGenerated,
+  kDirectCallOptimized,
   kIntelBIVFound,
   kIntelRemoveUnusedLoops,
   kIntelLoopPeeled,
@@ -166,6 +167,7 @@ class OptimizingCompilerStats {
       case kInlinedInvokeVirtualOrInterface: name = "InlinedInvokeVirtualOrInterface"; break;
       case kImplicitNullCheckGenerated: name = "ImplicitNullCheckGenerated"; break;
       case kExplicitNullCheckGenerated: name = "ExplicitNullCheckGenerated"; break;
+      case kDirectCallOptimized : name = "DirectCallOptimized"; break;
       case kIntelBIVFound: return "kIntelBIVFound";
       case kIntelRemoveUnusedLoops: return "kIntelRemoveUnusedLoops";
       case kIntelLoopPeeled: return "kIntelLoopPeeled";

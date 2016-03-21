@@ -33,6 +33,7 @@
 #include "generate_selects.h"
 #include "graph_visualizer.h"
 #include "gvn_after_fbl.h"
+#include "inliner.h"
 #include "loadhoist_storesink.h"
 #include "loop_formation.h"
 #include "loop_full_unrolling.h"
@@ -48,6 +49,7 @@
 #include "remove_suspend.h"
 #include "remove_unused_loops.h"
 #include "scoped_thread_state_change.h"
+#include "sharpening_wrapper.h"
 #include "speculation_pass.h"
 #include "thread.h"
 #include "trivial_loop_evaluator.h"
@@ -98,8 +100,18 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   { "loop_full_unrolling", "remove_unused_loops", kPassInsertAfter },
   { "load_store_elimination", "value_propagation_through_heap", kPassInsertBefore },
   { "aur", "remove_unused_loops", kPassInsertBefore },
-  // TODO We should insert a second sharpening pass right after inliner.
-  { "devirtualization", "sharpening", kPassInsertBefore },
+
+  // Devirtualization is always inserted before sharpening. We also insert it twice to increase
+  // its effectiveness - before and after inlining.
+  { HDevirtualization::kDevirtualizationPassName,
+    HSharpening::kSharpeningPassName,
+    kPassInsertBefore },
+  { HDevirtualization::kDevirtualizationAfterInliningPassName,
+    HInliner::kInlinerPassName,
+    kPassInsertAfter },
+  { HSharpeningWrapper::kSharpeningAfterInliningPassName,
+    HDevirtualization::kDevirtualizationAfterInliningPassName,
+    kPassInsertAfter },
 };
 
 /**
@@ -313,6 +325,7 @@ void FillVerbose(HOptimization_X86* optimizations[],
 }
 
 void RunOptimizationsX86(HGraph* graph,
+                         CodeGenerator* codegen,
                          CompilerDriver* driver,
                          OptimizingCompilerStats* stats,
                          ArenaVector<HOptimization*>& opt_list,
@@ -349,7 +362,20 @@ void RunOptimizationsX86(HGraph* graph,
                                                                       dex_compilation_unit,
                                                                       driver,
                                                                       handles,
+                                                                      /* after_inlining */ false,
                                                                       stats);
+  HDevirtualization* devirtualization2 = new (arena) HDevirtualization(graph,
+                                                                       dex_compilation_unit,
+                                                                       driver,
+                                                                       handles,
+                                                                       /* after_inlining */ true,
+                                                                       stats);
+  HSharpeningWrapper* sharpening2 = new (arena) HSharpeningWrapper(graph,
+                                                                   codegen,
+                                                                   dex_compilation_unit,
+                                                                   driver,
+                                                                   stats);
+
 
   HOptimization_X86* opt_array[] = {
     peeling,
@@ -374,6 +400,8 @@ void RunOptimizationsX86(HGraph* graph,
     loop_full_unrolling,
     aur,
     devirtualization,
+    devirtualization2,
+    sharpening2,
   };
 
   // Fill verbose flags where we need it.

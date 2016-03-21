@@ -109,7 +109,6 @@ bool HSpeculationPass::HandleDeopt(HInstruction* candidate) {
   guard->GetBlock()->InsertInstructionAfter(deopt, guard);
   deopt->CopyEnvironmentFrom(candidate->GetEnvironment());
 
-  PRINT_PASS_OSTREAM_MESSAGE(this, "Successfully handled " << candidate << " via deoptimization.");
   return true;
 }
 
@@ -215,7 +214,6 @@ bool HSpeculationPass::HandleCodeVersioning(HInstruction* candidate,
     }
   }
 
-  PRINT_PASS_OSTREAM_MESSAGE(this, "Successfully handled " << candidate << " via code versioning.");
   return true;
 }
 
@@ -285,7 +283,6 @@ void HSpeculationPass::Run() {
       if (IsCandidate(instr)) {
         RecordFoundCandidate();
         if (HasPrediction(instr, true)) {
-          PRINT_PASS_OSTREAM_MESSAGE(this, "The following candidate has been found " << instr);
           // We map each candidate as a pair to itself (since we know it can use same prediction).
           candidates.insert(std::make_pair(instr, instr));
         }
@@ -347,15 +344,24 @@ void HSpeculationPass::Run() {
         VersioningApproach versioning = GetVersioningApproach(candidate);
         success = HandleCodeVersioning(candidate, cloner, needs_counting, needs_trap, versioning);
       } else {
-        PRINT_PASS_MESSAGE(this, "Unhandled recovery mode: %d", recovery);
+        LOG(FATAL) << "Unhandled recovery mode for speculation: " << recovery;
       }
 
       if (success) {
         bool guard_inserted = !NeedsNoRecovery(recovery);
         if (HandleSpeculation(candidate, guard_inserted)) {
+          if (guard_inserted) {
+            PRINT_PASS_OSTREAM_MESSAGE(this, "Successfully speculated for " << candidate <<
+                                       " via " << recovery);
+          } else {
+            PRINT_PASS_OSTREAM_MESSAGE(this, "Successfully speculated for " << candidate <<
+                                       " with no guard.");
+          }
           RecordSpeculation();
         }
       }
+    } else {
+      PRINT_PASS_OSTREAM_MESSAGE(this, "Speculating is not worth it for " << candidate);
     }
   }
 }

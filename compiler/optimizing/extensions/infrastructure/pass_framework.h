@@ -54,6 +54,7 @@ bool PrintPassesOnlyOnce(ArenaVector<HOptimization*>& opts,
                          CompilerDriver* driver);
 
 void RunOptimizationsX86(HGraph* graph,
+                         CodeGenerator* codegen,
                          CompilerDriver* driver,
                          OptimizingCompilerStats* stats,
                          ArenaVector<HOptimization*>& opt_list,

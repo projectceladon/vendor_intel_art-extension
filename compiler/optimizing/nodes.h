@@ -3989,7 +3989,7 @@ class HInvokeStaticOrDirect : public HInvoke {
     return dispatch_info_.direct_code_ptr;
   }
 
-  DispatchInfo GetDispatchInfo() const {
+  DispatchInfo GetDispatchInfoUnchecked() const {
     return dispatch_info_;
   }
 

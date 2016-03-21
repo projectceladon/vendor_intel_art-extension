@@ -39,13 +39,18 @@ class HSpeculationPass : public HOptimization_X86 {
   }
   virtual ~HSpeculationPass() { }
 
-  bool Gate();
   void Run() OVERRIDE;
   const DexCompilationUnit& GetDexCompilationUnit() {
     return compilation_unit_;
   }
 
  protected:
+  /**
+   * @brief Used to check whether this pass is applicable on graph.
+   * @return Returns true if pass should be attempted and false otherwise.
+   */
+  virtual bool Gate();
+
   /**
    * @brief This is a lightweight check whether current instruction is a potential candidate.
    * @param instr The instruction to check.

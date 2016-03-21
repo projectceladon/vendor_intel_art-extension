@@ -21,6 +21,7 @@
 #include "class_linker.h"
 #include "constant_folding.h"
 #include "dead_code_elimination.h"
+#include "devirtualization.h"
 #include "dex/verified_method.h"
 #include "dex/verification_results.h"
 #include "driver/compiler_driver-inl.h"
@@ -1283,12 +1284,15 @@ size_t HInliner::RunOptimizations(HGraph* callee_graph,
   // optimization that could lead to a HDeoptimize. The following optimizations do not.
   HDeadCodeElimination dce(callee_graph, stats_);
   HConstantFolding fold(callee_graph);
-  HSharpening sharpening(callee_graph, codegen_, dex_compilation_unit, compiler_driver_);
+  HDevirtualization devirtualization(callee_graph, dex_compilation_unit, compiler_driver_,
+                                     handles_, /* after_inlining */ false, stats_);
+  HSharpening sharpening(callee_graph, codegen_, dex_compilation_unit, compiler_driver_, stats_);
   InstructionSimplifier simplify(callee_graph, stats_);
   IntrinsicsRecognizer intrinsics(callee_graph, compiler_driver_, stats_);
 
   HOptimization* optimizations[] = {
     &intrinsics,
+    &devirtualization,
     &sharpening,
     &simplify,
     &fold,

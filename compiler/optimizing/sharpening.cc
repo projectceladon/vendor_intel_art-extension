@@ -51,7 +51,17 @@ void HSharpening::Run() {
   }
 }
 
+// Used as a marker when sharpening was not successful.
+static constexpr uint64_t kInvalidDirectPtr = -1;
+
 void HSharpening::ProcessInvokeStaticOrDirect(HInvokeStaticOrDirect* invoke) {
+  // This invoke has already been sharpened.
+  if (invoke->GetMethodLoadKind() != HInvokeStaticOrDirect::MethodLoadKind::kDexCacheViaMethod ||
+      invoke->GetCodePtrLocation() != HInvokeStaticOrDirect::CodePtrLocation::kCallArtMethod ||
+      invoke->GetDispatchInfoUnchecked().direct_code_ptr == kInvalidDirectPtr) {
+    return;
+  }
+
   if (invoke->IsStringInit()) {
     // Not using the dex cache arrays. But we could still try to use a better dispatch...
     // TODO: Use direct_method and direct_code for the appropriate StringFactory method.
@@ -85,7 +95,7 @@ void HSharpening::ProcessInvokeStaticOrDirect(HInvokeStaticOrDirect* invoke) {
   HInvokeStaticOrDirect::MethodLoadKind method_load_kind;
   HInvokeStaticOrDirect::CodePtrLocation code_ptr_location;
   uint64_t method_load_data = 0u;
-  uint64_t direct_code_ptr = 0u;
+  uint64_t direct_code_ptr = kInvalidDirectPtr;
 
   HGraph* outer_graph = codegen_->GetGraph();
   if (target_method.dex_file == &outer_graph->GetDexFile() &&
@@ -151,10 +161,17 @@ void HSharpening::ProcessInvokeStaticOrDirect(HInvokeStaticOrDirect* invoke) {
       codegen_->GetSupportedInvokeStaticOrDirectDispatch(desired_dispatch_info,
                                                          invoke->GetTargetMethod());
   invoke->SetDispatchInfo(dispatch_info);
+
+  if (invoke->GetMethodLoadKind() != HInvokeStaticOrDirect::MethodLoadKind::kDexCacheViaMethod ||
+      invoke->GetCodePtrLocation() != HInvokeStaticOrDirect::CodePtrLocation::kCallArtMethod) {
+    MaybeRecordStat(kDirectCallOptimized);
+  }
 }
 
 void HSharpening::ProcessLoadString(HLoadString* load_string) {
-  DCHECK_EQ(load_string->GetLoadKind(), HLoadString::LoadKind::kDexCacheViaMethod);
+  if (load_string->GetLoadKind() != HLoadString::LoadKind::kDexCacheViaMethod) {
+    return;
+  }
   DCHECK(!load_string->IsInDexCache());
 
   const DexFile& dex_file = load_string->GetDexFile();

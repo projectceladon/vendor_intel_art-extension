@@ -84,8 +84,8 @@ bool HDevirtualization::HasPrediction(HInstruction* instr, bool update) {
         DCHECK(type.GetReference() != nullptr);
 
         precise_prediction_.Put(invoke, type);
-        PRINT_PASS_OSTREAM_MESSAGE(this, "Trying to use precise type " <<
-                                   PrettyClass(type.Get()) << " for " << invoke);
+        PRINT_PASS_OSTREAM_MESSAGE(this, "Found precise type " << PrettyClass(type.Get()) <<
+                                   " for " << invoke);
       }
       return true;
     } else {
@@ -102,7 +102,7 @@ bool HDevirtualization::HasPrediction(HInstruction* instr, bool update) {
               potential_types.append(PrettyClass(it.Get()));
               potential_types.append(",");
             }
-            PRINT_PASS_OSTREAM_MESSAGE(this, "Trying to use imprecise types " <<
+            PRINT_PASS_OSTREAM_MESSAGE(this, "Found imprecise types " <<
                                        potential_types << " for " << invoke);
           }
         }
