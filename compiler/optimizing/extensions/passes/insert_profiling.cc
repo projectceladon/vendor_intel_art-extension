@@ -142,19 +142,22 @@ void HInsertProfiling::Run() {
     // We have to be careful about catch blocks, as there are assumptions made
     // about instruction ordering.
     HInstruction* insn = block->GetFirstInstruction();
-    if (insn->IsLoadException()) {
-      // We can't insert the increment until after the ClearException.
-      while (insn != nullptr && !insn->IsClearException()) {
+    if (insn != nullptr) {
+      if (insn->IsLoadException()) {
+        // We can't insert the increment until after the ClearException.
+        while (insn != nullptr && !insn->IsClearException()) {
+          insn = insn->GetNext();
+        }
+      } else if (insn->IsSuspendCheck()) {
         insn = insn->GetNext();
       }
-    } else if (insn->IsSuspendCheck()) {
-      insn = insn->GetNext();
+      if (insn != nullptr) {
+        block->InsertInstructionBefore(increment, insn);
+        max_profiled_block = std::max(max_profiled_block, block_id);
+        PRINT_PASS_OSTREAM_MESSAGE(this, "Insert increment into block " << block_id);
+        dex_pcs_seen.insert(dex_pc);
+      }
     }
-    DCHECK(insn != nullptr);
-    block->InsertInstructionBefore(increment, insn);
-    max_profiled_block = std::max(max_profiled_block, block_id);
-    PRINT_PASS_OSTREAM_MESSAGE(this, "Insert increment into block " << block_id);
-    dex_pcs_seen.insert(dex_pc);
   }
 
   HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
