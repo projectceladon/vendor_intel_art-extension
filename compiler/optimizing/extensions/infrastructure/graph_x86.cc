@@ -172,7 +172,7 @@ HGraph_X86* CreateX86CFG(ArenaAllocator* allocator,
                          Primitive::Type return_type) {
   DexFile* df = reinterpret_cast<DexFile*>(allocator->Alloc(sizeof(DexFile)));
   HGraph_X86* graph = new (allocator) HGraph_X86(allocator, *df, -1, false, kRuntimeISA);
-  {
+  if (data != nullptr) {
     ScopedObjectAccess soa(Thread::Current());
     StackHandleScopeCollection handles(soa.Self());
     const DexFile::CodeItem* item = reinterpret_cast<const DexFile::CodeItem*>(data);
@@ -180,6 +180,7 @@ HGraph_X86* CreateX86CFG(ArenaAllocator* allocator,
     bool graph_built = (builder.BuildGraph() == kAnalysisSuccess);
     return graph_built ? graph : nullptr;
   }
+  return graph;
 }
 
 }  // namespace art

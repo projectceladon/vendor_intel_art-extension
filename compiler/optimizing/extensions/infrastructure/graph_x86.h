@@ -221,7 +221,7 @@ class HGraph_X86 : public HGraph {
  * @returns the newly created HGraph_X86.
  */
 HGraph_X86* CreateX86CFG(ArenaAllocator* allocator,
-                         const uint16_t* data,
+                         const uint16_t* data = nullptr,
                          Primitive::Type return_type = Primitive::kPrimInt);
 }  // namespace art
 

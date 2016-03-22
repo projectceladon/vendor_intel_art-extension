@@ -76,24 +76,14 @@ void RemoveSuspendChecks(HGraph* graph) {
 }
 
 inline HGraph* CreateGraph(ArenaAllocator* allocator) {
-  return CreateGraph_X86_for_test(allocator);
+  return CreateX86CFG(allocator);
 }
 
 // Create a control-flow graph from Dex instructions.
 inline HGraph* CreateCFG(ArenaAllocator* allocator,
                          const uint16_t* data,
                          Primitive::Type return_type = Primitive::kPrimInt) {
-  const DexFile::CodeItem* item =
-    reinterpret_cast<const DexFile::CodeItem*>(data);
-  HGraph* graph = CreateGraph(allocator);
-
-  {
-    ScopedObjectAccess soa(Thread::Current());
-    StackHandleScopeCollection handles(soa.Self());
-    HGraphBuilder builder(graph, *item, &handles, return_type);
-    bool graph_built = (builder.BuildGraph() == kAnalysisSuccess);
-    return graph_built ? graph : nullptr;
-  }
+  return CreateX86CFG(allocator, data, return_type);
 }
 
 // Naive string diff data type.
