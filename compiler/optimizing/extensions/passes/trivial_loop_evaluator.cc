@@ -33,17 +33,13 @@ namespace art {
 class TLEVisitor : public HGraphVisitor {
  public:
   union Value {
-    explicit Value() { l = 0; }
-    explicit Value(bool _b) { b = _b; }
-    explicit Value(int8_t _c) { c = _c; }
-    explicit Value(int16_t _s) { s = _s; }
+    explicit Value() { i = 0; }
+    explicit Value(int8_t _i) { i = static_cast<int32_t>(_i); }
+    explicit Value(int16_t _i) { i = static_cast<int32_t>(_i); }
     explicit Value(int32_t _i) { i = _i; }
     explicit Value(int64_t _l) { l = _l; }
     explicit Value(float _f) { f = _f; }
     explicit Value(double _d) { d = _d; }
-    bool b;
-    int8_t c;
-    int16_t s;
     int32_t i;
     int64_t l;
     float f;
@@ -59,7 +55,7 @@ class TLEVisitor : public HGraphVisitor {
       opt_(opt) {}
 
 #define NOTHING_IF_ERROR if (is_error_) return
-#define SWITCH_FOR_TYPES(instr, \
+#define SWITCH_FOR_CAST_TYPES(instr, \
                          condition, \
                          bool_case, \
                          byte_case, \
@@ -72,6 +68,24 @@ class TLEVisitor : public HGraphVisitor {
           case Primitive::kPrimBoolean: bool_case; break; \
           case Primitive::kPrimByte: byte_case; break; \
           case Primitive::kPrimShort: short_case; break; \
+          case Primitive::kPrimInt: int_case; break; \
+          case Primitive::kPrimLong: long_case; break; \
+          case Primitive::kPrimFloat: float_case; break; \
+          case Primitive::kPrimDouble: double_case; break; \
+          default: SetError(instr); \
+        }} while (false)
+
+#define SWITCH_FOR_JAVA_TYPES(instr, \
+                         condition, \
+                         bool_case, \
+                         int_case, \
+                         long_case, \
+                         float_case, \
+                         double_case) \
+        do { switch (condition) { \
+          case Primitive::kPrimBoolean: bool_case; break; \
+          case Primitive::kPrimByte: \
+          case Primitive::kPrimShort: \
           case Primitive::kPrimInt: int_case; break; \
           case Primitive::kPrimLong: long_case; break; \
           case Primitive::kPrimFloat: float_case; break; \
@@ -113,45 +127,17 @@ class TLEVisitor : public HGraphVisitor {
     NOTHING_IF_ERROR;
     HInstruction* input = instr->InputAt(0);
     Primitive::Type in_type = instr->GetInputType();
-    // We keep shorter integral types as int so we fine with
-    // shorter in type but out type shuld be handled carefully.
-    Primitive::Type orig_out_type = HPhi::ToPhiType(instr->GetResultType());
-    Primitive::Type out_type = HPhi::ToPhiType(orig_out_type);
+    Primitive::Type out_type = instr->GetResultType();
 
     Value in_value = GetValue(input);
     NOTHING_IF_ERROR;
 
-    SWITCH_FOR_TYPES(instr, in_type,
+    SWITCH_FOR_JAVA_TYPES(instr, in_type,
       // bool case.
-      SWITCH_FOR_TYPES(instr, out_type,
-        values_.Overwrite(instr, Value(static_cast<bool>(in_value.b))),
-        values_.Overwrite(instr, Value(static_cast<int8_t>(in_value.b))),
-        values_.Overwrite(instr, Value(static_cast<int16_t>(in_value.b))),
-        values_.Overwrite(instr, Value(static_cast<int32_t>(in_value.b))),
-        values_.Overwrite(instr, Value(static_cast<int64_t>(in_value.b))),
-        values_.Overwrite(instr, Value(static_cast<float>(in_value.b))),
-        values_.Overwrite(instr, Value(static_cast<double>(in_value.b)))),
-      // byte case.
-      SWITCH_FOR_TYPES(instr, out_type,
-        values_.Overwrite(instr, Value(static_cast<bool>(in_value.c))),
-        values_.Overwrite(instr, Value(static_cast<int8_t>(in_value.c))),
-        values_.Overwrite(instr, Value(static_cast<int16_t>(in_value.c))),
-        values_.Overwrite(instr, Value(static_cast<int32_t>(in_value.c))),
-        values_.Overwrite(instr, Value(static_cast<int64_t>(in_value.c))),
-        values_.Overwrite(instr, Value(static_cast<float>(in_value.c))),
-        values_.Overwrite(instr, Value(static_cast<double>(in_value.c)))),
-      // short case.
-      SWITCH_FOR_TYPES(instr, out_type,
-        values_.Overwrite(instr, Value(static_cast<bool>(in_value.s))),
-        values_.Overwrite(instr, Value(static_cast<int8_t>(in_value.s))),
-        values_.Overwrite(instr, Value(static_cast<int16_t>(in_value.s))),
-        values_.Overwrite(instr, Value(static_cast<int32_t>(in_value.s))),
-        values_.Overwrite(instr, Value(static_cast<int64_t>(in_value.s))),
-        values_.Overwrite(instr, Value(static_cast<float>(in_value.s))),
-        values_.Overwrite(instr, Value(static_cast<double>(in_value.s)))),
+      SetError(instr),
       // int case.
-      SWITCH_FOR_TYPES(instr, out_type,
-        values_.Overwrite(instr, Value(static_cast<bool>(in_value.i))),
+      SWITCH_FOR_CAST_TYPES(instr, out_type,
+        SetError(instr),
         values_.Overwrite(instr, Value(static_cast<int8_t>(in_value.i))),
         values_.Overwrite(instr, Value(static_cast<int16_t>(in_value.i))),
         values_.Overwrite(instr, Value(static_cast<int32_t>(in_value.i))),
@@ -159,17 +145,17 @@ class TLEVisitor : public HGraphVisitor {
         values_.Overwrite(instr, Value(static_cast<float>(in_value.i))),
         values_.Overwrite(instr, Value(static_cast<double>(in_value.i)))),
       // long case.
-      SWITCH_FOR_TYPES(instr, out_type,
-        values_.Overwrite(instr, Value(static_cast<bool>(in_value.l))),
+      SWITCH_FOR_CAST_TYPES(instr, out_type,
+        SetError(instr),
         values_.Overwrite(instr, Value(static_cast<int8_t>(in_value.l))),
         values_.Overwrite(instr, Value(static_cast<int16_t>(in_value.l))),
         values_.Overwrite(instr, Value(static_cast<int32_t>(in_value.l))),
-        values_.Overwrite(instr, Value(static_cast<int64_t>(in_value.l))),
+        SetError(instr),
         values_.Overwrite(instr, Value(static_cast<float>(in_value.l))),
         values_.Overwrite(instr, Value(static_cast<double>(in_value.l)))),
       // float case.
-      SWITCH_FOR_TYPES(instr, out_type,
-        values_.Overwrite(instr, Value(INTEGRAL_TO_FP_CONV(0, 1, bool, in_value.f))),
+      SWITCH_FOR_CAST_TYPES(instr, out_type,
+        SetError(instr),
         values_.Overwrite(instr, Value(INTEGRAL_TO_FP_CONV(std::numeric_limits<int8_t>::min(),
                                                            std::numeric_limits<int8_t>::max(),
                                                            int8_t,
@@ -186,10 +172,10 @@ class TLEVisitor : public HGraphVisitor {
                                                            std::numeric_limits<int64_t>::max(),
                                                            int64_t,
                                                            in_value.f))),
-        values_.Overwrite(instr, Value(static_cast<float>(in_value.f))),
+        SetError(instr),
         values_.Overwrite(instr, Value(static_cast<double>(in_value.f)))),
       // double case.
-      SWITCH_FOR_TYPES(instr, out_type,
+      SWITCH_FOR_CAST_TYPES(instr, out_type,
         values_.Overwrite(instr, Value(INTEGRAL_TO_FP_CONV(0, 1, bool, in_value.d))),
         values_.Overwrite(instr, Value(INTEGRAL_TO_FP_CONV(std::numeric_limits<int8_t>::min(),
                                                            std::numeric_limits<int8_t>::max(),
@@ -208,15 +194,7 @@ class TLEVisitor : public HGraphVisitor {
                                                            int64_t,
                                                            in_value.d))),
         values_.Overwrite(instr, Value(static_cast<float>(in_value.d))),
-        values_.Overwrite(instr, Value(static_cast<double>(in_value.d)))));
-
-    switch (orig_out_type) {
-      case Primitive::kPrimChar:
-        values_.Overwrite(instr, Value(static_cast<int32_t>(static_cast<uint16_t>(GetValue(instr).i))));
-        break;
-      default:
-        break;
-    }
+        SetError(instr)));
   }
 #undef INTEGRAL_TO_FP_CONV
 
@@ -242,10 +220,8 @@ class TLEVisitor : public HGraphVisitor {
       return 0;
     }
     int32_t res = 0;
-    SWITCH_FOR_TYPES(instr, left->GetType(),
+    SWITCH_FOR_JAVA_TYPES(instr, left->GetType(),
       SetError(instr),
-      res = left_value.c == right_value.c ? 0 : (left_value.c > right_value.c ? 1 : -1),
-      res = left_value.s == right_value.s ? 0 : (left_value.s > right_value.s ? 1 : -1),
       res = left_value.i == right_value.i ? 0 : (left_value.i > right_value.i ? 1 : -1),
       res = left_value.l == right_value.l ? 0 : (left_value.l > right_value.l ? 1 : -1),
       res = (isnan(left_value.f) || isnan(right_value.f))
@@ -305,10 +281,8 @@ class TLEVisitor : public HGraphVisitor {
     NOTHING_IF_ERROR;
 
     bool res = true;
-    SWITCH_FOR_TYPES(instr, left->GetType(),
+    SWITCH_FOR_JAVA_TYPES(instr, left->GetType(),
       SetError(instr),
-      res = comparator(static_cast<uint8_t>(left_value.c), static_cast<uint8_t>(right_value.c)),
-      res = comparator(static_cast<uint16_t>(left_value.s), static_cast<uint16_t>(right_value.s)),
       res = comparator(static_cast<uint32_t>(left_value.i), static_cast<uint32_t>(right_value.i)),
       res = comparator(static_cast<uint64_t>(left_value.l), static_cast<uint64_t>(right_value.l)),
       SetError(instr),
@@ -338,10 +312,8 @@ class TLEVisitor : public HGraphVisitor {
     Value val = GetValue(instr->GetInput());
     NOTHING_IF_ERROR;
 
-    SWITCH_FOR_TYPES(instr, instr->GetInput()->GetType(),
+    SWITCH_FOR_JAVA_TYPES(instr, instr->GetInput()->GetType(),
       SetError(instr),
-      values_.Overwrite(instr, Value(-val.c)),
-      values_.Overwrite(instr, Value(-val.s)),
       values_.Overwrite(instr, Value(-val.i)),
       values_.Overwrite(instr, Value(-val.l)),
       values_.Overwrite(instr, Value(-val.f)),
@@ -358,10 +330,8 @@ class TLEVisitor : public HGraphVisitor {
     Value right_value = GetValue(right);
     NOTHING_IF_ERROR;
 
-    SWITCH_FOR_TYPES(instr, left->GetType(),
+    SWITCH_FOR_JAVA_TYPES(instr, left->GetType(),
       SetError(instr),
-      values_.Overwrite(instr, Value(left_value.c + right_value.c)),
-      values_.Overwrite(instr, Value(left_value.s + right_value.s)),
       values_.Overwrite(instr, Value(left_value.i + right_value.i)),
       values_.Overwrite(instr, Value(left_value.l + right_value.l)),
       values_.Overwrite(instr, Value(left_value.f + right_value.f)),
@@ -378,10 +348,8 @@ class TLEVisitor : public HGraphVisitor {
     Value right_value = GetValue(right);
     NOTHING_IF_ERROR;
 
-    SWITCH_FOR_TYPES(instr, left->GetType(),
+    SWITCH_FOR_JAVA_TYPES(instr, left->GetType(),
       SetError(instr),
-      values_.Overwrite(instr, Value(left_value.c - right_value.c)),
-      values_.Overwrite(instr, Value(left_value.s - right_value.s)),
       values_.Overwrite(instr, Value(left_value.i - right_value.i)),
       values_.Overwrite(instr, Value(left_value.l - right_value.l)),
       values_.Overwrite(instr, Value(left_value.f - right_value.f)),
@@ -398,10 +366,8 @@ class TLEVisitor : public HGraphVisitor {
     Value right_value = GetValue(right);
     NOTHING_IF_ERROR;
 
-    SWITCH_FOR_TYPES(instr, left->GetType(),
+    SWITCH_FOR_JAVA_TYPES(instr, left->GetType(),
       SetError(instr),
-      values_.Overwrite(instr, Value(left_value.c * right_value.c)),
-      values_.Overwrite(instr, Value(left_value.s * right_value.s)),
       values_.Overwrite(instr, Value(left_value.i * right_value.i)),
       values_.Overwrite(instr, Value(left_value.l * right_value.l)),
       values_.Overwrite(instr, Value(left_value.f * right_value.f)),
@@ -418,10 +384,8 @@ class TLEVisitor : public HGraphVisitor {
     Value right_value = GetValue(right);
     NOTHING_IF_ERROR;
 
-    SWITCH_FOR_TYPES(instr, left->GetType(),
+    SWITCH_FOR_JAVA_TYPES(instr, left->GetType(),
       SetError(instr),
-      values_.Overwrite(instr, Value(left_value.c / right_value.c)),
-      values_.Overwrite(instr, Value(left_value.s / right_value.s)),
       values_.Overwrite(instr, Value(left_value.i / right_value.i)),
       values_.Overwrite(instr, Value(left_value.l / right_value.l)),
       values_.Overwrite(instr, Value(left_value.f / right_value.f)),
@@ -455,10 +419,8 @@ class TLEVisitor : public HGraphVisitor {
     Value right_value = GetValue(right);
     NOTHING_IF_ERROR;
 
-    SWITCH_FOR_TYPES(instr, left->GetType(),
+    SWITCH_FOR_JAVA_TYPES(instr, left->GetType(),
       SetError(instr),
-      values_.Overwrite(instr, Value(right_value.c == -1 ? 0 : left_value.c % right_value.c)),
-      values_.Overwrite(instr, Value(right_value.s == -1 ? 0 : left_value.s % right_value.s)),
       values_.Overwrite(instr, Value(right_value.i == -1 ? 0 : left_value.i % right_value.i)),
       values_.Overwrite(instr, Value(right_value.l == -1 ? 0 : left_value.l % right_value.l)),
       values_.Overwrite(instr,
@@ -470,12 +432,10 @@ class TLEVisitor : public HGraphVisitor {
   int32_t ComputeShiftCount(HBinaryOperation* shift_instr) {
     int32_t shift_count = 0;
     Primitive::Type type = shift_instr->GetLeft()->GetType();
-    if (type == Primitive::kPrimInt) {
-      shift_count = GetValue(shift_instr->GetRight()).i & kMaxIntShiftDistance;
-    } else if (type == Primitive::kPrimLong) {
+    if (type == Primitive::kPrimLong) {
       shift_count = GetValue(shift_instr->GetRight()).l & kMaxLongShiftDistance;
     } else {
-      SetError(shift_instr);
+      shift_count = GetValue(shift_instr->GetRight()).i & kMaxIntShiftDistance;
     }
     return shift_count;
   }
@@ -489,10 +449,8 @@ class TLEVisitor : public HGraphVisitor {
     int32_t shift_count = ComputeShiftCount(instr);
     NOTHING_IF_ERROR;
 
-    SWITCH_FOR_TYPES(instr, instr->GetLeft()->GetType(),
+    SWITCH_FOR_JAVA_TYPES(instr, instr->GetLeft()->GetType(),
       SetError(instr),
-      values_.Overwrite(instr, Value(left_value.c << shift_count)),
-      values_.Overwrite(instr, Value(left_value.s << shift_count)),
       values_.Overwrite(instr, Value(left_value.i << shift_count)),
       values_.Overwrite(instr, Value(left_value.l << shift_count)),
       SetError(instr),
@@ -508,10 +466,8 @@ class TLEVisitor : public HGraphVisitor {
     int32_t shift_count = ComputeShiftCount(instr);
     NOTHING_IF_ERROR;
 
-    SWITCH_FOR_TYPES(instr, instr->GetLeft()->GetType(),
+    SWITCH_FOR_JAVA_TYPES(instr, instr->GetLeft()->GetType(),
       SetError(instr),
-      values_.Overwrite(instr, Value(left_value.c >> shift_count)),
-      values_.Overwrite(instr, Value(left_value.s >> shift_count)),
       values_.Overwrite(instr, Value(left_value.i >> shift_count)),
       values_.Overwrite(instr, Value(left_value.l >> shift_count)),
       SetError(instr),
@@ -527,12 +483,8 @@ class TLEVisitor : public HGraphVisitor {
     int32_t shift_count = ComputeShiftCount(instr);
     NOTHING_IF_ERROR;
 
-    SWITCH_FOR_TYPES(instr, instr->GetLeft()->GetType(),
+    SWITCH_FOR_JAVA_TYPES(instr, instr->GetLeft()->GetType(),
       SetError(instr),
-      values_.Overwrite(instr,
-        Value(static_cast<int8_t>(static_cast<uint8_t>(left_value.c) >> shift_count))),
-      values_.Overwrite(instr,
-        Value(static_cast<int16_t>(static_cast<uint16_t>(left_value.s) >> shift_count))),
       values_.Overwrite(instr,
         Value(static_cast<int32_t>(static_cast<uint32_t>(left_value.i) >> shift_count))),
       values_.Overwrite(instr,
@@ -543,13 +495,9 @@ class TLEVisitor : public HGraphVisitor {
 
   void VisitAnd(HAnd* instr) OVERRIDE {
     NOTHING_IF_ERROR;
-    SWITCH_FOR_TYPES(instr, instr->GetType(),
+    SWITCH_FOR_JAVA_TYPES(instr, instr->GetType(),
       values_.Overwrite(instr,
         Value(static_cast<bool>(GetValueAsLong(instr->GetLeft()) & GetValueAsLong(instr->GetRight())))),
-      values_.Overwrite(instr,
-        Value(static_cast<int8_t>(GetValueAsLong(instr->GetLeft()) & GetValueAsLong(instr->GetRight())))),
-      values_.Overwrite(instr,
-        Value(static_cast<int16_t>(GetValueAsLong(instr->GetLeft()) & GetValueAsLong(instr->GetRight())))),
       values_.Overwrite(instr,
         Value(static_cast<int32_t>(GetValueAsLong(instr->GetLeft()) & GetValueAsLong(instr->GetRight())))),
       values_.Overwrite(instr,
@@ -560,13 +508,9 @@ class TLEVisitor : public HGraphVisitor {
 
   void VisitOr(HOr* instr) OVERRIDE {
     NOTHING_IF_ERROR;
-    SWITCH_FOR_TYPES(instr, instr->GetType(),
+    SWITCH_FOR_JAVA_TYPES(instr, instr->GetType(),
       values_.Overwrite(instr,
         Value(static_cast<bool>(GetValueAsLong(instr->GetLeft()) | GetValueAsLong(instr->GetRight())))),
-      values_.Overwrite(instr,
-        Value(static_cast<int8_t>(GetValueAsLong(instr->GetLeft()) | GetValueAsLong(instr->GetRight())))),
-      values_.Overwrite(instr,
-        Value(static_cast<int16_t>(GetValueAsLong(instr->GetLeft()) | GetValueAsLong(instr->GetRight())))),
       values_.Overwrite(instr,
         Value(static_cast<int32_t>(GetValueAsLong(instr->GetLeft()) | GetValueAsLong(instr->GetRight())))),
       values_.Overwrite(instr,
@@ -577,13 +521,9 @@ class TLEVisitor : public HGraphVisitor {
 
   void VisitXor(HXor* instr) OVERRIDE {
     NOTHING_IF_ERROR;
-    SWITCH_FOR_TYPES(instr, instr->GetType(),
+    SWITCH_FOR_JAVA_TYPES(instr, instr->GetType(),
       values_.Overwrite(instr,
         Value(static_cast<bool>(GetValueAsLong(instr->GetLeft()) ^ GetValueAsLong(instr->GetRight())))),
-      values_.Overwrite(instr,
-        Value(static_cast<int8_t>(GetValueAsLong(instr->GetLeft()) ^ GetValueAsLong(instr->GetRight())))),
-      values_.Overwrite(instr,
-        Value(static_cast<int16_t>(GetValueAsLong(instr->GetLeft()) ^ GetValueAsLong(instr->GetRight())))),
       values_.Overwrite(instr,
         Value(static_cast<int32_t>(GetValueAsLong(instr->GetLeft()) ^ GetValueAsLong(instr->GetRight())))),
       values_.Overwrite(instr,
@@ -594,10 +534,8 @@ class TLEVisitor : public HGraphVisitor {
 
   void VisitNot(HNot* instr) OVERRIDE {
     NOTHING_IF_ERROR;
-    SWITCH_FOR_TYPES(instr, instr->GetType(),
-      values_.Overwrite(instr, Value(~GetValue(instr->GetInput()).b)),
-      values_.Overwrite(instr, Value(~GetValue(instr->GetInput()).c)),
-      values_.Overwrite(instr, Value(~GetValue(instr->GetInput()).s)),
+    SWITCH_FOR_JAVA_TYPES(instr, instr->GetType(),
+      values_.Overwrite(instr, Value(~GetValue(instr->GetInput()).i)),
       values_.Overwrite(instr, Value(~GetValue(instr->GetInput()).i)),
       values_.Overwrite(instr, Value(~GetValue(instr->GetInput()).l)),
       SetError(instr),
@@ -606,10 +544,8 @@ class TLEVisitor : public HGraphVisitor {
 
   void VisitBooleanNot(HBooleanNot* instr) OVERRIDE {
     NOTHING_IF_ERROR;
-    SWITCH_FOR_TYPES(instr, instr->GetType(),
-      values_.Overwrite(instr, Value(~GetValue(instr->GetInput()).b)),
-      values_.Overwrite(instr, Value(GetValue(instr->GetInput()).c == 0 ? 1 : 0)),
-      values_.Overwrite(instr, Value(GetValue(instr->GetInput()).s == 0 ? 1 : 0)),
+    SWITCH_FOR_JAVA_TYPES(instr, instr->GetType(),
+      values_.Overwrite(instr, Value(GetValue(instr->GetInput()).i == 0 ? 1 : 0)),
       values_.Overwrite(instr, Value(GetValue(instr->GetInput()).i == 0 ? 1 : 0)),
       SetError(instr),
       SetError(instr),
@@ -626,10 +562,8 @@ class TLEVisitor : public HGraphVisitor {
 
   int64_t GetValueAsLong(HInstruction* instr) {
     Value v = GetValue(instr);
-    SWITCH_FOR_TYPES(instr, instr->GetType(),
-      return static_cast<int64_t>(v.b),
-      return static_cast<int64_t>(v.c),
-      return static_cast<int64_t>(v.s),
+    SWITCH_FOR_JAVA_TYPES(instr, instr->GetType(),
+      return static_cast<int64_t>(v.i),
       return static_cast<int64_t>(v.i),
       return static_cast<int64_t>(v.l),
       return static_cast<int64_t>(v.f),
@@ -640,10 +574,8 @@ class TLEVisitor : public HGraphVisitor {
   Value GetValue(HInstruction* instr) {
     Value v;
     if (instr->IsConstant()) {
-      SWITCH_FOR_TYPES(instr, instr->GetType(),
-        v.b = static_cast<bool>(instr->AsIntConstant()->GetValue()),
-        v.c = instr->AsIntConstant()->GetValue(),
-        v.s = instr->AsIntConstant()->GetValue(),
+      SWITCH_FOR_JAVA_TYPES(instr, instr->GetType(),
+        v.i = instr->AsIntConstant()->GetValue(),
         v.i = instr->AsIntConstant()->GetValue(),
         v.l = instr->AsLongConstant()->GetValue(),
         v.f = instr->AsFloatConstant()->GetValue(),
@@ -662,10 +594,8 @@ class TLEVisitor : public HGraphVisitor {
   }
 
   HConstant* GetConstant(HGraph* graph, HInstruction* instr, Value v) {
-    SWITCH_FOR_TYPES(instr, instr->GetType(),
+    SWITCH_FOR_JAVA_TYPES(instr, instr->GetType(),
       return graph->GetConstant(Primitive::kPrimBoolean, v.i != 0 ? 1 : 0),
-      return graph->GetIntConstant(v.c),
-      return graph->GetIntConstant(v.s),
       return graph->GetIntConstant(v.i),
       return graph->GetLongConstant(v.l),
       return graph->GetFloatConstant(v.f),
@@ -674,7 +604,8 @@ class TLEVisitor : public HGraphVisitor {
   }
 
 #undef NOTHING_IF_ERROR
-#undef SWITCH_FOR_TYPES
+#undef SWITCH_FOR_CAST_TYPES
+#undef SWITCH_FOR_JAVA_TYPES
 
   void SetError(HInstruction* instr) {
     is_error_ = true;
