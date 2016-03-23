@@ -331,6 +331,9 @@ void HInstructionCloner::VisitArraySet(HArraySet* instr) {
     if (instr->StaticTypeOfArrayIsObjectArray()) {
       clone->SetStaticTypeOfArrayIsObjectArray();
     }
+    if (!instr->NeedsTypeCheck()) {
+      clone->ClearNeedsTypeCheck();
+    }
 
     CloneEnvironment(instr, clone);
     CommitClone(instr, clone);
