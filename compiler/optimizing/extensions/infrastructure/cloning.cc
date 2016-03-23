@@ -1267,6 +1267,7 @@ void HInstructionCloner::VisitX86BoundsCheckMemory(HX86BoundsCheckMemory* instr)
 
 void HInstructionCloner::VisitX86ProfileInvoke(HX86ProfileInvoke* instr) {
   if (cloning_enabled_) {
+    DCHECK(!instr->HasEnvironment());
     HInstruction* current_method, *object;
     GetInputsForBinary(instr, &current_method, &object);
     DCHECK(current_method->IsCurrentMethod());
@@ -1275,7 +1276,7 @@ void HInstructionCloner::VisitX86ProfileInvoke(HX86ProfileInvoke* instr) {
                                        current_method->AsCurrentMethod(),
                                        object,
                                        instr->GetDexPc());
-    orig_to_clone_.Overwrite(instr, clone);
+    CommitClone(instr, clone);
   }
 }
 
