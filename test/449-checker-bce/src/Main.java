@@ -1026,9 +1026,7 @@ public class Main {
     // and one for null check on array (to hoist null
     // check and array.length out of loop).
     for (int i = start ; i < end; i++) {
-      if (expectInterpreter) {
-        assertIsInterpreted();
-      } else {
+      if (!expectInterpreter) {
         assertIsManaged();
       }
       array[i] = 1;
@@ -1064,9 +1062,7 @@ public class Main {
     // and one for null check on array (to hoist null
     // check and array.length out of loop).
     for (int i = start ; i <= end; i++) {
-      if (expectInterpreter) {
-        assertIsInterpreted();
-      } else {
+      if (!expectInterpreter) {
         assertIsManaged();
       }
       array[i] = 1;
@@ -1102,9 +1098,7 @@ public class Main {
     // and one for null check on array (to hoist null check
     // and array.length out of loop).
     for (int i = 3 ; i <= end; i++) {
-      if (expectInterpreter) {
-        assertIsInterpreted();
-      } else {
+      if (!expectInterpreter) {
         assertIsManaged();
       }
       array[i] = 1;
@@ -1141,9 +1135,7 @@ public class Main {
     // and one for null check on array (to hoist null check
     // and array.length out of loop).
     for (int i = end ; i > 0; i--) {
-      if (expectInterpreter) {
-        assertIsInterpreted();
-      } else {
+      if (!expectInterpreter) {
         assertIsManaged();
       }
       array[i - 1] = 1;
@@ -1194,9 +1186,7 @@ public class Main {
     // Several HDeoptimize will be added. Two for each index.
     // The null check is not necessary.
     for (int i = end - 2 ; i > 0; i--) {
-      if (expectInterpreter) {
-        assertIsInterpreted();
-      } else {
+      if (!expectInterpreter) {
         assertIsManaged();
       }
       sum += array[i - 1];
@@ -1255,9 +1245,7 @@ public class Main {
   void foo6(int[] array, int start, int end, boolean expectInterpreter) {
     // Several HDeoptimize will be added.
     for (int i = end; i >= start; i--) {
-      if (expectInterpreter) {
-        assertIsInterpreted();
-      } else {
+      if (!expectInterpreter) {
         assertIsManaged();
       }
       array[i] = (array[i-2] + array[i-1] + array[i] + array[i+1] + array[i+2]) / 5;
@@ -1377,9 +1365,7 @@ public class Main {
     // Two HDeoptimize will be added. Two for the index
     // and one for null check on array.
     for (int i = 0 ; i < 10; i++) {
-      if (expectInterpreter) {
-        assertIsInterpreted();
-      } else {
+      if (!expectInterpreter) {
         assertIsManaged();
       }
       sum += array[i];

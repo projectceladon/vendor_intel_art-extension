@@ -50,7 +50,7 @@ class HLoopPeeling : public HOptimization_X86 {
   // How many viable candidates make peeling viable.
   static constexpr int kDefaultLeastCandidateCount = 1;
   // How many opaque (no analysis available) invokes should terminate peeling consideration.
-  static constexpr bool kDefaultAllowedOpaqueInvokes = 2;
+  static constexpr int kDefaultAllowedOpaqueInvokes = 2;
   const CompilerDriver* driver_;
 };
 
