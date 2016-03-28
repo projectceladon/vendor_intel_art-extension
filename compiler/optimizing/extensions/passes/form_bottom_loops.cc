@@ -425,8 +425,10 @@ HPhi* HFormBottomLoops::NewPhi(HInstruction* in_1,
                                HInstruction* in_2,
                                HBasicBlock* block) {
   auto arena = graph_->GetArena();
+  // Synthetic phis do not receive a proper VR number.
+  // We could apply a VR number if we recycled the original phi instead of creating new one.
   HPhi* phi =  new (arena) HPhi(arena,
-                                graph_->GetNextInstructionId(),
+                                kNoRegNumber,
                                 2u,
                                 HPhi::ToPhiType(in_1->GetType()));
 

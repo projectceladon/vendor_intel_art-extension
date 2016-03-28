@@ -4952,6 +4952,7 @@ class HPhi : public HInstruction {
   void SetCanBeNull(bool can_be_null) { SetPackedFlag<kFlagCanBeNull>(can_be_null); }
 
   uint32_t GetRegNumber() const { return reg_number_; }
+  bool IsSynthetic() const { return reg_number_ == kNoRegNumber; }
 
   void SetDead() { SetPackedFlag<kFlagIsLive>(false); }
   void SetLive() { SetPackedFlag<kFlagIsLive>(true); }
