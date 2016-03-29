@@ -75,6 +75,7 @@ enum MethodCompilationStat {
   kMethodLoadViaCurrentMethod,
   kMethodLoadViaDexCache,
   kMethodLoadViaDirectPtr,
+  kRemovedInstructionViaGVN,
   kIntelBIVFound,
   kIntelRemoveUnusedLoops,
   kIntelLoopPeeled,
@@ -100,6 +101,7 @@ enum MethodCompilationStat {
   kIntelSpeculationHoisted,
   kIntelSpeculationEliminated,
   kIntelCliqueInstructionEliminated,
+  kIntelFinalFieldRecognized,
   kLastStat
 };
 
@@ -188,6 +190,7 @@ class OptimizingCompilerStats {
       case kMethodLoadViaCurrentMethod : name = "MethodLoadViaCurrentMethod"; break;
       case kMethodLoadViaDexCache : name = "MethodLoadViaDexCache"; break;
       case kMethodLoadViaDirectPtr : name = "MethodLoadViaDirectPtr"; break;
+      case kRemovedInstructionViaGVN : name = "RemovedInstructionViaGVN"; break;
       case kIntelBIVFound: return "kIntelBIVFound";
       case kIntelRemoveUnusedLoops: return "kIntelRemoveUnusedLoops";
       case kIntelLoopPeeled: return "kIntelLoopPeeled";
@@ -213,6 +216,7 @@ class OptimizingCompilerStats {
       case kIntelSpeculationHoisted: return "IntelSpeculationHoisted";
       case kIntelSpeculationEliminated: return "IntelSpeculationEliminated";
       case kIntelCliqueInstructionEliminated: return "kIntelCliqueInstructionEliminated";
+      case kIntelFinalFieldRecognized: return "IntelFinalFieldRecognized";
       default: LOG(FATAL) << "invalid stat";
     }
     return "OptStat#" + name;

@@ -21,6 +21,8 @@
  */
 
 #include "ext_alias.h"
+#include "mirror/class-inl.h"
+#include "scoped_thread_state_change.h"
 
 namespace art {
 
@@ -42,6 +44,41 @@ bool AliasCheck::Instance_base_same(HInstruction* x, HInstruction* y) {
   return Alias(x, y) == kMustAlias;
 }
 
+bool AliasCheck::May_Types_Alias(HInstruction* x, HInstruction* y) {
+  // Skip NullCheck and ClinitCheck to find real base.
+  while (x->IsNullCheck() || x->IsClinitCheck()) {
+    x = x->InputAt(0);
+  }
+  while (y->IsNullCheck() || y->IsClinitCheck()) {
+    y = y->InputAt(0);
+  }
+
+  // Identical bases obviously must alias.
+  if (x == y) {
+    return true;
+  }
+
+  ScopedObjectAccess soa(Thread::Current());
+  ReferenceTypeInfo x_rti = x->GetReferenceTypeInfo();
+  ReferenceTypeInfo y_rti = y->GetReferenceTypeInfo();
+  if (x_rti.IsValid() && y_rti.IsValid()) {
+    if (x_rti.GetTypeHandle().Get() != y_rti.GetTypeHandle().Get()) {
+      if (x_rti.IsExact() && y_rti.IsExact()) {
+        // We found two precise types that are not the same. They cannot alias.
+        return false;
+      }
+      if (!x_rti.IsSupertypeOf(y_rti) && !y_rti.IsSupertypeOf(x_rti)) {
+        // So it seems that these two types are in separate class hierarchies. They cannot alias.
+        return false;
+      }
+    }
+
+  }
+
+  // We have not proven that the types cannot be the same.
+  return true;
+}
+
 AliasCheck::AliasKind AliasCheck::Instance_alias(const FieldInfo& x_field,
                                        const FieldInfo& y_field,
                                        HInstruction* x_base,
@@ -50,7 +87,8 @@ AliasCheck::AliasKind AliasCheck::Instance_alias(const FieldInfo& x_field,
     return kMayAlias;
   }
   if (x_field.GetFieldOffset().SizeValue() != y_field.GetFieldOffset().SizeValue() ||
-      x_field.GetFieldType() != y_field.GetFieldType()) {
+      x_field.GetFieldType() != y_field.GetFieldType() ||
+      !May_Types_Alias(x_base, y_base)) {
     // Not possible to alias.
     return kNoAlias;
   }
@@ -131,15 +169,16 @@ AliasCheck::AliasKind AliasCheck::Alias(HInstanceFieldSet* x_set, HInstruction* 
   }
 }
 
-static AliasCheck::AliasKind Static_alias(const FieldInfo& x_field,
-                                     const FieldInfo& y_field,
-                                     HInstruction* x_cls,
-                                     HInstruction* y_cls) {
+AliasCheck::AliasKind AliasCheck::Static_alias(const FieldInfo& x_field,
+                                               const FieldInfo& y_field,
+                                               HInstruction* x_cls,
+                                               HInstruction* y_cls) {
   if (x_field.IsVolatile() || y_field.IsVolatile()) {
     return AliasCheck::kMayAlias;
   }
   if (x_field.GetFieldOffset().SizeValue() != y_field.GetFieldOffset().SizeValue() ||
-      x_field.GetFieldType() != y_field.GetFieldType()) {
+      x_field.GetFieldType() != y_field.GetFieldType() ||
+      !May_Types_Alias(x_cls, y_cls)) {
     // Not possible to alias.
     return AliasCheck::kNoAlias;
   }

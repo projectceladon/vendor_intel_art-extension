@@ -589,7 +589,9 @@ static void RunOptimizations(HGraph* graph,
   HConstantFolding* fold2 = new (arena) HConstantFolding(graph, "constant_folding_after_inlining");
   HConstantFolding* fold3 = new (arena) HConstantFolding(graph, "constant_folding_after_bce");
   SideEffectsAnalysis* side_effects = new (arena) SideEffectsAnalysis(graph);
-  GVNOptimization* gvn = new (arena) GVNOptimization(graph, *side_effects);
+  GVNOptimization* gvn = new (arena) GVNOptimization(graph, *side_effects,
+                                                     GVNOptimization::kGlobalValueNumberingPassName,
+                                                     stats);
   LICM* licm = new (arena) LICM(graph, *side_effects, stats);
   LoadStoreElimination* lse = new (arena) LoadStoreElimination(graph, *side_effects);
   HInductionVarAnalysis* induction = new (arena) HInductionVarAnalysis(graph);

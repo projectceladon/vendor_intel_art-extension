@@ -404,11 +404,13 @@ class GlobalValueNumberer : public ValueObject {
  public:
   GlobalValueNumberer(ArenaAllocator* allocator,
                       HGraph* graph,
-                      const SideEffectsAnalysis& side_effects)
+                      const SideEffectsAnalysis& side_effects,
+                      OptimizingCompilerStats* stats = nullptr)
       : graph_(graph),
         allocator_(allocator),
         side_effects_(side_effects),
         sets_(graph->GetBlocks().size(), nullptr, allocator->Adapter(kArenaAllocGvn)),
+        stats_(stats),
         visited_blocks_(
             allocator, graph->GetBlocks().size(), /* expandable */ false, kArenaAllocGvn) {}
 
@@ -455,6 +457,8 @@ class GlobalValueNumberer : public ValueObject {
   ArenaBitVector visited_blocks_;
 
   AliasCheck alias_;
+
+  OptimizingCompilerStats* const stats_;
 
   DISALLOW_COPY_AND_ASSIGN(GlobalValueNumberer);
 };
@@ -554,6 +558,9 @@ void GlobalValueNumberer::VisitBasicBlock(HBasicBlock* block) {
         // Or current is used by a phi, and we don't do OrderInputs() on a phi anyway.
         current->ReplaceWith(existing);
         current->GetBlock()->RemoveInstruction(current);
+        if (stats_ != nullptr) {
+          stats_->RecordStat(kRemovedInstructionViaGVN);
+        }
       } else {
         set->Kill(current, current->GetSideEffects(), alias_);
         set->Add(current);
@@ -620,7 +627,7 @@ HBasicBlock* GlobalValueNumberer::FindVisitedBlockWithRecyclableSet(
 }
 
 void GVNOptimization::Run() {
-  GlobalValueNumberer gvn(graph_->GetArena(), graph_, side_effects_);
+  GlobalValueNumberer gvn(graph_->GetArena(), graph_, side_effects_, stats_);
   gvn.Run();
 }
 
