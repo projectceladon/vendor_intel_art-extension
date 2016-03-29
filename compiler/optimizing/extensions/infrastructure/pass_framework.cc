@@ -100,6 +100,7 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   { "loop_full_unrolling", "remove_unused_loops", kPassInsertAfter },
   { "load_store_elimination", "value_propagation_through_heap", kPassInsertBefore },
   { "aur", "remove_unused_loops", kPassInsertBefore },
+  { "phi_cleanup_after_aur", "aur", kPassInsertAfter },
 
   // Devirtualization is always inserted before sharpening. We also insert it twice to increase
   // its effectiveness - before and after inlining.
@@ -357,7 +358,8 @@ void RunOptimizationsX86(HGraph* graph,
   // HGenerateSelects* generate_selects = new (arena) HGenerateSelects(graph, stats);
   HLoopFullUnrolling* loop_full_unrolling = new (arena) HLoopFullUnrolling(graph, driver, stats);
   HAggressiveUseRemoverPass* aur = new (arena) HAggressiveUseRemoverPass(graph, driver, stats);
-  HPhiCleanup* phi_cleanup = new (arena) HPhiCleanup(graph, stats);
+  HPhiCleanup* phi_cleanup = new (arena) HPhiCleanup(graph, "phi_cleanup", stats);
+  HPhiCleanup* phi_cleanup_after_aur = new (arena) HPhiCleanup(graph, "phi_cleanup_after_aur", stats);
   HDevirtualization* devirtualization = new (arena) HDevirtualization(graph,
                                                                       dex_compilation_unit,
                                                                       driver,
@@ -399,6 +401,7 @@ void RunOptimizationsX86(HGraph* graph,
     remove_unused_loops,
     loop_full_unrolling,
     aur,
+    phi_cleanup_after_aur,
     devirtualization,
     devirtualization2,
     sharpening2,

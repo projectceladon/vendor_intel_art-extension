@@ -32,8 +32,10 @@ namespace art {
  */
 class HPhiCleanup : public HOptimization_X86 {
  public:
-  explicit HPhiCleanup(HGraph* graph, OptimizingCompilerStats* stats = nullptr)
-    : HOptimization_X86(graph, kPhiCleanupPassName, stats) {}
+  explicit HPhiCleanup(HGraph* graph,
+                       const char* pass_name = kPhiCleanupPassName,
+                       OptimizingCompilerStats* stats = nullptr)
+    : HOptimization_X86(graph, pass_name, stats) {}
 
   void Run() OVERRIDE;
 
@@ -60,6 +62,29 @@ class HPhiCleanup : public HOptimization_X86 {
    * @return true, if the Phi has the same instruction on all inputs.
    */
   bool AllInputsSame(HPhi* phi);
+
+  /**
+   * @brief Recursively checks that all users of the instruction are from the same clique.
+   * @details We may consider whole use chain of a Phi a clique if none of the instructions
+   *          in this chain has side effects, env or is a control flow. There can be other phis
+   *          in this clique. The clique elements may be removed all together.
+   * @param to_check The instruction to check.
+   * @param seen_insns The set of Phis and instructions that we have already checked.
+   * @param candidates The set of candidates for the same clique.
+   * @return true, if phi has only users from the same clique.
+   */
+  bool RemoveCliqueHelper(HInstruction* to_check,
+                          std::unordered_set<HInstruction*>& seen_insns,
+                          std::unordered_set<HInstruction*>& candidates);
+
+  /**
+   * @brief Checks if a Phi and its clique may be removed and removes it,
+   *        if possible.
+   * @param phi The Phi to check.
+   * @param seen_insns The set of Phis that we have already considered.
+   * @return true, if the Phi and its clique were successfully removed.
+   */
+  bool RemoveClique(HPhi* phi, std::unordered_set<HInstruction*>& seen_insns);
 };
 
 }  // namespace art

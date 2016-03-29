@@ -19,6 +19,8 @@
  * and approved by Intel in writing.
  */
 
+#include <unordered_set>
+
 #include "ext_utility.h"
 #include "graph_x86.h"
 #include "loop_iterators.h"
@@ -43,6 +45,9 @@ bool HPhiCleanup::Gate() {
 }
 
 void HPhiCleanup::CleanUpPhis() {
+  // This is to avoid looking into the same Phis multiple times.
+  std::unordered_set<HInstruction*> seen_insns;
+
   // Replace Phi(x, x, ... , x) with x.
   for (HPostOrderIterator it(*graph_); !it.Done(); it.Advance()) {
     HBasicBlock* block = it.Current();
@@ -56,6 +61,8 @@ void HPhiCleanup::CleanUpPhis() {
         phi->ReplaceWith(phi->InputAt(0));
         block->RemovePhi(phi);
         MaybeRecordStat(MethodCompilationStat::kIntelPhiNodeEliminated);
+      } else if (RemoveClique(phi, seen_insns)) {
+         PRINT_PASS_OSTREAM_MESSAGE(this, "Clique removed successfully");
       }
     }
   }
@@ -70,6 +77,67 @@ bool HPhiCleanup::AllInputsSame(HPhi* phi) {
     }
   }
   return true;
+}
+
+bool HPhiCleanup::RemoveCliqueHelper(HInstruction* to_check,
+                                     std::unordered_set<HInstruction*>& seen_insns,
+                                     std::unordered_set<HInstruction*>& candidates) {
+  if (candidates.find(to_check) != candidates.end()) {
+    // We are already considering this instruction as a candidate for removal.
+    return true;
+  } else if (seen_insns.find(to_check) != seen_insns.end()) {
+    // We have already rejected this instruction.
+    return false;
+  } else if (to_check->HasEnvironmentUses()) {
+    // The Phi should not have env uses.
+    return false;
+  }
+
+  // Consider this instruction as a candidate for removal.
+  candidates.insert(to_check);
+  seen_insns.insert(to_check);
+
+  // We reject the instruction if its use is either a control flow or
+  // it has side effects. In other cases we run the recursive check for it.
+  for (HUseIterator<HInstruction*> use_it(to_check->GetUses());
+       !use_it.Done();
+       use_it.Advance()) {
+    HInstruction* use = use_it.Current()->GetUser();
+    if (use->IsControlFlow() || use->GetSideEffects().HasSideEffectsExcludingGC()) {
+      // Instruction with side effects or control flow is not something that we can just remove.
+      return false;
+    } else if (!RemoveCliqueHelper(use, seen_insns, candidates)) {
+      // Recursive check failed.
+      return false;
+    }
+  }
+
+  // This instruction seems a fine candidate for removal.
+  return true;
+}
+
+bool HPhiCleanup::RemoveClique(HPhi* phi,
+                               std::unordered_set<HInstruction*>& seen_insns) {
+  // For quick checks we keep the clique candidates in set.
+  std::unordered_set<HInstruction*> candidates;
+
+  if (RemoveCliqueHelper(phi, seen_insns, candidates)) {
+    PRINT_PASS_OSTREAM_MESSAGE(this, "Found a clique of: " << candidates.size() << " elements");
+
+    // Delete unsafely.
+    for (auto to_remove : candidates) {
+      if (to_remove->IsPhi()) {
+        to_remove->GetBlock()->RemovePhi(to_remove->AsPhi(), false);
+      } else {
+        to_remove->GetBlock()->RemoveInstruction(to_remove, false);
+      }
+      RemoveAsUser(to_remove);
+    }
+
+    return true;
+  }
+
+  return false;
 }
 
 }  // namespace art

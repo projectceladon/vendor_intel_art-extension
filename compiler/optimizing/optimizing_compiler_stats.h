@@ -89,6 +89,7 @@ enum MethodCompilationStat {
   kIntelDevirtualizationConsideration,
   kIntelSpeculationHoisted,
   kIntelSpeculationEliminated,
+  kIntelCliqueInstructionEliminated,
   kLastStat
 };
 
@@ -191,6 +192,7 @@ class OptimizingCompilerStats {
       case kIntelDevirtualizationConsideration: return "IntelConsideredForDevirtualization";
       case kIntelSpeculationHoisted: return "IntelSpeculationHoisted";
       case kIntelSpeculationEliminated: return "IntelSpeculationEliminated";
+      case kIntelCliqueInstructionEliminated: return "kIntelCliqueInstructionEliminated";
       default: LOG(FATAL) << "invalid stat";
     }
     return "OptStat#" + name;
