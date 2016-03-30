@@ -301,6 +301,10 @@ bool HDevirtualization::HandleSpeculation(HInstruction* instr, bool guard_insert
                                                                  pointer_size);
     // We only sharpen for resolved invokes.
     DCHECK(resolved_method != nullptr);
+    if (UNLIKELY(resolved_method == nullptr)) {
+        PRINT_PASS_OSTREAM_MESSAGE(this, "Sharpening failed because resolved method is Null");
+        return false;
+    }
 
     ArtMethod* actual_method = resolved_method;
     if (!IsMethodOrDeclaringClassFinal(resolved_method)) {
