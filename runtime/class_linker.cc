@@ -312,6 +312,7 @@ static void ShuffleForward(size_t* current_field_idx,
 ClassLinker::ClassLinker(InternTable* intern_table)
     // dex_lock_ is recursive as it may be used in stack dumping.
     : dex_lock_("ClassLinker dex lock", kDefaultMutexLevel),
+      cha_lock_("Class Hierarchy Analysis lock", kDefaultMutexLevel),
       dex_cache_boot_image_class_lookup_required_(false),
       failed_dex_cache_class_lookups_(0),
       class_roots_(nullptr),
@@ -347,6 +348,121 @@ void ClassLinker::CheckSystemClass(Thread* self, Handle<mirror::Class> c1, const
                << os1.str() << "\n\n" << os2.str();
     UNREACHABLE();
   }
+}
+
+void ClassLinker::DumpCHA() {
+  ReaderMutexLock mu(Thread::Current(), cha_lock_);
+  size_t total = 0;
+  LOG(INFO) << "DumpCHA # of classes =  " << cha_string_table_.size();
+  for (size_t z = 0; z < cha_string_table_.size(); z++) {
+    LOG(INFO) << z << ": " << cha_string_table_[z] << " # of children = "
+              << cha_child_classes_[z].size();
+    total += cha_child_classes_[z].size();
+    for (size_t y = 0; y < cha_child_classes_[z].size(); y++) {
+      size_t child = cha_child_classes_[z][y];
+      LOG(INFO) << z << ":" << y << " " << cha_string_table_[child];
+    }
+  }
+  LOG(INFO) << "DumpCHA total # of children = " << total;
+}
+
+void ClassLinker::AddCHA(mirror::Class* parent, mirror::Class* child) {
+  WriterMutexLock mu(Thread::Current(), cha_lock_);
+  std::string temp;
+  std::string parent_string(parent->GetDescriptor(&temp));
+  std::string child_string(child->GetDescriptor(&temp));
+
+  // Find the parent index.
+  auto parent_iter = cha_string_map_.find(parent_string);
+  size_t parent_index = 0;
+  if (parent_iter == cha_string_map_.end()) {
+    parent_index = cha_string_table_.size();
+    cha_string_map_.insert({parent_string, parent_index});
+    cha_string_table_.push_back(parent_string);
+    cha_child_classes_.push_back(std::vector<size_t>(0));
+  } else {
+    parent_index = parent_iter->second;
+  }
+
+  // Find the child index.
+  auto child_iter = cha_string_map_.find(child_string);
+  size_t child_index = 0;
+  if (child_iter == cha_string_map_.end()) {
+    child_index = cha_string_table_.size();
+    cha_string_map_.insert({child_string, child_index});
+    cha_string_table_.push_back(child_string);
+    cha_child_classes_.push_back(std::vector<size_t>(0));
+  } else {
+    child_index = child_iter->second;
+  }
+
+  // Add the child to the parent's child classes.
+  cha_child_classes_[parent_index].push_back(child_index);
+}
+
+bool ClassLinker::SearchChildren(std::vector<size_t>& match_class_index,
+                                 std::string parent,
+                                 int32_t& num_of_match,
+                                 ArtMethod* resolved_method,
+                                 Handle<mirror::ClassLoader> class_loader) {
+  Thread* self = Thread::Current();
+  const size_t pointer_size = GetImagePointerSize();
+  std::vector<size_t> all_children;
+  const char* resolved_method_name = resolved_method->GetName();
+  const art::Signature resolved_method_signature = resolved_method->GetSignature();
+
+  size_t parent_index = 0;
+  if (GetCHAStringMapIndex(parent, parent_index)) {
+    // We always push parent_index to match_class_index.
+    match_class_index.push_back(parent_index);
+
+    // We push parent_index to all_children.
+    all_children.push_back(parent_index);
+  } else {
+    // We don't have this parent class.
+    // We failed to analyze this parent class.
+    return false;
+  }
+
+  while (!all_children.empty()) {
+    parent_index = all_children.back();
+    all_children.pop_back();
+
+    size_t num_of_child = GetCHAChildClassesSize(parent_index);
+    if (num_of_child == 0) {
+      continue;
+    } else if (num_of_child > kCHAMaxNumChildren) {
+      // We failed to analyze, because of too many children.
+      return false;
+    }
+    for (size_t i = 0; i < num_of_child; i++) {
+      size_t child_index = GetCHAChildClassesChildIndex(parent_index, i);
+      all_children.push_back(child_index);
+      std::string child = GetCHAStringTableString(child_index);
+      // Check all methods in this child to match resolved_method.
+      mirror::Class* klass = LookupClass(self, child.c_str(),
+          ComputeModifiedUtf8Hash(child.c_str()), class_loader.Get());
+      if (klass == nullptr || !klass->IsResolved()) {
+        // We cannot find the child class.
+        return false;
+      }
+      for (auto& method : klass->GetVirtualMethods(pointer_size)) {
+        ArtMethod* const np_method = method.GetInterfaceMethodIfProxy(pointer_size);
+        if (!np_method->IsAbstract() &&
+            strcmp(resolved_method_name, np_method->GetName()) == 0 &&
+            resolved_method_signature == np_method->GetSignature()) {
+          // Find a match.
+          num_of_match++;
+          match_class_index.push_back(child_index);
+          if (num_of_match > 1) {
+            // For now, we just care about one target or more than one.
+            return true;
+          }
+        }
+      }
+    }
+  }
+  return true;
 }
 
 bool ClassLinker::InitWithoutImage(std::vector<std::unique_ptr<const DexFile>> boot_class_path,
@@ -1557,6 +1673,22 @@ bool ClassLinker::OpenImageDexFiles(gc::space::ImageSpace* space,
   return true;
 }
 
+class CHAClassVisitor : public ClassVisitor {
+ public:
+  explicit CHAClassVisitor(ClassLinker* linker) : class_linker(linker) {}
+
+  bool operator()(mirror::Class* klass) OVERRIDE SHARED_REQUIRES(Locks::mutator_lock_) {
+    mirror::Class* parent = klass->GetSuperClass();
+    if (parent != nullptr) {
+      class_linker->AddCHA(parent, klass);
+    }
+    return true;
+  }
+
+ private:
+  ClassLinker* class_linker;
+};
+
 bool ClassLinker::AddImageSpace(
     gc::space::ImageSpace* space,
     Handle<mirror::ClassLoader> class_loader,
@@ -1833,6 +1965,7 @@ bool ClassLinker::AddImageSpace(
     VerifyClassInTableArtMethodVisitor visitor2(class_table);
     header.VisitPackedArtMethods(&visitor2, space->Begin(), sizeof(void*));
   }
+
   VLOG(class_linker) << "Adding image space took " << PrettyDuration(NanoTime() - start_time);
   return true;
 }
@@ -3505,6 +3638,11 @@ mirror::Class* ClassLinker::CreateArrayClass(Thread* self, const char* descripto
   DCHECK(new_class->GetComponentType() != nullptr);
   mirror::Class* java_lang_Object = GetClassRoot(kJavaLangObject);
   new_class->SetSuperClass(java_lang_Object);
+  if (Runtime::Current()->UseCHA()) {
+    mirror::Class* parent = java_lang_Object;
+    mirror::Class* child = new_class.Get();
+    AddCHA(parent, child);
+  }
   new_class->SetVTable(java_lang_Object->GetVTable());
   new_class->SetPrimitiveType(Primitive::kPrimNot);
   new_class->SetClassLoader(component_type->GetClassLoader());
@@ -4273,6 +4411,11 @@ mirror::Class* ClassLinker::CreateProxyClass(ScopedObjectAccessAlreadyRunnable& 
 
   // The super class is java.lang.reflect.Proxy
   klass->SetSuperClass(GetClassRoot(kJavaLangReflectProxy));
+  if (Runtime::Current()->UseCHA()) {
+    mirror::Class* parent = GetClassRoot(kJavaLangReflectProxy);
+    mirror::Class* child = klass.Get();
+    AddCHA(parent, child);
+  }
   // Now effectively in the loaded state.
   mirror::Class::SetStatus(klass, mirror::Class::kStatusLoaded, self);
   self->AssertNoPendingException();
@@ -5490,6 +5633,11 @@ bool ClassLinker::LoadSuperAndInterfaces(Handle<mirror::Class> klass, const DexF
     }
     CHECK(super_class->IsResolved());
     klass->SetSuperClass(super_class);
+    if (Runtime::Current()->UseCHA()) {
+      mirror::Class* parent = super_class;
+      mirror::Class* child = klass.Get();
+      AddCHA(parent, child);
+    }
 
     if (!CheckSuperClassChange(klass, dex_file, class_def, super_class)) {
       DCHECK(Thread::Current()->IsExceptionPending());

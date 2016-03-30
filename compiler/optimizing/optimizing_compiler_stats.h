@@ -102,6 +102,9 @@ enum MethodCompilationStat {
   kIntelSpeculationEliminated,
   kIntelCliqueInstructionEliminated,
   kIntelFinalFieldRecognized,
+  kIntelCHANotAnalyzed,
+  kIntelCHAOneTarget,
+  kIntelCHATwoOrMoreTargets,
   kLastStat
 };
 
@@ -223,6 +226,9 @@ class OptimizingCompilerStats {
       case kIntelSpeculationEliminated: return "IntelSpeculationEliminated";
       case kIntelCliqueInstructionEliminated: return "kIntelCliqueInstructionEliminated";
       case kIntelFinalFieldRecognized: return "IntelFinalFieldRecognized";
+      case kIntelCHANotAnalyzed: return "kIntelCHANotAnalyzed";
+      case kIntelCHAOneTarget: return "kIntelCHAOneTarget";
+      case kIntelCHATwoOrMoreTargets: return "kIntelCHATwoOrMoreTargets";
       default: LOG(FATAL) << "invalid stat";
     }
     return "OptStat#" + name;

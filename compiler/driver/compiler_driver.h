@@ -494,7 +494,23 @@ class CompilerDriver {
     return use_exact_profiles_;
   }
 
+  enum CHAType {
+    kCHANotAnalyzed = 0,
+    kCHAOneTarget,
+    kCHAMoreTargets
+  };
+  CHAType CheckCHA(std::string& match_class,
+                   ArtMethod* resolved_method,
+                   Handle<mirror::ClassLoader> class_loader)
+    SHARED_REQUIRES(Locks::mutator_lock_)
+    REQUIRES(!cha_cache_lock_);
+
  private:
+  // We save CHA results to cha_cache_.
+  mutable Mutex cha_cache_lock_ DEFAULT_MUTEX_ACQUIRED_AFTER;
+  typedef std::unordered_map<std::string, size_t> CHACache;
+  CHACache cha_cache_ GUARDED_BY(cha_cache_lock_);
+
   // Return whether the declaring class of `resolved_member` is
   // available to `referrer_class` for read or write access using two
   // Boolean values returned as a pair. If is true at least for read

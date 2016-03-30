@@ -373,7 +373,8 @@ CompilerDriver::CompilerDriver(
     const ProfileCompilationInfo* profile_compilation_info,
     std::vector<std::unique_ptr<ExactProfiler>>* exact_profilers,
     bool use_exact_profiles)
-    : compiler_options_(compiler_options),
+    : cha_cache_lock_("class hierarchy analysis cache lock"),
+      compiler_options_(compiler_options),
       verification_results_(verification_results),
       method_inliner_map_(method_inliner_map),
       compiler_(Compiler::Create(this, compiler_kind)),
@@ -1782,6 +1783,104 @@ void CompilerDriver::GetCodeAndMethodForDirectCall(InvokeType* type, InvokeType 
       VLOG(compiler) << "Dex cache devirtualization failed for: " << PrettyMethod(method);
     }
   }
+}
+
+// Decode the CHA value to ret_value and index.
+// ret_value occupies the lowest 2 bits of the CHA value.
+// index occupies from the highest bit to the 3rd bit of the CHA value.
+static void DecodeCHAValue(size_t value,
+                           CompilerDriver::CHAType& ret_value,
+                           size_t& index) {
+  ret_value = static_cast<CompilerDriver::CHAType>(value & 3);
+  index = value >> 2;
+}
+
+// Encode ret_value and index to the CHA value.
+// ret_value occupies the lowest 2 bits of the CHA value.
+// index occupies from the highest bit to the 3rd bit of the CHA value.
+// Return true, if encoding succeeds.  Otherwise, return false.
+static bool EncodeCHAValue(size_t& value,
+                           CompilerDriver::CHAType ret_value,
+                           size_t index) {
+  if (index <= static_cast<size_t>(-1) >> 2 && static_cast<size_t>(ret_value) <= 3) {
+    value = static_cast<size_t>(ret_value) | (index << 2);
+    return true;
+  }
+  return false;
+}
+
+CompilerDriver::CHAType CompilerDriver::CheckCHA(std::string& match_class,
+                                                 ArtMethod* resolved_method,
+                                                 Handle<mirror::ClassLoader> class_loader) {
+  ClassLinker* class_linker = Runtime::Current()->GetClassLinker();
+  // We look up cha_cache_ first.
+  std::string pretty_method = PrettyMethod(resolved_method);
+  bool hit = false;
+  CHAType cached_ret_value = kCHANotAnalyzed;
+  size_t cached_index = 0;
+  {
+    MutexLock mu(Thread::Current(), cha_cache_lock_);
+    CHACache::const_iterator it = cha_cache_.find(pretty_method);
+    if (it != cha_cache_.end()) {
+      hit = true;
+      DecodeCHAValue(it->second, cached_ret_value, cached_index);
+    }
+  }
+
+  if (hit) {
+    if (cached_ret_value == kCHAOneTarget) {
+      match_class = class_linker->GetCHAStringTableString(cached_index);
+    }
+    return cached_ret_value;
+  }
+
+  std::vector<size_t> match_class_index;
+  mirror::Class* methods_class = resolved_method->GetDeclaringClass();
+  std::string temp;
+  int num_of_match = 0;
+  std::string parent(methods_class->GetDescriptor(&temp));
+  // Search all children.
+  bool result = class_linker->SearchChildren(match_class_index, parent, num_of_match,
+      resolved_method, class_loader);
+  CHAType ret_value = kCHANotAnalyzed;
+  if (result) {
+    if (num_of_match == 0) {
+      if (!resolved_method->IsAbstract()) {
+        ret_value = kCHAOneTarget;  // One target as resolved_method itself.
+      }
+    } else if (num_of_match == 1 && resolved_method->IsAbstract()) {
+      ret_value = kCHAOneTarget;  // One target.
+    } else {
+      ret_value = kCHAMoreTargets;  // More targets.
+    }
+  }
+
+  size_t class_index = 0;
+  if (ret_value == kCHAOneTarget) {
+    if (num_of_match == 0) {
+      // We use the original class for resolved_method as the 1st item.
+      class_index = match_class_index[0];
+    } else {
+      // We use the child class as the 2nd item.
+      class_index = match_class_index[1];
+    }
+    match_class = class_linker->GetCHAStringTableString(class_index);
+  }
+
+  size_t encoded_value = 0;
+  if (!EncodeCHAValue(encoded_value, ret_value, class_index)) {
+    // We failed to encode, so we reset ret_value and encoded_value.
+    ret_value = kCHANotAnalyzed;
+    encoded_value = static_cast<size_t>(ret_value);
+  }
+
+  // We will try to save the CHA result to cha_cache_.
+  {
+    MutexLock mu(Thread::Current(), cha_cache_lock_);
+    cha_cache_.insert({pretty_method, encoded_value});
+  }
+
+  return ret_value;
 }
 
 bool CompilerDriver::ComputeInvokeInfo(const DexCompilationUnit* mUnit, const uint32_t dex_pc,

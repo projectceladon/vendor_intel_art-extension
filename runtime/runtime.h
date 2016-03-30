@@ -141,6 +141,11 @@ class Runtime {
   // If a compiler, are we compiling a boot image?
   bool IsCompilingBootImage() const;
 
+  // If we don't compile a boot image, we will use CHA.
+  bool UseCHA() const {
+    return cha_enabled_ && !IsCompilingBootImage();
+  }
+
   bool CanRelocate() const;
 
   bool ShouldRelocate() const {
@@ -752,6 +757,7 @@ class Runtime {
   bool must_relocate_;
   bool is_concurrent_gc_enabled_;
   bool is_explicit_gc_disabled_;
+  bool cha_enabled_;
   bool dex2oat_enabled_;
   bool image_dex2oat_enabled_;
 

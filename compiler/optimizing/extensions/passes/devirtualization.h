@@ -39,6 +39,7 @@ class HDevirtualization : public HSpeculationPass {
                          compilation_unit,
                          compiler_driver,
                          stats),
+        no_prediction_from_cha_(graph->GetArena()->Adapter(kArenaAllocMisc)),
         handles_(handles),
         after_inlining_(after_inlining),
         use_exact_profiles_(
@@ -133,6 +134,14 @@ class HDevirtualization : public HSpeculationPass {
       SHARED_REQUIRES(Locks::mutator_lock_);
 
   /**
+   * @brief Used to find an ordered list of imprecise types predicted for this invoke
+   *  via class hierarchy analysis.
+   * @param resolved_method The resolved method that is callee.
+   * @return Returns an ordered list of types provided by CHA.
+   */
+  std::vector<TypeHandle> FindTypesFromCHA(ArtMethod* resolved_method);
+
+  /**
    * @brief Used to find the primary type for this invoke.
    * @details This requires that types were already loaded from profiles or other means.
    * @param invoke The call for which to get the type.
@@ -141,7 +150,9 @@ class HDevirtualization : public HSpeculationPass {
   TypeHandle GetPrimaryType(HInvoke* invoke) const;
 
  private:
+  ArenaSet<HInstruction*> no_prediction_from_cha_;
   SafeMap<HInstruction*, TypeHandle> precise_prediction_;
+  SafeMap<HInstruction*, TypeHandle> cha_prediction_;
   SafeMap<HInstruction*, std::vector<TypeHandle>> imprecise_predictions_;
   StackHandleScopeCollection* const handles_;
   const bool after_inlining_;

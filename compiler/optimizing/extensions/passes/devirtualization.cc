@@ -103,6 +103,18 @@ bool HDevirtualization::HasPrediction(HInstruction* instr, bool update) {
       // We do not have a precise type based on analysis - well what about from profile?
       std::vector<TypeHandle> possible_targets = FindTypesFromProfile(invoke, graph_->GetArtMethod());
 
+      // When compiling non-image, we can check CHA results.
+      if (possible_targets.empty() && Runtime::Current()->UseCHA()) {
+        // Check if CHA hasn't been called before.
+        if (no_prediction_from_cha_.find(instr) == no_prediction_from_cha_.end()) {
+          possible_targets = FindTypesFromCHA(resolved_method);
+          if (possible_targets.empty()) {
+            no_prediction_from_cha_.insert(instr);
+          } else {
+            cha_prediction_.Put(invoke, possible_targets[0]);
+          }
+        }
+      }
       if (possible_targets.size() != 0u) {
         // Seems that we have potential targets - record this if needed.
         if (update) {
@@ -213,9 +225,42 @@ std::vector<HDevirtualization::TypeHandle> HDevirtualization::FindTypesFromProfi
   }
 
   // Unable to find a way to narrow down the choices.
-  // TODO Implement ability to look up type via Class Hierarchy Analysis.
   // TODO When getting a new handle - do not forget to update "handles_".
   return results;
+}
+
+std::vector<HDevirtualization::TypeHandle> HDevirtualization::FindTypesFromCHA(
+    ArtMethod* resolved_method) {
+  ScopedObjectAccess soa(Thread::Current());
+  std::string match_class;
+  Handle<mirror::ClassLoader> class_loader(handles_->NewHandle(
+      soa.Decode<mirror::ClassLoader*>(compilation_unit_.GetClassLoader())));
+  std::vector<TypeHandle> possible_targets;
+
+  // We will check CHA.
+  CompilerDriver::CHAType result = compiler_driver_->CheckCHA(match_class,
+      resolved_method, class_loader);
+  PRINT_PASS_OSTREAM_MESSAGE(this, "CHA #target = " << result << " for "
+                             << PrettyMethod(resolved_method));
+  if (result == CompilerDriver::kCHANotAnalyzed) {
+    MaybeRecordStat(MethodCompilationStat::kIntelCHANotAnalyzed);
+  } else if (result == CompilerDriver::kCHAOneTarget) {
+    // We have one target.
+    MaybeRecordStat(MethodCompilationStat::kIntelCHAOneTarget);
+    // The target is from itself or one of the children.
+    ClassLinker* class_linker = compilation_unit_.GetClassLinker();
+    mirror::Class* klass = class_linker->LookupClass(soa.Self(), match_class.c_str(),
+        ComputeModifiedUtf8Hash(match_class.c_str()), class_loader.Get());
+    // We won't accept an abstract class, because type guard will fail.
+    if (klass != nullptr && klass->IsResolved() && !klass->IsAbstract()) {
+      possible_targets.push_back(handles_->NewHandle(klass));
+    }
+  } else {
+    // We have two or more targets.
+    MaybeRecordStat(MethodCompilationStat::kIntelCHATwoOrMoreTargets);
+  }
+
+  return possible_targets;
 }
 
 HDevirtualization::TypeHandle HDevirtualization::GetPrimaryType(HInvoke* invoke) const {
@@ -238,6 +283,22 @@ bool HDevirtualization::IsPredictionSame(HInstruction* instr, HInstruction* inst
   // Same instance means it should use the same prediction.
   bool same_instance = (invoke1->InputAt(0) == invoke2->InputAt(0));
   if (same_instance) {
+    // For predictions from CHA, we need to compare types predicted by CHA.
+    if (Runtime::Current()->UseCHA()) {
+      auto iter1 = cha_prediction_.find(instr);
+      auto iter2 = cha_prediction_.find(instr2);
+      if (iter1 != cha_prediction_.end() && iter2 != cha_prediction_.end()) {
+        ScopedObjectAccess soa(Thread::Current());
+        return  iter1->second.Get() == iter2->second.Get();
+      } else if (iter1 == cha_prediction_.end() && iter2 == cha_prediction_.end()) {
+        // Both predictions are not from CHA, so they are the same.
+        return true;
+      } else {
+        // One prediction is from CHA.  We don't know if they are the same.
+        return false;
+      }
+    }
+
     return true;
   }
 
@@ -425,6 +486,12 @@ bool HDevirtualization::HandleSpeculation(HInstruction* instr,
 SpeculationRecoveryApproach HDevirtualization::GetRecoveryMethod(HInstruction* instr) {
   if (precise_prediction_.find(instr) != precise_prediction_.end()) {
     return kRecoveryNotNeeded;
+  }
+
+  if (Runtime::Current()->UseCHA()) {
+    // For CHA, we prefer code versioning, because the type guard is not perfect.
+    // We want to avoid the cost of deopt, when the type guard fails.
+    return kRecoveryCodeVersioning;
   }
 
   size_t prediction_count = imprecise_predictions_.find(instr)->second.size();

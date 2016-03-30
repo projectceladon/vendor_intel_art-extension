@@ -199,6 +199,9 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
       .Define({"-Xrelocate", "-Xnorelocate"})
           .WithValues({true, false})
           .IntoKey(M::Relocate)
+      .Define({"-XCHA", "-XnoCHA"})
+          .WithValues({true, false})
+          .IntoKey(M::CHA)
       .Define({"-Xdex2oat", "-Xnodex2oat"})
           .WithValues({true, false})
           .IntoKey(M::Dex2Oat)
@@ -763,6 +766,7 @@ void ParsedOptions::Usage(const char* fmt, ...) {
   UsageMessage(stream, "  -Xjitosrthreshold:integervalue\n");
   UsageMessage(stream, "  -Xjitprithreadweight:integervalue\n");
   UsageMessage(stream, "  -X[no]relocate\n");
+  UsageMessage(stream, "  -X[no]CHA\n");
   UsageMessage(stream, "  -X[no]dex2oat (Whether to invoke dex2oat on the application)\n");
   UsageMessage(stream, "  -X[no]image-dex2oat (Whether to create and use a boot image)\n");
   UsageMessage(stream, "  -Xno-dex-file-fallback "
