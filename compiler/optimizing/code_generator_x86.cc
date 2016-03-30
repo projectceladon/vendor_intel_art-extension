@@ -5525,39 +5525,48 @@ void InstructionCodeGeneratorX86::VisitArraySet(HArraySet* instruction) {
       uint32_t data_offset = mirror::Array::DataOffset(sizeof(int64_t)).Uint32Value();
       if (index.IsConstant()) {
         size_t offset = (index.GetConstant()->AsIntConstant()->GetValue() << TIMES_8) + data_offset;
+        Address low_address = Address(array, offset);
+        Address high_address = Address(array, offset + kX86WordSize);
         if (value.IsRegisterPair()) {
           if (use_non_temporal) {
             // Generate the non-temporal move instead.
-            __ movntl(Address(array, offset), value.AsRegisterPairLow<Register>());
+            __ movntl(low_address, value.AsRegisterPairLow<Register>());
             codegen_->MaybeRecordImplicitNullCheck(instruction);
-            __ movntl(Address(array, offset + kX86WordSize), value.AsRegisterPairHigh<Register>());
+            __ movntl(high_address, value.AsRegisterPairHigh<Register>());
           } else {
-            __ movl(Address(array, offset), value.AsRegisterPairLow<Register>());
+            __ movl(low_address, value.AsRegisterPairLow<Register>());
             codegen_->MaybeRecordImplicitNullCheck(instruction);
-            __ movl(Address(array, offset + kX86WordSize), value.AsRegisterPairHigh<Register>());
+            __ movl(high_address, value.AsRegisterPairHigh<Register>());
           }
         } else {
           DCHECK(value.IsConstant());
           int64_t val = value.GetConstant()->AsLongConstant()->GetValue();
-          __ movl(Address(array, offset), Immediate(Low32Bits(val)));
+          __ movl(low_address, Immediate(Low32Bits(val)));
           codegen_->MaybeRecordImplicitNullCheck(instruction);
-          __ movl(Address(array, offset + kX86WordSize), Immediate(High32Bits(val)));
+          __ movl(high_address, Immediate(High32Bits(val)));
         }
       } else {
+        Address low_address = Address(array, index.AsRegister<Register>(),
+                                      TIMES_8, data_offset);
+        Address high_address = Address(array, index.AsRegister<Register>(),
+                                       TIMES_8, data_offset + kX86WordSize);
         if (value.IsRegisterPair()) {
-          __ movl(Address(array, index.AsRegister<Register>(), TIMES_8, data_offset),
-                  value.AsRegisterPairLow<Register>());
-          codegen_->MaybeRecordImplicitNullCheck(instruction);
-          __ movl(Address(array, index.AsRegister<Register>(), TIMES_8, data_offset + kX86WordSize),
-                  value.AsRegisterPairHigh<Register>());
+          if (use_non_temporal) {
+              // Generate the non-temporal move instead.
+              __ movntl(low_address, value.AsRegisterPairLow<Register>());
+              codegen_->MaybeRecordImplicitNullCheck(instruction);
+              __ movntl(high_address, value.AsRegisterPairHigh<Register>());
+          } else {
+            __ movl(low_address, value.AsRegisterPairLow<Register>());
+            codegen_->MaybeRecordImplicitNullCheck(instruction);
+            __ movl(high_address, value.AsRegisterPairHigh<Register>());
+          }
         } else {
           DCHECK(value.IsConstant());
           int64_t val = value.GetConstant()->AsLongConstant()->GetValue();
-          __ movl(Address(array, index.AsRegister<Register>(), TIMES_8, data_offset),
-                  Immediate(Low32Bits(val)));
+          __ movl(low_address, Immediate(Low32Bits(val)));
           codegen_->MaybeRecordImplicitNullCheck(instruction);
-          __ movl(Address(array, index.AsRegister<Register>(), TIMES_8, data_offset + kX86WordSize),
-                  Immediate(High32Bits(val)));
+          __ movl(high_address, Immediate(High32Bits(val)));
         }
       }
       break;
