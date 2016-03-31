@@ -66,6 +66,15 @@ enum MethodCompilationStat {
   kImplicitNullCheckGenerated,
   kExplicitNullCheckGenerated,
   kDirectCallOptimized,
+  kCurrentMethodUserNewInstance,
+  kCurrentMethodUserNewArray,
+  kCurrentMethodUserInvoke,
+  kCurrentMethodUserLoadClass,
+  kCurrentMethodUserLoadString,
+  kCurrentMethodUserOther,
+  kMethodLoadViaCurrentMethod,
+  kMethodLoadViaDexCache,
+  kMethodLoadViaDirectPtr,
   kIntelBIVFound,
   kIntelRemoveUnusedLoops,
   kIntelLoopPeeled,
@@ -169,6 +178,15 @@ class OptimizingCompilerStats {
       case kImplicitNullCheckGenerated: name = "ImplicitNullCheckGenerated"; break;
       case kExplicitNullCheckGenerated: name = "ExplicitNullCheckGenerated"; break;
       case kDirectCallOptimized : name = "DirectCallOptimized"; break;
+      case kCurrentMethodUserNewInstance : name = "CurrentMethodUserNewInstance"; break;
+      case kCurrentMethodUserNewArray : name = "CurrentMethodUserNewArray"; break;
+      case kCurrentMethodUserInvoke : name = "CurrentMethodUserInvoke"; break;
+      case kCurrentMethodUserLoadClass : name = "CurrentMethodUserLoadClass"; break;
+      case kCurrentMethodUserLoadString : name = "CurrentMethodUserLoadString"; break;
+      case kCurrentMethodUserOther : name = "CurrentMethodUserOther"; break;
+      case kMethodLoadViaCurrentMethod : name = "MethodLoadViaCurrentMethod"; break;
+      case kMethodLoadViaDexCache : name = "MethodLoadViaDexCache"; break;
+      case kMethodLoadViaDirectPtr : name = "MethodLoadViaDirectPtr"; break;
       case kIntelBIVFound: return "kIntelBIVFound";
       case kIntelRemoveUnusedLoops: return "kIntelRemoveUnusedLoops";
       case kIntelLoopPeeled: return "kIntelLoopPeeled";

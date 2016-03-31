@@ -19,6 +19,7 @@
  * and approved by Intel in writing.
  */
 
+#include "abi_transition_helper.h"
 #include "aur.h"
 #include "base/dumpable.h"
 #include "base/timing_logger.h"
@@ -62,6 +63,8 @@ enum PassInstrumentation {
   kPassInsertBefore,
   kPassInsertAfter,
   kPassReplace,
+  kPassAppend,
+  kPassPrepend,
 };
 
 /**
@@ -101,6 +104,7 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   { "load_store_elimination", "value_propagation_through_heap", kPassInsertBefore },
   { "aur", "remove_unused_loops", kPassInsertBefore },
   { "phi_cleanup_after_aur", "aur", kPassInsertAfter },
+  { "abi_transition_helper", "", kPassAppend },
 
   // Devirtualization is always inserted before sharpening. We also insert it twice to increase
   // its effectiveness - before and after inlining.
@@ -135,6 +139,14 @@ static void AddX86Optimization(HOptimization* optimization,
 
   HCustomPassPlacement* placement = iter->second;
 
+  if (placement->directive == kPassAppend) {
+    list.push_back(optimization);
+    return;
+  } else if (placement->directive == kPassPrepend) {
+    list.insert(list.begin(), optimization);
+    return;
+  }
+
   // Find the right pass to change now.
   size_t len = list.size();
   size_t idx;
@@ -145,7 +157,7 @@ static void AddX86Optimization(HOptimization* optimization,
           list[idx] = optimization;
           break;
         case kPassInsertBefore:
-        case kPassInsertAfter:
+        case kPassInsertAfter: {
           // Add an empty element.
           list.push_back(nullptr);
 
@@ -164,6 +176,12 @@ static void AddX86Optimization(HOptimization* optimization,
 
           // Place the new element.
           list[start] = optimization;
+          break;
+        }
+        default:
+          if (kIsDebugBuild) {
+            LOG(FATAL) << "Unexpected placement directive << " << placement->directive;
+          }
           break;
       }
       // Done here.
@@ -377,6 +395,7 @@ void RunOptimizationsX86(HGraph* graph,
                                                                    dex_compilation_unit,
                                                                    driver,
                                                                    stats);
+  HAbiTransitionHelper* abi_helper = new (arena) HAbiTransitionHelper(graph, driver, stats);
 
 
   HOptimization_X86* opt_array[] = {
@@ -405,6 +424,7 @@ void RunOptimizationsX86(HGraph* graph,
     devirtualization,
     devirtualization2,
     sharpening2,
+    abi_helper,
   };
 
   // Fill verbose flags where we need it.
