@@ -386,6 +386,9 @@ class MemoryOperandVisitor : public HGraphVisitor {
       }
       // We need to match on base and index.
       HArraySet* set = instruction->AsArraySet();
+      if (UNLIKELY(set == nullptr)) {
+        return;
+      }
       if (set->GetArray() != rhs_mem_op->InputAt(1) ||
           set->GetIndex() != rhs_mem_op->InputAt(2)) {
         return;
