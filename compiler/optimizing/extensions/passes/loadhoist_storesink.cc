@@ -31,6 +31,12 @@
 namespace art {
 
 void LoadHoistStoreSink::Run() {
+  if (graph_->IsDebuggable()) {
+    // Sinking stores is not safe across any runtime points which can deoptimize.
+    PRINT_PASS_MESSAGE(this, "Skipping because graph is debuggable.");
+    return;
+  }
+
   HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
   HLoopInformation_X86* loop_start = graph->GetLoopInformation();
   // For each inner loop in the graph.
