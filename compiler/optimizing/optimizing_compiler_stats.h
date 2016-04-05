@@ -90,6 +90,7 @@ enum MethodCompilationStat {
   kIntelPureDirectCallDeleted,
   kIntelPureStaticCallDeleted,
   kIntelUselessNullCheckDeleted,
+  kIntelInvokeMarkedAsPure,
   kIntelLoopFullyUnrolled,
   kIntelRemovedDeadInstructionViaAUR,
   kIntelRemovedDeadReferenceViaAUR,
@@ -202,6 +203,7 @@ class OptimizingCompilerStats {
       case kIntelPureDirectCallDeleted: return "kIntelPureDirectCallDeleted";
       case kIntelPureStaticCallDeleted: return "kIntelPureStaticCallDeleted";
       case kIntelUselessNullCheckDeleted: return "kIntelUselessNullCheckDeleted";
+      case kIntelInvokeMarkedAsPure: return "IntelInvokeMarkedAsPure";
       case kIntelLoopFullyUnrolled: return "kIntelLoopFullyUnrolled";
       case kIntelRemovedDeadInstructionViaAUR: return "kIntelRemovedDeadInstructionViaAUR";
       case kIntelRemovedDeadReferenceViaAUR: return "kIntelRemovedDeadReferenceViaAUR";

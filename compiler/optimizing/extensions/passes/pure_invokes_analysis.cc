@@ -18,8 +18,114 @@
 #include "pure_invokes_analysis.h"
 
 namespace art {
+const SideEffects HPureInvokesAnalysis::se_none_ = SideEffects::None();
+const SideEffects HPureInvokesAnalysis::se_memory_read_ = SideEffects::AllReads();
+const SideEffects HPureInvokesAnalysis::se_memory_read_and_alloc_ =
+    SideEffects::AllReads().Union(SideEffects::CanTriggerGC());
+
+HPureInvokesAnalysis::PureMethodSignature HPureInvokesAnalysis::whitelist_[] = {
+  { "bool java.lang.String.isEmpty()", HPureInvokesAnalysis::se_none_ },
+  { "int java.lang.String.indexOf(int)", HPureInvokesAnalysis::se_none_ },
+  { "int java.lang.String.indexOf(int, int)", HPureInvokesAnalysis::se_none_ },
+  { "int java.lang.String.indexOf(java.lang.String)", HPureInvokesAnalysis::se_none_ },
+  { "int java.lang.String.indexOf(java.lang.String, int)", HPureInvokesAnalysis::se_none_ },
+  { "int java.lang.String.lastIndexOf(int)", HPureInvokesAnalysis::se_none_ },
+  { "int java.lang.String.lastIndexOf(int, int)", HPureInvokesAnalysis::se_none_ },
+  { "int java.lang.String.lastIndexOf(java.lang.String)", HPureInvokesAnalysis::se_none_ },
+  { "int java.lang.String.lastIndexOf(java.lang.String, int)", HPureInvokesAnalysis::se_none_ },
+  { "int java.lang.String.length()", HPureInvokesAnalysis::se_none_ },
+  { "java.lang.String java.lang.String.toString()", HPureInvokesAnalysis::se_memory_read_and_alloc_ },
+  // StringBuffer methods.
+  { "bool java.lang.StringBuffer.isEmpty()", HPureInvokesAnalysis::se_memory_read_ },
+  { "int java.lang.StringBuffer.indexOf(int)", HPureInvokesAnalysis::se_memory_read_ },
+  { "int java.lang.StringBuffer.indexOf(int, int)", HPureInvokesAnalysis::se_memory_read_ },
+  { "int java.lang.StringBuffer.indexOf(java.lang.String)", HPureInvokesAnalysis::se_memory_read_ },
+  { "int java.lang.StringBuffer.indexOf(java.lang.String, int)", HPureInvokesAnalysis::se_memory_read_ },
+  { "int java.lang.StringBuffer.lastIndexOf(int)", HPureInvokesAnalysis::se_memory_read_ },
+  { "int java.lang.StringBuffer.lastIndexOf(int, int)", HPureInvokesAnalysis::se_memory_read_ },
+  { "int java.lang.StringBuffer.lastIndexOf(java.lang.String)", HPureInvokesAnalysis::se_memory_read_ },
+  { "int java.lang.StringBuffer.lastIndexOf(java.lang.String, int)", HPureInvokesAnalysis::se_memory_read_ },
+  { "int java.lang.StringBuffer.length()", HPureInvokesAnalysis::se_memory_read_ },
+  { "java.lang.String java.lang.StringBuffer.toString()", HPureInvokesAnalysis::se_memory_read_and_alloc_ },
+  // StringBuilder methods.
+  { "bool java.lang.StringBuilder.isEmpty()", HPureInvokesAnalysis::se_memory_read_ },
+  { "int java.lang.StringBuilder.indexOf(int)", HPureInvokesAnalysis::se_memory_read_ },
+  { "int java.lang.StringBuilder.indexOf(int, int)", HPureInvokesAnalysis::se_memory_read_ },
+  { "int java.lang.StringBuilder.indexOf(java.lang.String)", HPureInvokesAnalysis::se_memory_read_ },
+  { "int java.lang.StringBuilder.indexOf(java.lang.String, int)", HPureInvokesAnalysis::se_memory_read_ },
+  { "int java.lang.StringBuilder.lastIndexOf(int)", HPureInvokesAnalysis::se_memory_read_ },
+  { "int java.lang.StringBuilder.lastIndexOf(int, int)", HPureInvokesAnalysis::se_memory_read_ },
+  { "int java.lang.StringBuilder.lastIndexOf(java.lang.String)", HPureInvokesAnalysis::se_memory_read_ },
+  { "int java.lang.StringBuilder.lastIndexOf(java.lang.String, int)", HPureInvokesAnalysis::se_memory_read_ },
+  { "int java.lang.StringBuilder.length()", HPureInvokesAnalysis::se_memory_read_ },
+  { "java.lang.String java.lang.StringBuilder.toString()", HPureInvokesAnalysis::se_memory_read_and_alloc_ },
+  // Math methods.
+  { "int java.lang.Math.abs(int)", HPureInvokesAnalysis::se_none_ },
+  { "long java.lang.Math.abs(long)", HPureInvokesAnalysis::se_none_ },
+  { "float java.lang.Math.abs(float)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.abs(double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.asin(double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.acos(double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.atan(double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.atan2(double, double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.cbrt(double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.ceil(double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.copySign(double, double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.cos(double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.cosh(double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.exp(double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.expm1(double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.floor(double)", HPureInvokesAnalysis::se_none_ },
+  { "int java.lang.Math.getExponent(double)", HPureInvokesAnalysis::se_none_ },
+  { "int java.lang.Math.getExponent(float)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.hypot(double, double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.log(double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.log10(double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.max(double, double)", HPureInvokesAnalysis::se_none_ },
+  { "float java.lang.Math.max(float, float)", HPureInvokesAnalysis::se_none_ },
+  { "int java.lang.Math.max(int, int)", HPureInvokesAnalysis::se_none_ },
+  { "long java.lang.Math.max(long, long)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.min(double, double)", HPureInvokesAnalysis::se_none_ },
+  { "float java.lang.Math.min(float, float)", HPureInvokesAnalysis::se_none_ },
+  { "int java.lang.Math.min(int, int)", HPureInvokesAnalysis::se_none_ },
+  { "long java.lang.Math.min(long, long)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.nextAfter(double, double)", HPureInvokesAnalysis::se_none_ },
+  { "float java.lang.Math.nextAfter(float, double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.nextUp(double)", HPureInvokesAnalysis::se_none_ },
+  { "float java.lang.Math.nextUp(float)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.pow(double, double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.rint(double)", HPureInvokesAnalysis::se_none_ },
+  { "long java.lang.Math.round(double)", HPureInvokesAnalysis::se_none_ },
+  { "int java.lang.Math.round(float)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.scalb(double, int)", HPureInvokesAnalysis::se_none_ },
+  { "float java.lang.Math.scalb(float, int)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.signum(double)", HPureInvokesAnalysis::se_none_ },
+  { "float java.lang.Math.signum(float)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.sin(double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.sinh(double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.sqrt(double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.tan(double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.tanh(double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.toDigrees(double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.toRadians(double)", HPureInvokesAnalysis::se_none_ },
+  { "double java.lang.Math.ulp(double)", HPureInvokesAnalysis::se_none_ },
+  { "float java.lang.Math.ulp(float)", HPureInvokesAnalysis::se_none_ },
+};
+
+const char* HPureInvokesAnalysis::never_returns_null_[] = {
+  // String methods.
+  "java.lang.String java.lang.String.toString()",
+  // StringBuffer methods.
+  "java.lang.String java.lang.StringBuffer.toString()",
+  // StringBuilder methods.
+  "java.lang.String java.lang.StringBuilder.toString()",
+};
 
 void HPureInvokesAnalysis::Run() {
+  // Motion and removal of invokes may break the debugability.
+  if (graph_->IsDebuggable()) {
+    return;
+  }
   // Reduce the scope to method with loops only to not hurt compile time.
   HOnlyInnerLoopIterator loop_iter(GRAPH_TO_GRAPH_X86(graph_)->GetLoopInformation());
   if (loop_iter.Done()) {
@@ -29,15 +135,8 @@ void HPureInvokesAnalysis::Run() {
     return;
   }
   PRINT_PASS_OSTREAM_MESSAGE(this, "Start " << GetMethodName(graph_));
-  ResolvedInvokes hoisting_candidates;
 
-  if (ProcessPureInvokes(hoisting_candidates)) {
-    PRINT_PASS_OSTREAM_MESSAGE(this, "Found " << hoisting_candidates.size()
-                                     << " invoke candidates for hoisting");
-    HoistPureInvokes(hoisting_candidates);
-  } else {
-    PRINT_PASS_MESSAGE(this, "Found no candidates for pure invokes hoisting");
-  }
+  ProcessPureInvokes();
 
   PRINT_PASS_OSTREAM_MESSAGE(this, "End " << GetMethodName(graph_));
 }
@@ -68,112 +167,33 @@ bool HPureInvokesAnalysis::IsPureMethodInvoke(HInvokeStaticOrDirect* call) {
   // Do we already know the answer for this method?
   auto it_pure = pure_invokes_.find(target_method);
   if (it_pure != pure_invokes_.end()) {
-    return it_pure->second;
+    if (it_pure->second.is_pure) {
+      // Mark call as pure.
+      call->SetPure();
+      call->SetSideEffects(it_pure->second.se);
+    }
+    return it_pure->second.is_pure;
   }
 
-  // The whitelist contains known pure methods.
-  const char* whitelist[] = {
-    // String methods.
-    "bool java.lang.String.isEmpty()",
-    "int java.lang.String.indexOf(int)",
-    "int java.lang.String.indexOf(int, int)",
-    "int java.lang.String.indexOf(java.lang.String)",
-    "int java.lang.String.indexOf(java.lang.String, int)",
-    "int java.lang.String.lastIndexOf(int)",
-    "int java.lang.String.lastIndexOf(int, int)",
-    "int java.lang.String.lastIndexOf(java.lang.String)",
-    "int java.lang.String.lastIndexOf(java.lang.String, int)",
-    "int java.lang.String.length()",
-    "java.lang.String java.lang.String.toString()",
-    // StringBuffer methods.
-    "bool java.lang.StringBuffer.isEmpty()",
-    "int java.lang.StringBuffer.indexOf(int)",
-    "int java.lang.StringBuffer.indexOf(int, int)",
-    "int java.lang.StringBuffer.indexOf(java.lang.String)",
-    "int java.lang.StringBuffer.indexOf(java.lang.String, int)",
-    "int java.lang.StringBuffer.lastIndexOf(int)",
-    "int java.lang.StringBuffer.lastIndexOf(int, int)",
-    "int java.lang.StringBuffer.lastIndexOf(java.lang.String)",
-    "int java.lang.StringBuffer.lastIndexOf(java.lang.String, int)",
-    "int java.lang.StringBuffer.length()",
-    "java.lang.String java.lang.StringBuffer.toString()",
-    // StringBuilder methods.
-    "bool java.lang.StringBuilder.isEmpty()",
-    "int java.lang.StringBuilder.indexOf(int)",
-    "int java.lang.StringBuilder.indexOf(int, int)",
-    "int java.lang.StringBuilder.indexOf(java.lang.String)",
-    "int java.lang.StringBuilder.indexOf(java.lang.String, int)",
-    "int java.lang.StringBuilder.lastIndexOf(int)",
-    "int java.lang.StringBuilder.lastIndexOf(int, int)",
-    "int java.lang.StringBuilder.lastIndexOf(java.lang.String)",
-    "int java.lang.StringBuilder.lastIndexOf(java.lang.String, int)",
-    "int java.lang.StringBuilder.length()",
-    "java.lang.String java.lang.StringBuilder.toString()",
-    // Math methods.
-    "int java.lang.Math.abs(int)",
-    "long java.lang.Math.abs(long)",
-    "float java.lang.Math.abs(float)",
-    "double java.lang.Math.abs(double)",
-    "double java.lang.Math.asin(double)",
-    "double java.lang.Math.acos(double)",
-    "double java.lang.Math.atan(double)",
-    "double java.lang.Math.atan2(double, double)",
-    "double java.lang.Math.cbrt(double)",
-    "double java.lang.Math.ceil(double)",
-    "double java.lang.Math.copySign(double, double)",
-    "double java.lang.Math.cos(double)",
-    "double java.lang.Math.cosh(double)",
-    "double java.lang.Math.exp(double)",
-    "double java.lang.Math.expm1(double)",
-    "double java.lang.Math.floor(double)",
-    "int java.lang.Math.getExponent(double)",
-    "int java.lang.Math.getExponent(float)",
-    "double java.lang.Math.hypot(double, double)",
-    "double java.lang.Math.log(double)",
-    "double java.lang.Math.log10(double)",
-    "double java.lang.Math.max(double, double)",
-    "float java.lang.Math.max(float, float)",
-    "int java.lang.Math.max(int, int)",
-    "long java.lang.Math.max(long, long)",
-    "double java.lang.Math.min(double, double)",
-    "float java.lang.Math.min(float, float)",
-    "int java.lang.Math.min(int, int)",
-    "long java.lang.Math.min(long, long)",
-    "double java.lang.Math.nextAfter(double, double)",
-    "float java.lang.Math.nextAfter(float, double)",
-    "double java.lang.Math.nextUp(double)",
-    "float java.lang.Math.nextUp(float)",
-    "double java.lang.Math.pow(double, double)",
-    "double java.lang.Math.rint(double)",
-    "long java.lang.Math.round(double)",
-    "int java.lang.Math.round(float)",
-    "double java.lang.Math.scalb(double, int)",
-    "float java.lang.Math.scalb(float, int)",
-    "double java.lang.Math.signum(double)",
-    "float java.lang.Math.signum(float)",
-    "double java.lang.Math.sin(double)",
-    "double java.lang.Math.sinh(double)",
-    "double java.lang.Math.sqrt(double)",
-    "double java.lang.Math.tan(double)",
-    "double java.lang.Math.tanh(double)",
-    "double java.lang.Math.toDigrees(double)",
-    "double java.lang.Math.toRadians(double)",
-    "double java.lang.Math.ulp(double)",
-    "float java.lang.Math.ulp(float)",
-  };
-  const size_t len = arraysize(whitelist);
+  const size_t len = arraysize(whitelist_);
   const std::string method_name = PrettyMethod(target_method.dex_method_index,
                                                *target_method.dex_file);
   const char* char_name = method_name.c_str();
   for (size_t i = 0; i < len; i++) {
-    if (strcmp(char_name, whitelist[i]) == 0) {
-        pure_invokes_.Put(target_method, true);
+    if (strcmp(char_name, whitelist_[i].method_name) == 0) {
         // Remember that this one is pure.
+        MethodPurityInfo pure = { true, whitelist_[i].se };
+        pure_invokes_.Put(target_method, pure);
+        // Mark call as pure.
+        call->SetPure();
+        call->SetSideEffects(whitelist_[i].se);
         return true;
     }
   }
+
+  MethodPurityInfo not_pure = { false, call->GetSideEffects() };
   // Remember that this one is not pure.
-  pure_invokes_.Put(target_method, false);
+  pure_invokes_.Put(target_method, not_pure);
   return false;
 }
 
@@ -186,21 +206,13 @@ bool HPureInvokesAnalysis::IsInvokeThatCanReturnNull(HInvokeStaticOrDirect* call
     return it_null->second;
   }
 
-  // We assume that all invokes except the whitelist can return null.
-  const char* whitelist[] = {
-    // String methods.
-    "java.lang.String java.lang.String.toString()",
-    // StringBuffer methods.
-    "java.lang.String java.lang.StringBuffer.toString()",
-    // StringBuilder methods.
-    "java.lang.String java.lang.StringBuilder.toString()",
-  };
-  const size_t len = arraysize(whitelist);
+  // We assume that all invokes except the never_returns_null_ can return null.
+  const size_t len = arraysize(never_returns_null_);
   const std::string method_name = PrettyMethod(target_method.dex_method_index,
                                                *target_method.dex_file);
   const char* char_name = method_name.c_str();
   for (size_t i = 0; i < len; i++) {
-    if (strcmp(char_name, whitelist[i]) == 0) {
+    if (strcmp(char_name, never_returns_null_[i]) == 0) {
         null_invokes_.Put(target_method, false);
         return false;
     }
@@ -209,14 +221,9 @@ bool HPureInvokesAnalysis::IsInvokeThatCanReturnNull(HInvokeStaticOrDirect* call
   return true;
 }
 
-bool HPureInvokesAnalysis::ProcessPureInvokes(ResolvedInvokes& hoisting_candidates) {
-  DCHECK(hoisting_candidates.empty());
+void HPureInvokesAnalysis::ProcessPureInvokes() {
   for (HPostOrderIterator block_iter(*graph_); !block_iter.Done(); block_iter.Advance()) {
     HBasicBlock* block = block_iter.Current();
-    auto loop = LOOPINFO_TO_LOOPINFO_X86(block->GetLoopInformation());
-    bool can_hoist_from_block = loop != nullptr &&
-                                loop->IsInner() &&
-                                loop->IsBottomTested();
 
     for (HBackwardInstructionIterator insn_iter(block->GetInstructions());
          !insn_iter.Done(); insn_iter.Advance()) {
@@ -240,6 +247,7 @@ bool HPureInvokesAnalysis::ProcessPureInvokes(ResolvedInvokes& hoisting_candidat
         // We are interested in static/direct invokes only.
         continue;
       }
+
       if (!IsPureMethodInvoke(call)) {
         // We can optimize away only invokes with no side effects.
         continue;
@@ -253,10 +261,7 @@ bool HPureInvokesAnalysis::ProcessPureInvokes(ResolvedInvokes& hoisting_candidat
                                            << CalledMethodName(call));
           MaybeRecordStat(MethodCompilationStat::kIntelPureStaticCallDeleted);
           block->RemoveInstruction(call);
-        } else if (can_hoist_from_block) {
-          PRINT_PASS_OSTREAM_MESSAGE(this, "Found candidate for pure static"
-                                           << " invoke hoisting: " << call);
-          hoisting_candidates.push_back(call);
+          continue;
         }
       } else {
         // The argument should not be null to prove that this invoke cannot throw
@@ -274,22 +279,16 @@ bool HPureInvokesAnalysis::ProcessPureInvokes(ResolvedInvokes& hoisting_candidat
                                            << callee_object);
           MaybeRecordStat(MethodCompilationStat::kIntelPureDirectCallDeleted);
           block->RemoveInstruction(call);
-        } else if (can_hoist_from_block) {
-          PRINT_PASS_OSTREAM_MESSAGE(this, "Found candidate for pure direct"
-                                           << " invoke hoisting: " << call);
-          // This invoke is a potential candidate for hoisting.
-          hoisting_candidates.push_back(call);
+          continue;
         }
       }
+
+      // We have marked it as pure during the check. Since it was not
+      // removed, report here that it was marked.
+      PRINT_PASS_OSTREAM_MESSAGE(this, "Marked as pure: " << call);
+      MaybeRecordStat(MethodCompilationStat::kIntelInvokeMarkedAsPure);
     }
   }
-
-  return !hoisting_candidates.empty();
-}
-
-bool HPureInvokesAnalysis::HoistPureInvokes(ResolvedInvokes& hoisting_candidates) {
-  DCHECK(!hoisting_candidates.empty());
-  return false;
 }
 
 }  // namespace art

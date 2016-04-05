@@ -34,9 +34,23 @@ bool HInstructionCloner::AllOkay() const {
       // was manually added. We check that now.
       if (manual_clones_.find(it.first) == manual_clones_.end()) {
         CHECK_EQ(it.first->GetKind(), it.second->GetKind()) << GetMethodName(GetGraph());
-        CHECK_EQ(it.first->HasEnvironment(), it.second->HasEnvironment()) << GetMethodName(GetGraph());
+        CHECK_EQ(it.first->HasEnvironment(), it.second->HasEnvironment())
+          << GetMethodName(GetGraph());
         if (it.first->CanBeMoved()) {
-          CHECK(it.first->InstructionDataEquals(it.second)) << it.first;
+          if (!it.first->IsInvoke()
+              || it.first->AsInvoke()->GetIntrinsic() != Intrinsics::kNone) {
+            CHECK(it.first->InstructionDataEquals(it.second)) << it.first;
+          } else {
+            // TODO: Google implementation of InstructionDataEquals for invokes
+            // compares intrinsics. We may have pure invokes that are movable,
+            // but are not intrinsics. Maybe this needs to be changed in Google
+            // code, but so far it is unclear what exactly should be
+            // checked for pure methods and if we need this check at all.
+            CHECK(it.first->IsInvokeStaticOrDirect());
+            CHECK(it.second->IsInvokeStaticOrDirect());
+            CHECK(it.first->AsInvokeStaticOrDirect()->IsPure());
+            CHECK(it.second->AsInvokeStaticOrDirect()->IsPure());
+          }
         }
       }
     }
@@ -644,6 +658,10 @@ void HInstructionCloner::VisitInvokeStaticOrDirect(HInvokeStaticOrDirect* instr)
                                            instr->GetOptimizedInvokeType(),
                                            instr->GetClinitCheckRequirement());
     clone->TrimInputCapacity(instr->InputCount());
+    if (instr->IsPure()) {
+      clone->SetPure();
+      clone->SetSideEffects(instr->GetSideEffects());
+    }
     FinishInvokeCloning(instr, clone);
   }
 }

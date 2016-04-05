@@ -3891,7 +3891,8 @@ class HInvokeStaticOrDirect : public HInvoke {
                 method_index,
                 original_invoke_type),
         target_method_(target_method),
-        dispatch_info_(dispatch_info) {
+        dispatch_info_(dispatch_info),
+        pure_(false) {
     SetPackedField<OptimizedInvokeTypeField>(optimized_invoke_type);
     SetPackedField<ClinitCheckRequirementField>(clinit_check_requirement);
   }
@@ -4044,6 +4045,16 @@ class HInvokeStaticOrDirect : public HInvoke {
     return kind == MethodLoadKind::kRecursive || kind == MethodLoadKind::kDexCacheViaMethod;
   }
 
+  bool IsPure() const {
+    return pure_;
+  }
+
+  void SetPure(bool pure = true) {
+    pure_ = pure;
+  }
+
+  bool CanBeMoved() const OVERRIDE { return IsPure() || HInvoke::CanBeMoved(); }
+
   DECLARE_INSTRUCTION(InvokeStaticOrDirect);
 
  protected:
@@ -4087,6 +4098,7 @@ class HInvokeStaticOrDirect : public HInvoke {
   // in derived class to increase visibility.
   MethodReference target_method_;
   DispatchInfo dispatch_info_;
+  bool pure_;
 
   DISALLOW_COPY_AND_ASSIGN(HInvokeStaticOrDirect);
 };

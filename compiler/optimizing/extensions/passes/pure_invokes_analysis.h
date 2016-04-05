@@ -27,8 +27,6 @@
 
 namespace art {
 
-typedef std::vector<HInvokeStaticOrDirect*> ResolvedInvokes;
-
 class HPureInvokesAnalysis : public HOptimization_X86 {
  public:
   HPureInvokesAnalysis(HGraph* graph,
@@ -39,16 +37,21 @@ class HPureInvokesAnalysis : public HOptimization_X86 {
 
  private:
   /**
+    * @brief Stores info about method purity and its side effects.
+    */
+  struct MethodPurityInfo {
+    const bool is_pure;
+    const SideEffects se;
+  };
+
+  /**
    * @brief Finds candidates for pure invokes hoisting.
    * @details This method makes primary part of work. It emilinates pure
    *          invokes for which we have proved that it is legal, and also
    *          accumulates those that can potentially be hoisted to the vector.
-   * @param hoisting_candidates The vector where candidates for hoisting are accumulated.
    * @return true, if we found at least one candidate for hoisting.
    */
-  bool ProcessPureInvokes(ResolvedInvokes& hoisting_candidates);
-
-  bool HoistPureInvokes(ResolvedInvokes& hoisting_candidates);
+  void ProcessPureInvokes();
 
   /**
    * @brief Checks whether the result of the instuction can be null.
@@ -60,7 +63,7 @@ class HPureInvokesAnalysis : public HOptimization_X86 {
   /**
    * @brief Checks whether the call is an invoke of pure method.
    * @param call The call to check.
-   * @return true, if call invokes a pure method.
+   * @return true, if the method in this call is pure.
    */
   bool IsPureMethodInvoke(HInvokeStaticOrDirect* call);
 
@@ -75,8 +78,26 @@ class HPureInvokesAnalysis : public HOptimization_X86 {
   static constexpr const char* kPureInvokesHoistingPassName = "pure_invokes_analysis";
 
   // Method reference -> known answer for this method.
-  SafeMap<const MethodReference, bool, MethodReferenceComparator> pure_invokes_;
+  SafeMap<const MethodReference, MethodPurityInfo, MethodReferenceComparator> pure_invokes_;
   SafeMap<const MethodReference, bool, MethodReferenceComparator> null_invokes_;
+
+  // Presets of side effects of the invokes we consider pure.
+  static const SideEffects se_none_;
+  static const SideEffects se_memory_read_;
+  static const SideEffects se_memory_read_and_alloc_;
+
+  /**
+    * @brief Specifies side effects of pure methods with given names.
+    */
+  struct PureMethodSignature {
+    const char* method_name;
+    const SideEffects se;
+  };
+
+  // The whitelist contains known pure methods.
+  static PureMethodSignature whitelist_[];
+  // The signatures of methods that never return null.
+  static const char* never_returns_null_[];
 
   DISALLOW_COPY_AND_ASSIGN(HPureInvokesAnalysis);
 };
