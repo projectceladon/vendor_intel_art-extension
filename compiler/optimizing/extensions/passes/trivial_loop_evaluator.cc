@@ -735,10 +735,8 @@ void TrivialLoopEvaluator::UpdateRegisters(HLoopInformation_X86* loop,
     HConstant* constant_node = nullptr;
 
     // Go through each of the instruction's users.
-    for (HUseIterator<HInstruction*> it(insn->GetUses()); !it.Done(); it.Advance()) {
-      HUseListNode<HInstruction*>* current = it.Current();
-      HInstruction* user = current->GetUser();
-      size_t input_index = current->GetIndex();
+    for (HAllUseIterator it(insn); !it.Done(); it.Advance()) {
+      HInstruction* user = it.Current();
 
       // We do not care about users in the loop (we will kill them anyway).
       if (loop->Contains(*user->GetBlock())) {
@@ -749,27 +747,7 @@ void TrivialLoopEvaluator::UpdateRegisters(HLoopInformation_X86* loop,
         constant_node = visitor.GetConstant(graph_, insn, constant);
         CHECK(constant_node);
       }
-      user->SetRawInputAt(input_index, constant_node);
-      constant_node->AddUseAt(user, input_index);
-    }
-
-    // Go through each of the environment's users.
-    for (HUseIterator<HEnvironment*> it(insn->GetEnvUses()); !it.Done(); it.Advance()) {
-      HUseListNode<HEnvironment*>* current = it.Current();
-      HEnvironment* user = current->GetUser();
-      size_t input_index = current->GetIndex();
-
-      // We do not care about users in the loop (we will kill then anyway).
-      if (loop->Contains(*user->GetHolder()->GetBlock())) {
-        continue;
-      }
-
-      if (constant_node == nullptr) {
-        constant_node = visitor.GetConstant(graph_, insn, constant);
-        CHECK(constant_node);
-      }
-      user->SetRawEnvAt(input_index, constant_node);
-      constant_node->AddEnvUseAt(user, input_index);
+      it.ReplaceInput(constant_node);
     }
   }
 }

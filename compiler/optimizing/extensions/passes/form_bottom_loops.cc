@@ -33,6 +33,63 @@
 
 namespace art {
 
+// Stores all required information about blocks of a loop being optimized.
+struct FBLContext {
+  enum InstructionPosition {
+    kHeader,
+    kExit,
+    kPhi,
+    kBackEdge,
+    kClone
+  };
+
+  FBLContext(HLoopInformation_X86* loop,
+             HBasicBlock* pre_header_block,
+             HBasicBlock* header_block,
+             HBasicBlock* first_block,
+             HBasicBlock* back_block,
+             HBasicBlock* exit_block) :
+    loop_(loop),
+    pre_header_block_(pre_header_block),
+    header_block_(header_block),
+    first_block_(first_block),
+    back_block_(back_block),
+    exit_block_(exit_block) { }
+
+  InstructionPosition GetInstructionPosition(HInstruction* inst) {
+    HBasicBlock* user_block = inst->GetBlock();
+    if (user_block != header_block_) {
+        if (clones_.find(inst) == clones_.end()) {
+          return loop_->Contains(*user_block) ? kBackEdge : kExit;
+        } else {
+          return kClone;
+        }
+    } else {
+      return inst->IsPhi() ? kPhi : kHeader;
+    }
+  }
+
+  HLoopInformation_X86* loop_;
+  HBasicBlock* pre_header_block_;
+  HBasicBlock* header_block_;
+  HBasicBlock* first_block_;
+  HBasicBlock* back_block_;
+  HBasicBlock* exit_block_;
+  // Contains all clones.
+  std::unordered_set<HInstruction*> clones_;
+
+  // Maps phi on phi' that is used to fix up its uses.
+  InstrToInstrMap phi_fixup_;
+
+  // Maps phi on Phi(phi(0), phi') that is used to fix up its uses.
+  InstrToInstrMap interlace_phi_fixup_inside_;
+  InstrToInstrMap interlace_phi_fixup_outside_;
+
+  // Maps insn on Phi(insn, clone).
+  InstrToInstrMap header_fixup_inside_;
+  InstrToInstrMap header_fixup_outside_;
+};
+
 void HFormBottomLoops::Run() {
   HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
   HLoopInformation_X86* graph_loop = graph->GetLoopInformation();
@@ -237,9 +294,6 @@ void HFormBottomLoops::RewriteLoop(HLoopInformation_X86* loop,
                      first_block,
                      back_block,
                      exit_block);
-
-  // Initialize all maps.
-  PrepareForNewLoop();
 
   // Trahsform the CFG.
   DoCFGTransformation(graph, context, first_successor_is_exit);
@@ -485,7 +539,7 @@ void HFormBottomLoops::CloneInstructions(FBLContext& context,
       if (cloned_insn != nullptr) {
         if (cloned_insn->GetBlock() == nullptr) {
           back_block->AddInstruction(cloned_insn);
-          clones_.insert(cloned_insn);
+          context.clones_.insert(cloned_insn);
           FixHeaderInsnUses(insn, cloned_insn, context);
         }
 
@@ -530,8 +584,6 @@ void HFormBottomLoops::CloneInstructions(FBLContext& context,
 void HFormBottomLoops::FixHeaderInsnUses(HInstruction* insn,
                                          HInstruction* clone,
                                          FBLContext& context) {
-  HLoopInformation_X86* loop = context.loop_;
-  HBasicBlock* loop_header = context.header_block_;
   HBasicBlock* first_block = context.first_block_;
   HBasicBlock* exit_block = context.exit_block_;
   bool has_header_phi_use = false;
@@ -542,72 +594,39 @@ void HFormBottomLoops::FixHeaderInsnUses(HInstruction* insn,
   // 2. use in first block -> Replace with Phi(insn, clone) in first block;
   // 3. use is a clone -> Replace with clone;
   // 4. use is in/after exit -> Replace with Phi(insn, clone) in exit block.
-  for (HUseIterator<HInstruction*> use_it(insn->GetUses());
-                                   !use_it.Done();
-                                   use_it.Advance()) {
-    auto use = use_it.Current();
-    HInstruction* user = use->GetUser();
-    size_t index = use->GetIndex();
-    HBasicBlock* user_block = user->GetBlock();
+  for (HAllUseIterator use_it(insn); !use_it.Done(); use_it.Advance()) {
+    HInstruction* user = use_it.Current();
     HInstruction* new_input = nullptr;
 
-    // There is no point to do something with uses in the same block.
-    if (user_block != loop_header) {
-      if (loop->Contains(*user_block)) {
-        // Back edge.
-        DCHECK(clones_.find(user) == clones_.end());
-        new_input = GetHeaderFixup(insn, clone, header_fixup_inside_, first_block);
-      } else {
-        // Exit.
-        new_input = GetHeaderFixup(insn, clone, header_fixup_outside_, exit_block);
-      }
-    } else if (user->IsPhi()) {
-      has_header_phi_use = true;
+    switch (context.GetInstructionPosition(user)) {
+      case FBLContext::kHeader:
+      case FBLContext::kClone:
+        break;
+      case FBLContext::kExit:
+        new_input = GetHeaderFixup(insn, clone, context.header_fixup_outside_, exit_block);
+        break;
+      case FBLContext::kBackEdge:
+        new_input = GetHeaderFixup(insn, clone, context.header_fixup_inside_, first_block);
+        break;
+      case FBLContext::kPhi:
+        has_header_phi_use = true;
+        break;
     }
 
     if (new_input != nullptr) {
-      ReplaceInput(user, new_input, index);
-    }
-  }
-
-  for (HUseIterator<HEnvironment*> use_it(insn->GetEnvUses());
-                                   !use_it.Done();
-                                   use_it.Advance()) {
-    auto use = use_it.Current();
-    HEnvironment* env_user = use->GetUser();
-    size_t index = use->GetIndex();
-    HInstruction* user = env_user->GetHolder();
-    HBasicBlock* user_block = user->GetBlock();
-    HInstruction* new_input = nullptr;
-
-    // There is no point to do something with uses in the same block.
-    if (user_block != loop_header) {
-      if (loop->Contains(*user_block)) {
-        // Back edge.
-        new_input = GetHeaderFixup(insn, clone, header_fixup_inside_, first_block);
-      } else {
-        // Exit.
-        new_input = GetHeaderFixup(insn, clone, header_fixup_outside_, exit_block);
-      }
-    } else if (user->IsPhi()) {
-      has_header_phi_use = true;
-    }
-
-    if (new_input != nullptr) {
-      ReplaceEnvInput(env_user, new_input, index);
+      PRINT_PASS_OSTREAM_MESSAGE(this, "Replacing input of " << user << " with " << new_input);
+      use_it.ReplaceInput(new_input);
     }
   }
 
   if (has_header_phi_use) {
     // We will need this for Phi fixup in future.
-    GetHeaderFixup(insn, clone, header_fixup_inside_, first_block);
+    GetHeaderFixup(insn, clone, context.header_fixup_inside_, first_block);
   }
 }
 
 void HFormBottomLoops::FixHeaderPhisUses(HPhi* phi,
                                          FBLContext& context) {
-  HLoopInformation_X86* loop = context.loop_;
-  HBasicBlock* loop_header = context.header_block_;
   HBasicBlock* first_block = context.first_block_;
   HBasicBlock* exit_block = context.exit_block_;
 
@@ -617,81 +636,42 @@ void HFormBottomLoops::FixHeaderPhisUses(HPhi* phi,
   // 2. use in first block -> Replace with Phi(phi(0), phi') in first block;
   // 3. use is a clone -> Replace with phi';
   // 4. use is in/after exit -> Replace with Phi(phi(0), phi') in exit block.
-  for (HUseIterator<HInstruction*> use_it(phi->GetUses());
-                                   !use_it.Done();
-                                   use_it.Advance()) {
-    auto use = use_it.Current();
-    HInstruction* user = use->GetUser();
-    size_t index = use->GetIndex();
-    HBasicBlock* user_block = user->GetBlock();
+  for (HAllUseIterator use_it(phi); !use_it.Done(); use_it.Advance()) {
+    HInstruction* user = use_it.Current();
     HInstruction* new_input = nullptr;
 
-    if (user_block != loop_header) {
-      if (clones_.find(user) == clones_.end()) {
-        if (loop->Contains(*user_block)) {
-          // Back edge.
-          new_input = GetPhiInterlaceFixup(phi, context, interlace_phi_fixup_inside_, first_block);
-        } else {
-          // Exit.
-          new_input = GetPhiInterlaceFixup(phi, context, interlace_phi_fixup_outside_, exit_block);
-        }
-      } else {
-        // Clone.
+    switch (context.GetInstructionPosition(user)) {
+      case FBLContext::kHeader:
+        new_input = phi->InputAt(0);
+        break;
+      case FBLContext::kExit:
+        new_input = GetPhiInterlaceFixup(phi, context, context.interlace_phi_fixup_outside_, exit_block);
+        break;
+      case FBLContext::kBackEdge:
+        new_input = GetPhiInterlaceFixup(phi, context, context.interlace_phi_fixup_inside_, first_block);
+        break;
+      case FBLContext::kClone:
         new_input = GetPhiFixup(phi, context);
-      }
-    } else if (!user->IsPhi()) {
-      // Header.
-      new_input = phi->InputAt(0);
+        break;
+      case FBLContext::kPhi:
+        break;
     }
 
     if (new_input != nullptr) {
-      ReplaceInput(user, new_input, index);
-    }
-  }
-
-  for (HUseIterator<HEnvironment*> use_it(phi->GetEnvUses());
-                                   !use_it.Done();
-                                   use_it.Advance()) {
-    auto use = use_it.Current();
-    HEnvironment* env_user = use->GetUser();
-    size_t index = use->GetIndex();
-    HInstruction* user = env_user->GetHolder();
-    HBasicBlock* user_block = user->GetBlock();
-    HInstruction* new_input = nullptr;
-
-    if (user_block != loop_header) {
-      if (clones_.find(user) == clones_.end()) {
-        if (loop->Contains(*user_block)) {
-          // Back edge.
-          new_input = GetPhiInterlaceFixup(phi, context, interlace_phi_fixup_inside_, first_block);
-        } else {
-          // Exit.
-          new_input = GetPhiInterlaceFixup(phi, context, interlace_phi_fixup_outside_, exit_block);
-        }
-      } else {
-        // Clone.
-        new_input = GetPhiFixup(phi, context);
-      }
-    } else if (!user->IsPhi()) {
-      // Header.
-      new_input  = phi->InputAt(0);
-    }
-
-    if (new_input != nullptr) {
-      ReplaceEnvInput(env_user, new_input, index);
+      PRINT_PASS_OSTREAM_MESSAGE(this, "Replacing input of " << user << " with " << new_input);
+      use_it.ReplaceInput(new_input);
     }
   }
 }
 
 HInstruction* HFormBottomLoops::GetPhiFixup(HPhi* phi,
                                             FBLContext& context) {
-  auto iter = phi_fixup_.find(phi);
+  auto iter = context.phi_fixup_.find(phi);
 
-  if (iter != phi_fixup_.end()) {
+  if (iter != context.phi_fixup_.end()) {
     return iter->second;
   }
 
-  HBasicBlock* loop_header = context.header_block_;
   HBasicBlock* first_block = context.first_block_;
 
   HInstruction* fixup = nullptr;
@@ -704,22 +684,24 @@ HInstruction* HFormBottomLoops::GetPhiFixup(HPhi* phi,
   //    if phi(1) is an insn from old header;
   //  phi' = Phi(phi(1)(0), phi(1)'),
   //    if phi(1) is a Phi from old header.
-  if (phi_1->GetBlock() == loop_header) {
-    if (phi_1->IsPhi()) {
-      // Header phi.
-      fixup = GetPhiInterlaceFixup(phi_1->AsPhi(), context, interlace_phi_fixup_inside_, first_block);
-    } else {
-      // Header.
-      auto iter_2 = header_fixup_inside_.find(phi_1);
-      DCHECK(iter_2 != header_fixup_inside_.end());
-      fixup = iter_2->second;
-    }
-  } else {
-    // Back edge & PreHeader.
-    fixup = phi_1;
+  switch (context.GetInstructionPosition(phi_1)) {
+    case FBLContext::kHeader: {
+        auto iter_2 = context.header_fixup_inside_.find(phi_1);
+        DCHECK(iter_2 != context.header_fixup_inside_.end());
+        fixup = iter_2->second;
+      }
+      break;
+    case FBLContext::kClone:
+    case FBLContext::kExit:
+    case FBLContext::kBackEdge:
+      fixup = phi_1;
+      break;
+    case FBLContext::kPhi:
+      fixup = GetPhiInterlaceFixup(phi_1->AsPhi(), context, context.interlace_phi_fixup_inside_, first_block);
+      break;
   }
 
-  phi_fixup_[phi] = fixup;
+  context.phi_fixup_[phi] = fixup;
   return fixup;
 }
 

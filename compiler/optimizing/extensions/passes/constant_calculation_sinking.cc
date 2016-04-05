@@ -894,10 +894,14 @@ void HConstantCalculationSinking::DoConstantSinking(const std::vector<Accumulato
       }
 
       // Replace calculation result with constant or new instruction.
-      for (HUseIterator<HInstruction*> use_it(phi->GetUses()); !use_it.Done(); use_it.Advance()) {
-        HInstruction* user = use_it.Current()->GetUser();
+      for (HAllUseIterator use_it(phi); !use_it.Done(); use_it.Advance()) {
+        HInstruction* user = use_it.Current();
         if (!loop_info->ExecutedPerIteration(user)) {
-          user->ReplaceInput(to_replace, use_it.Current()->GetIndex());
+          use_it.ReplaceInput(to_replace);
+        } else {
+          if (use_it.IsEnv()) {
+            use_it.ReplaceInput(nullptr);
+          }
         }
       }
 
@@ -906,15 +910,6 @@ void HConstantCalculationSinking::DoConstantSinking(const std::vector<Accumulato
         if (!loop_info->ExecutedPerIteration(user)) {
           user->ReplaceInput(to_replace, use_it.Current()->GetIndex());
         }
-      }
-
-      // Update environment.
-      for (HUseIterator<HEnvironment*> use_it(phi->GetEnvUses()); !use_it.Done(); use_it.Advance()) {
-        HUseListNode<HEnvironment*>* current = use_it.Current();
-        HEnvironment* user = current->GetUser();
-        size_t input_index = current->GetIndex();
-        user->SetRawEnvAt(input_index, to_replace);
-        constant->AddEnvUseAt(user, input_index);
       }
 
       to_remove.push_back(accum_assoc);

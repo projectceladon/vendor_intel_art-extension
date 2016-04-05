@@ -949,11 +949,11 @@ static void AddExitPhisAfterPeel(const HGraph_X86* graph, const HLoopInformation
     reg_number = orig->AsPhi()->GetRegNumber();
   }
 
-  for (HUseIterator<HInstruction*> use_it(orig->GetUses()); !use_it.Done(); use_it.Advance()) {
-    HInstruction* user = use_it.Current()->GetUser();
+  for (HAllUseIterator use_it(orig); !use_it.Done(); use_it.Advance()) {
+    HInstruction* user = use_it.Current();
     // We do not want to add phi nodes for uses inside the loop.
     if (!loop->Contains(*(user->GetBlock()))) {
-      if (user->IsPhi() && user->GetBlock() == exit_bb) {
+      if (!use_it.IsEnv() && user->IsPhi() && user->GetBlock() == exit_bb) {
         // Be careful here, only add if not already a user.
         HPhi* existing_phi = user->AsPhi();
         bool found_input = false;
@@ -976,29 +976,8 @@ static void AddExitPhisAfterPeel(const HGraph_X86* graph, const HLoopInformation
           new_phi->AddInput(orig);
           new_phi->AddInput(clone);
         }
-
-        size_t input_index = use_it.Current()->GetIndex();
-        user->ReplaceInput(new_phi, input_index);
+        use_it.ReplaceInput(new_phi);
       }
-    }
-  }
-
-  for (HUseIterator<HEnvironment*> use_it(orig->GetEnvUses()); !use_it.Done(); use_it.Advance()) {
-    HEnvironment* user = use_it.Current()->GetUser();
-    // We do not want to add phi nodes for uses inside the loop.
-    if (!loop->Contains(*(user->GetHolder()->GetBlock()))) {
-      if (new_phi == nullptr) {
-        new_phi = new (graph->GetArena()) HPhi(graph->GetArena(), reg_number,
-            0, HPhi::ToPhiType(orig->GetType()));
-        exit_bb->AddPhi(new_phi);
-        new_phi->AddInput(orig);
-        new_phi->AddInput(clone);
-      }
-
-      size_t input_index = use_it.Current()->GetIndex();
-      user->RemoveAsUserOfInput(input_index);
-      user->SetRawEnvAt(input_index, new_phi);
-      new_phi->AddEnvUseAt(user, input_index);
     }
   }
 }

@@ -33,6 +33,10 @@
 namespace art {
 
 class HInstructionCloner;
+struct FBLContext;
+
+// Mapping from Instruction to its Clone.
+typedef std::unordered_map<HInstruction*, HInstruction*> InstrToInstrMap;
 
 class HFormBottomLoops : public HOptimization_X86 {
  public:
@@ -42,33 +46,7 @@ class HFormBottomLoops : public HOptimization_X86 {
   void Run() OVERRIDE;
 
  private:
-  // Stores all required information about blocks of a loop being optimized.
-  struct FBLContext {
-    FBLContext(HLoopInformation_X86* loop,
-               HBasicBlock* pre_header_block,
-               HBasicBlock* header_block,
-               HBasicBlock* first_block,
-               HBasicBlock* back_block,
-               HBasicBlock* exit_block) :
-      loop_(loop),
-      pre_header_block_(pre_header_block),
-      header_block_(header_block),
-      first_block_(first_block),
-      back_block_(back_block),
-      exit_block_(exit_block) { }
-
-    HLoopInformation_X86* loop_;
-    HBasicBlock* pre_header_block_;
-    HBasicBlock* header_block_;
-    HBasicBlock* first_block_;
-    HBasicBlock* back_block_;
-    HBasicBlock* exit_block_;
-  };
-
   static constexpr const char* kFormBottomLoopsPassName = "form_bottom_loops";
-
-  // Mapping from Instruction to its Clone.
-  typedef std::unordered_map<HInstruction*, HInstruction*> InstrToInstrMap;
 
   /**
    * @brief Should this loop be rewritten as a bottom tested loop?
@@ -190,67 +168,6 @@ class HFormBottomLoops : public HOptimization_X86 {
                                HInstruction* clone,
                                InstrToInstrMap& mapping,
                                HBasicBlock* block);
-
-  /**
-   * @brief Replaces an input of user with new input.
-   * @param user The instruction where we need replacement.
-   * @param new_input The new input to replace with.
-   * @param index The input index to replace.
-   */
-  void ReplaceInput(HInstruction* user,
-                    HInstruction* new_input,
-                    size_t index) {
-    DCHECK(new_input->GetBlock() != nullptr);
-    PRINT_PASS_OSTREAM_MESSAGE(this, "Replacing input #" << index
-                               << " of " << user
-                               << " with " << new_input);
-    user->ReplaceInput(new_input, index);
-  }
-
-  /**
-   * @brief Replaces an input of environment user with new input.
-   * @param user The environment where we need replacement.
-   * @param new_input The new input to replace with.
-   * @param index The input index to replace.
-   */
-  void ReplaceEnvInput(HEnvironment* user,
-                       HInstruction* new_input,
-                       size_t index) {
-    DCHECK(new_input->GetBlock() != nullptr);
-    PRINT_PASS_OSTREAM_MESSAGE(this, "Replacing input #" << index
-                               << " of env of " << user->GetHolder()
-                               << " with " << new_input);
-    user->RemoveAsUserOfInput(index);
-    user->SetRawEnvAt(index, new_input);
-    new_input->AddEnvUseAt(user, index);
-  }
-
-  /**
-   * @brief Performs internal structures initialization for a new loop.
-   * TODO: Consider moving the maps to context during refactoring.
-   */
-  void PrepareForNewLoop() {
-    phi_fixup_.clear();
-    interlace_phi_fixup_inside_.clear();
-    interlace_phi_fixup_outside_.clear();
-    clones_.clear();
-    header_fixup_inside_.clear();
-    header_fixup_outside_.clear();
-  }
-
-  // Maps phi on phi' that is used to fix up its uses.
-  InstrToInstrMap phi_fixup_;
-
-  // Maps phi on Phi(phi(0), phi') that is used to fix up its uses.
-  InstrToInstrMap interlace_phi_fixup_inside_;
-  InstrToInstrMap interlace_phi_fixup_outside_;
-
-  // Maps insn on Phi(insn, clone).
-  InstrToInstrMap header_fixup_inside_;
-  InstrToInstrMap header_fixup_outside_;
-
-  // Contains all clones.
-  std::unordered_set<HInstruction*> clones_;
 
   DISALLOW_COPY_AND_ASSIGN(HFormBottomLoops);
 };

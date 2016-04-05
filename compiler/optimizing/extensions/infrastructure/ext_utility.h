@@ -49,6 +49,66 @@ class HInstruction;
       } \
     } while (false)
 
+class HAllUseIterator {
+ public:
+  explicit HAllUseIterator(HInstruction* insn) :
+      is_env_(false),
+      env_use_it_(insn->GetEnvUses()),
+      use_it_(insn->GetUses()) {
+    if (use_it_.Done()) {
+      is_env_ = true;
+    }
+  }
+
+  bool Done() {
+    return is_env_ && env_use_it_.Done();
+  }
+
+  HInstruction* Current() {
+    return is_env_ ?
+        env_use_it_.Current()->GetUser()->GetHolder() :
+        use_it_.Current()->GetUser();
+  }
+
+  bool IsEnv() {
+    return is_env_;
+  }
+
+  void Advance() {
+    if (is_env_) {
+      env_use_it_.Advance();
+    } else {
+      use_it_.Advance();
+      if (use_it_.Done()) {
+        is_env_ = true;
+      }
+    }
+  }
+
+  void ReplaceInput(HInstruction* new_input) {
+    if (is_env_) {
+      HEnvironment* user = env_use_it_.Current()->GetUser();
+      size_t index = env_use_it_.Current()->GetIndex();
+      DCHECK(new_input == nullptr || new_input->GetBlock() != nullptr);
+      user->RemoveAsUserOfInput(index);
+      user->SetRawEnvAt(index, new_input);
+      if (new_input != nullptr) {
+        new_input->AddEnvUseAt(user, index);
+      }
+    } else {
+      HInstruction* user = use_it_.Current()->GetUser();
+      size_t index = use_it_.Current()->GetIndex();
+      DCHECK(new_input->GetBlock() != nullptr);
+      user->ReplaceInput(new_input, index);
+    }
+  }
+
+ private:
+  bool is_env_;
+  HUseIterator<HEnvironment*> env_use_it_;
+  HUseIterator<HInstruction*> use_it_;
+};
+
   /**
    * @brief Facility to get the name of the current method.
    * @param graph The HGgraph corresponding to the method.
