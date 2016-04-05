@@ -37,22 +37,13 @@ namespace art {
 
 class HGraph_X86 : public HGraph {
  public:
-#if 0	//neeraj - resolve build errors
-  HGraph_X86(ArenaAllocator* arena, const DexFile& dex_file, uint32_t method_idx,
-      bool should_generate_constructor_barrier, InstructionSet instruction_set,
-      InvokeType invoke_type = kInvalidInvokeType, bool debuggable = false,
-      int start_instruction_id = 0) :
-          HGraph(arena, dex_file, method_idx, should_generate_constructor_barrier, 
-             instruction_set, invoke_type, debuggable, start_instruction_id),
-          loop_information_(nullptr) {
-#else
+  //neeraj - resolve build errors
   HGraph_X86(ArenaAllocator* arena, const DexFile& dex_file, uint32_t method_idx,
       InstructionSet instruction_set, InvokeType invoke_type = kInvalidInvokeType, 
       bool debuggable = false, bool osr = false, int start_instruction_id = 0) :
           HGraph(arena, dex_file, method_idx, instruction_set, invoke_type, 
             debuggable, osr, start_instruction_id),
           loop_information_(nullptr) {
-#endif
 #ifndef NDEBUG
         down_cast_checker_ = GRAPH_MAGIC;
 #endif

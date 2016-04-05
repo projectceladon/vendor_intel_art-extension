@@ -692,6 +692,11 @@ static void CheckLoopEntriesCanBeUsedForOsr(const HGraph& graph,
     // One can write loops through try/catch, which we do not support for OSR anyway.
     return;
   }
+  if (!graph.IsCompilingOsr()) {
+    // Don't check correctness if OSR is not used. We could remove
+    // suspend checks in SILVER pass named 'remove_suspend_checks'.
+    return;
+  }
   ArenaVector<HSuspendCheck*> loop_headers(graph.GetArena()->Adapter(kArenaAllocMisc));
   for (HBasicBlock* block : graph.GetReversePostOrder()) {
     //neeraj - resolve dex2oat crash by checking "SuspendCheck" in "LoopInformation"
