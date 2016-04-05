@@ -40,9 +40,9 @@ class HGraph_X86 : public HGraph {
   HGraph_X86(ArenaAllocator* arena, const DexFile& dex_file, uint32_t method_idx,
       bool should_generate_constructor_barrier, InstructionSet instruction_set,
       InvokeType invoke_type = kInvalidInvokeType, bool debuggable = false,
-      int start_instruction_id = 0) :
+      bool osr = false, int start_instruction_id = 0) :
           HGraph(arena, dex_file, method_idx, should_generate_constructor_barrier,
-          instruction_set, invoke_type, debuggable, start_instruction_id),
+          instruction_set, invoke_type, debuggable, osr, start_instruction_id),
           loop_information_(nullptr) {
 #ifndef NDEBUG
         down_cast_checker_ = GRAPH_MAGIC;
