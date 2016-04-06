@@ -23,6 +23,7 @@
 
 #include "base/macros.h"
 #include "compiler_filter.h"
+#include "dex/pass_manager.h"
 #include "globals.h"
 #include "optimizing/register_allocator.h"
 #include "utils.h"
@@ -227,6 +228,10 @@ class CompilerOptions FINAL {
     return init_failure_output_.get();
   }
 
+  const PassManagerOptions* GetPassManagerOptions() const {
+    return &pass_manager_options_;
+  }
+
   bool AbortOnHardVerifierFailure() const {
     return abort_on_hard_verifier_failure_;
   }
@@ -259,7 +264,10 @@ class CompilerOptions FINAL {
 
  private:
   void ParseDumpInitFailures(const StringPiece& option, UsageFn Usage);
+  void ParsePassOptions(const StringPiece& option, UsageFn Usage);
   void ParseDumpCfgPasses(const StringPiece& option, UsageFn Usage);
+  void ParsePrintPasses(const StringPiece& option, UsageFn Usage);
+  void ParseDisablePasses(const StringPiece& option, UsageFn Usage);
   void ParseInlineMaxCodeUnits(const StringPiece& option, UsageFn Usage);
   void ParseNumDexMethods(const StringPiece& option, UsageFn Usage);
   void ParseTinyMethodMax(const StringPiece& option, UsageFn Usage);
@@ -296,6 +304,8 @@ class CompilerOptions FINAL {
 
   // Vector of methods to have verbose output enabled for.
   const std::vector<std::string>* verbose_methods_;
+
+  PassManagerOptions pass_manager_options_;
 
   // Abort compilation with an error if we find a class that fails verification with a hard
   // failure.
