@@ -22,6 +22,7 @@ LIBART_COMPILER_SRC_FILES := \
 	compiled_method.cc \
 	debug/elf_debug_writer.cc \
 	dex/dex_to_dex_compiler.cc \
+	dex/pass_manager.cc \
 	dex/verified_method.cc \
 	dex/verification_results.cc \
 	dex/quick_compiler_callbacks.cc \
