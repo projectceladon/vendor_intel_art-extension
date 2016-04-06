@@ -40,14 +40,10 @@ class CompilerDriver;
 class HAggressiveUseRemoverPass : public HOptimization_X86 {
  public:
   HAggressiveUseRemoverPass(HGraph* graph,
-                            CompilerDriver* driver,
                             OptimizingCompilerStats* stats = nullptr)
-    : HOptimization_X86(graph, "aur", stats), driver_(driver) {}
+    : HOptimization_X86(graph, "aur", stats) {}
 
   void Run() OVERRIDE;
-
- private:
-  const CompilerDriver* driver_;
 };
 
 }  // namespace art

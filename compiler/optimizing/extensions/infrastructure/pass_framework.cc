@@ -377,7 +377,7 @@ void RunOptimizationsX86(HGraph* graph,
   GVNAfterFormBottomLoops* gvn_after_fbl = new (arena) GVNAfterFormBottomLoops(graph);
   // HGenerateSelects* generate_selects = new (arena) HGenerateSelects(graph, stats);
   HLoopFullUnrolling* loop_full_unrolling = new (arena) HLoopFullUnrolling(graph, driver, stats);
-  HAggressiveUseRemoverPass* aur = new (arena) HAggressiveUseRemoverPass(graph, driver, stats);
+  HAggressiveUseRemoverPass* aur = new (arena) HAggressiveUseRemoverPass(graph, stats);
   HPhiCleanup* phi_cleanup = new (arena) HPhiCleanup(graph, "phi_cleanup", stats);
   HPhiCleanup* phi_cleanup_after_aur = new (arena) HPhiCleanup(graph, "phi_cleanup_after_aur", stats);
   HDevirtualization* devirtualization = new (arena) HDevirtualization(graph,

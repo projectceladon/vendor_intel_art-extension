@@ -20,7 +20,6 @@
  */
 
 #include "aur.h"
-#include "driver/compiler_driver.h"
 #include "pass_option.h"
 
 namespace art {
@@ -66,9 +65,12 @@ static void RemoveEnvAsUser(HInstruction* candidate,
           if (!instruction->GetSideEffects().HasSideEffectsExcludingGC()
               && !instruction->CanThrow()
               && !instruction->IsParameterValue()
-              && !instruction->IsPhi()
-              && !instruction->HasUses()) {
-            instruction->GetBlock()->RemoveInstruction(instruction);
+              && !instruction->HasUses()
+              && (!instruction->IsInvoke() // Can remove pure invokes only.
+                  || instruction->CanBeMoved())) {
+            HBasicBlock* block = instruction->GetBlock();
+            DCHECK(block != nullptr);
+            block->RemoveInstructionOrPhi(instruction);
 
             if (stats != nullptr) {
               stats->RecordStat(MethodCompilationStat::kRemovedDeadInstruction);
@@ -88,45 +90,11 @@ static void RemoveEnvAsUser(HInstruction* candidate,
   }
 }
 
-static void RemovePhi(HPhi* phi, OptimizingCompilerStats* const stats) {
-  bool used_in_deopt = false;
-  const HUseList<HEnvironment*>& uses = phi->GetEnvUses();
-  for (auto it = uses.begin(), end = uses.end(); it != end; /* ++it below */) {
-    HEnvironment* env_user = it->GetUser();
-    size_t index = it->GetIndex();
-    ++it;
-    // We can only remove the Phi if it is not used for Deoptimize.
-    if (env_user->GetHolder()->IsDeoptimize()) {
-      used_in_deopt = true;
-    } else {
-      env_user->RemoveAsUserOfInput(index);
-      env_user->SetRawEnvAt(index, nullptr);
-    }
-  }
-
-  if (!used_in_deopt) {
-    phi->GetBlock()->RemovePhi(phi);
-    if (stats != nullptr) {
-      stats->RecordStat(MethodCompilationStat::kRemovedDeadInstruction);
-      // This stat is a lower estimate since we do not actively remove instructions
-      // that were caused to be dead from the current removal.
-      stats->RecordStat(MethodCompilationStat::kIntelRemovedDeadInstructionViaAUR);
-      if (phi->GetType() == Primitive::kPrimNot) {
-        // We also count reference removals since those are great for GC
-        // since the root set becomes smaller.
-        stats->RecordStat(MethodCompilationStat::kIntelRemovedDeadReferenceViaAUR);
-      }
-    }
-  }
-}
-
 class AggressiveEnvUseRemover : public HGraphVisitor {
  public:
   AggressiveEnvUseRemover(HGraph* graph,
-                          OptimizingCompilerStats* const stats,
-                          bool handle_invokes) :
+                          OptimizingCompilerStats* const stats) :
         HGraphVisitor(graph),
-        handle_invokes_(handle_invokes),
         stats_(stats) {}
   virtual ~AggressiveEnvUseRemover() {}
 
@@ -151,28 +119,14 @@ class AggressiveEnvUseRemover : public HGraphVisitor {
   void VisitNewInstance(HNewInstance* instr) OVERRIDE { HandlePotentialGC(instr); }
   void VisitArraySet(HArraySet* instr) OVERRIDE { HandlePotentialGC(instr); }
 
-  void VisitPhi(HPhi* phi) OVERRIDE { HandlePhi(phi); }
-
   // Debuggable applications need to support full-stack deopt. But non-debuggable
   // applications do not need to - this is because only last frame can get deoptimized
   // via HDeoptimize. However, tests which do not understand this constraint and walk
   // the stack on non-debuggable applications might fail finding the relevant values
   // which were killed via AUR.
-  void VisitInvokeInterface(HInvokeInterface* instr) OVERRIDE {
-    if (handle_invokes_) {
-      HandlePotentialGC(instr);
-    }
-  }
-  void VisitInvokeVirtual(HInvokeVirtual* instr) OVERRIDE {
-    if (handle_invokes_) {
-      HandlePotentialGC(instr);
-    }
-  }
-  void VisitInvokeStaticOrDirect(HInvokeStaticOrDirect* instr) OVERRIDE {
-    if (handle_invokes_) {
-      HandlePotentialGC(instr);
-    }
-  }
+  void VisitInvokeInterface(HInvokeInterface* instr) OVERRIDE { HandlePotentialGC(instr); }
+  void VisitInvokeVirtual(HInvokeVirtual* instr) OVERRIDE { HandlePotentialGC(instr); }
+  void VisitInvokeStaticOrDirect(HInvokeStaticOrDirect* instr) OVERRIDE { HandlePotentialGC(instr); }
 
   // The following are cases which are intentionally not handled.
   void VisitDeoptimize(HDeoptimize* instr ATTRIBUTE_UNUSED) OVERRIDE {
@@ -183,24 +137,18 @@ class AggressiveEnvUseRemover : public HGraphVisitor {
     HBackwardInstructionIterator it(block->GetInstructions());
     DCHECK(it.Current()->IsControlFlow());
     for (it.Advance(); !it.Done(); it.Advance()) {
-      it.Current()->Accept(this);
-    }
-
-    for (HBackwardInstructionIterator phi_it(block->GetPhis());
-         !phi_it.Done(); phi_it.Advance()) {
-      phi_it.Current()->Accept(this);
+      HInstruction* insn = it.Current();
+      // We need to check this because we could remove some
+      // of the instructions while visiting others.
+      if (insn->GetBlock() != nullptr) {
+        insn->Accept(this);
+      }
     }
   }
 
  private:
   bool IsInTryBlock(HInstruction* instr) {
     return instr->GetBlock()->IsTryBlock();
-  }
-
-  void HandlePhi(HPhi* phi) {
-    if (!phi->HasNonEnvironmentUses()) {
-      RemovePhi(phi, stats_);
-    }
   }
 
   void HandleCaller(HInstruction* instr, bool may_trigger_gc) {
@@ -238,7 +186,6 @@ class AggressiveEnvUseRemover : public HGraphVisitor {
     RemoveEnvAsUser(suspend, remove_references, stats_);
   }
 
-  bool handle_invokes_;
   OptimizingCompilerStats* const stats_;
   DISALLOW_COPY_AND_ASSIGN(AggressiveEnvUseRemover);
 };
@@ -250,12 +197,7 @@ void HAggressiveUseRemoverPass::Run() {
     return;
   }
 
-  // Setting this to false by default since some of the art unit tests fail (this happens because
-  // the test which is intended to be debuggable is compiled with non-debuggable setting :)).
-  // This can be enabled when QA infrastructure is aware of this problem.
-  static PassOption<bool> handle_invokes(this, driver_, "HandleInvokes", false);
-
-  AggressiveEnvUseRemover aur(graph_, stats_, handle_invokes.GetValue());
+  AggressiveEnvUseRemover aur(graph_, stats_);
   // We use same walk as DCE.
   for (HPostOrderIterator b(*graph_); !b.Done(); b.Advance()) {
     HBasicBlock* block = b.Current();
