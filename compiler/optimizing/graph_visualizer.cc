@@ -34,6 +34,7 @@
 #include "register_allocator.h"
 #include "ssa_liveness_analysis.h"
 #include "utils/assembler.h"
+#include "x86_memory_gen.h"
 
 namespace art {
 
@@ -372,6 +373,8 @@ class HGraphVisualizerPrinter : public HGraphDelegateVisitor {
   }
 
   void VisitLoadClass(HLoadClass* load_class) OVERRIDE {
+    StartAttributeStream("type") << PrettyType(load_class->GetTypeIndex(),
+                                               load_class->GetDexFile());
     StartAttributeStream("gen_clinit_check") << std::boolalpha
         << load_class->MustGenerateClinitCheck() << std::noboolalpha;
     StartAttributeStream("needs_access_check") << std::boolalpha
@@ -380,6 +383,8 @@ class HGraphVisualizerPrinter : public HGraphDelegateVisitor {
 
   void VisitLoadString(HLoadString* load_string) OVERRIDE {
     StartAttributeStream("load_kind") << load_string->GetLoadKind();
+    StartAttributeStream("in_dex_cache") << std::boolalpha
+        << load_string->IsInDexCache() << std::noboolalpha;
   }
 
   void VisitCheckCast(HCheckCast* check_cast) OVERRIDE {
@@ -415,6 +420,20 @@ class HGraphVisualizerPrinter : public HGraphDelegateVisitor {
     StartAttributeStream("bias") << (bias == ComparisonBias::kGtBias
                                      ? "gt"
                                      : (bias == ComparisonBias::kLtBias ? "lt" : "none"));
+  }
+
+  void VisitCurrentMethod(HCurrentMethod* current_method ATTRIBUTE_UNUSED) OVERRIDE {
+    StartAttributeStream("dex_file_index") << GetGraph()->GetMethodIdx();
+  }
+
+  void VisitParameterValue(HParameterValue* parameter) OVERRIDE {
+    StartAttributeStream("index") << static_cast<int>(parameter->GetIndex());
+    StartAttributeStream("this") << std::boolalpha
+        << parameter->IsThis() << std::noboolalpha;
+    if (parameter->GetType() == Primitive::kPrimNot) {
+      StartAttributeStream("dex_type") << PrettyType(parameter->GetTypeIndex(),
+                                                     GetGraph()->GetDexFile());
+    }
   }
 
   void VisitInvoke(HInvoke* invoke) OVERRIDE {
@@ -585,7 +604,8 @@ class HGraphVisualizerPrinter : public HGraphDelegateVisitor {
     }
 
     if ((IsPass(HGraphBuilder::kBuilderPassName)
-        || IsPass(HInliner::kInlinerPassName))
+        || IsPass(HInliner::kInlinerPassName)
+        || IsPass(x86::X86MemoryOperandGeneration::kPassNameX86MemOpGen))
         && (instruction->GetType() == Primitive::kPrimNot)) {
       ReferenceTypeInfo info = instruction->IsLoadClass()
         ? instruction->AsLoadClass()->GetLoadedClassRTI()

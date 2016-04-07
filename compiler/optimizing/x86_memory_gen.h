@@ -33,6 +33,8 @@ class X86MemoryOperandGeneration : public HOptimization {
 
   void Run() OVERRIDE;
 
+  static constexpr const char* kPassNameX86MemOpGen = "x86_memory_gen";
+
  private:
   bool do_implicit_null_checks_;
 };

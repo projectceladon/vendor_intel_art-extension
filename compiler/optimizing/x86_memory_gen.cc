@@ -463,7 +463,7 @@ class MemoryOperandVisitor : public HGraphVisitor {
 X86MemoryOperandGeneration::X86MemoryOperandGeneration(HGraph* graph,
                                                        OptimizingCompilerStats* stats,
                                                        CodeGenerator* codegen)
-    : HOptimization(graph, "x86_memory_gen", stats),
+    : HOptimization(graph, kPassNameX86MemOpGen, stats),
       do_implicit_null_checks_(codegen->GetCompilerOptions().GetImplicitNullChecks()) {
 }
 
