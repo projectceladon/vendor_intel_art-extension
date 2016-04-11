@@ -252,6 +252,9 @@ HSpeculationGuard* HDevirtualization::InsertSpeculationGuard(HInstruction* instr
       instr_guarded->GetDexPc());
   // The class field is essentially a final field.
   class_getter->SetSideEffects(SideEffects::None());
+  TypeHandle class_type = handles_->NewHandle(
+      compilation_unit_.GetClassLinker()->GetClassRoot(ClassLinker::kJavaLangClass));
+  class_getter->SetReferenceTypeInfo(ReferenceTypeInfo::Create(class_type , /* is_exact */ true));
 
   // Now create a load class for the prediction.
   bool is_referrer = (type.Get() == graph_->GetArtMethod()->GetDeclaringClass());
@@ -262,6 +265,8 @@ HSpeculationGuard* HDevirtualization::InsertSpeculationGuard(HInstruction* instr
                                                                instr_guarded->GetDexPc(),
                                                                /* needs_access_check */ false,
                                                                /* is_in_dex_cache */ true);
+  prediction->SetLoadedClassRTI(ReferenceTypeInfo::Create(type, /* is_exact */ true));
+  prediction->SetReferenceTypeInfo(ReferenceTypeInfo::Create(class_type , /* is_exact */ true));
 
   HDevirtGuard* guard = new (graph_->GetArena()) HDevirtGuard(prediction, class_getter, invoke->GetDexPc());
 
