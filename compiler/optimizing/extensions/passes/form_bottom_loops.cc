@@ -374,7 +374,14 @@ bool HFormBottomLoops::CheckLoopHeader(HBasicBlock* loop_header) {
     HInstruction* phi = inst_it.Current();
     if (phi->InputCount() == 2u) {
       HInstruction* in_2 = phi->InputAt(1)->AsPhi();
-      if (in_2 != nullptr && in_2->GetBlock() == loop_header) {
+      if (in_2 == phi) {
+        // InstructionSimplifier and probably some other optimisations
+        // can produce degenerate phis like "j2 Phi [j1,j2]".
+        // This breakes the phis fixup in preheader so remove it here.
+        PRINT_PASS_OSTREAM_MESSAGE(this, "Removing degenerate phi " << phi);
+        phi->ReplaceWith(phi->InputAt(0));
+        loop_header->RemovePhi(phi->AsPhi());
+      } else if (in_2 != nullptr && in_2->GetBlock() == loop_header) {
         if (seen_phis.find(in_2) == seen_phis.end()) {
           looks_phis_forward = true;
         } else {

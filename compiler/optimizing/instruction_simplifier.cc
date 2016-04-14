@@ -1000,6 +1000,7 @@ void InstructionSimplifierVisitor::VisitAdd(HAdd* instruction) {
     // ADD instruction is not needed in this case, we may use
     // the first input of SUB instead.
     instruction->ReplaceWith(left->InputAt(0));
+    instruction->GetBlock()->RemoveInstruction(instruction);
     return;
   }
 
