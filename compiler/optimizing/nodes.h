@@ -5765,6 +5765,20 @@ class HLoadString : public HExpression<1> {
 
   void AddSpecialInput(HInstruction* special_input);
 
+  // We need this hack because HSharpening::ProcessLoadString() transforms objects
+  // of this class in a way that makes cloning impossible. I.e. some private
+  // members can not be set via parametrized constructor and the only way is to
+  // invoke SetLoadKindWithStringReference(), SetLoadKindWithAddress() or
+  // SetLoadKindWithDexCacheReference(). Any of these three functions calls
+  // private method SetLoadKindInternal() which breaks on RemoveAsUserOfInput().
+  void CopyInternalData(const HLoadString& other) {
+    string_index_ = other.string_index_;
+    load_data_ = other.load_data_;
+    SetPackedFlag<kFlagIsInDexCache>(other.GetPackedFlag<kFlagIsInDexCache>());
+    SetPackedField<LoadKindField>(other.GetPackedField<LoadKindField>());
+    SetRawInputAt(0, other.InputAt(0));
+  }
+
   DECLARE_INSTRUCTION(LoadString);
 
  private:
@@ -5804,8 +5818,6 @@ std::ostream& operator<<(std::ostream& os, HLoadString::LoadKind rhs);
 
 // Note: defined outside class to see operator<<(., HLoadString::LoadKind).
 inline const DexFile& HLoadString::GetDexFile() const {
-  DCHECK(HasStringReference(GetLoadKind()) || HasDexCacheReference(GetLoadKind()))
-      << GetLoadKind();
   return *load_data_.ref.dex_file;
 }
 
