@@ -294,7 +294,10 @@ bool HInliner::TryInline(HInvoke* invoke_instruction) {
 
   if (actual_method != nullptr) {
     bool result = TryInlineAndReplace(invoke_instruction, actual_method, /* do_rtp */ true);
-    if (result && !invoke_instruction->IsInvokeStaticOrDirect()) {
+    bool is_virtual_or_interface = !invoke_instruction->IsInvokeStaticOrDirect();
+    bool is_direct_from_virtual = invoke_instruction->IsInvokeStaticOrDirect() &&
+        invoke_instruction->AsInvokeStaticOrDirect()->GetOriginalInvokeType() != kDirect;
+    if (result && (is_virtual_or_interface || is_direct_from_virtual)) {
       MaybeRecordStat(kInlinedInvokeVirtualOrInterface);
     }
     return result;
@@ -1263,6 +1266,10 @@ bool HInliner::TryBuildAndInlineHelper(HInvoke* invoke_instruction,
     }
   }
   number_of_inlined_instructions_ += number_of_instructions;
+  if (stats_ != nullptr) {
+    DCHECK(inline_stats != nullptr);
+    stats_->MergeStats(*(inline_stats.get()));
+  }
 
   DCHECK_EQ(caller_instruction_counter, graph_->GetCurrentInstructionId())
       << "No instructions can be added to the outer graph while inner graph is being built";

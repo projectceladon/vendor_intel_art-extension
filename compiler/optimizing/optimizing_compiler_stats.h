@@ -137,6 +137,12 @@ class OptimizingCompilerStats {
     }
   }
 
+  void MergeStats(OptimizingCompilerStats& other) {
+    for (int i = 0; i < kLastStat; i++) {
+      compile_stats_[i] += other.compile_stats_[i];
+    }
+  }
+
  private:
   std::string PrintMethodCompilationStat(MethodCompilationStat stat) const {
     std::string name;
