@@ -181,13 +181,15 @@ class HSpeculationPass : public HOptimization_X86 {
 
   /**
    * @brief Used to record that speculative optimization was applied.
+   * @param count The count of application - usually 1.
    */
-  virtual void RecordSpeculation() = 0;
+  virtual void RecordSpeculation(size_t count = 1u) = 0;
 
   /**
    * @brief Used to record when a potential candidate is found.
+   * @param count The count of found candidates - usually 1.
    */
-  virtual void RecordFoundCandidate() = 0;
+  virtual void RecordFoundCandidate(size_t count = 1u) = 0;
 
   /**
    * @brief Used to get the cost of the recovery methodology.

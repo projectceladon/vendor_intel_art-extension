@@ -448,13 +448,14 @@ void HSpeculationPass::Run() {
 
         for (auto similar : *similar_candidates) {
           if (HandleSpeculation(similar, guard_inserted)) {
-            PRINT_PASS_OSTREAM_MESSAGE(this, "Successfully speculated for " << similar);
+            PRINT_PASS_OSTREAM_MESSAGE(this, "Successfully speculated for " << similar <<
+                                       " by using guard used for " << candidate);
             candidates_handled++;
           }
         }
 
         if (candidates_handled != 0) {
-          RecordSpeculation();
+          RecordSpeculation(candidates_handled);
           MaybeRecordStat(kIntelSpeculationEliminated, candidates_handled - 1);
         }
       }

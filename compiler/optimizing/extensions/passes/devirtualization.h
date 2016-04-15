@@ -58,14 +58,14 @@ class HDevirtualization : public HSpeculationPass {
   HSpeculationGuard* InsertSpeculationGuard(HInstruction* instr_guarded,
                                             HInstruction* instr_cursor) OVERRIDE;
   bool HandleSpeculation(HInstruction* instr, bool guard_inserted) OVERRIDE;
-  void RecordSpeculation() OVERRIDE {
-    MaybeRecordStat(kIntelDevirtualized);
+  void RecordSpeculation(size_t count = 1u) OVERRIDE {
+    MaybeRecordStat(kIntelDevirtualized, count);
   }
-  void RecordFoundCandidate() OVERRIDE {
+  void RecordFoundCandidate(size_t count = 1u) OVERRIDE {
     // We do not recount found candidate after inlining because we should have
     // already counted it before and during inlining.
     if (!after_inlining_) {
-      MaybeRecordStat(kIntelDevirtualizationConsideration);
+      MaybeRecordStat(kIntelDevirtualizationConsideration, count);
     }
   }
   SpeculationRecoveryApproach GetRecoveryMethod(HInstruction* instr) OVERRIDE;
