@@ -80,8 +80,23 @@ struct HCustomPassPlacement {
  * @brief Static array holding information about custom placements.
  */
 static HCustomPassPlacement kPassCustomPlacement[] = {
+  // Devirtualization is always inserted before sharpening. We also insert it twice to increase
+  // its effectiveness - before and after inlining.
+  { HDevirtualization::kDevirtualizationPassName,
+    HSharpening::kSharpeningPassName,
+    kPassInsertBefore },
+  { HDevirtualization::kDevirtualizationAfterInliningPassName,
+    HInliner::kInlinerPassName,
+    kPassInsertAfter },
+  { HSharpeningWrapper::kSharpeningAfterInliningPassName,
+    HDevirtualization::kDevirtualizationAfterInliningPassName,
+    kPassInsertAfter },
   { "loop_peeling", "select_generator", kPassInsertBefore },
-  { "loop_formation_before_peeling", "loop_peeling", kPassInsertBefore },
+  // We apply pure invoke analysis to methods with loops only.
+  // If this restriction is removed, it may go right after the
+  // sharpening after inlining.
+  { "pure_invokes_analysis", "loop_peeling", kPassInsertBefore },
+  { "loop_formation_before_peeling", "pure_invokes_analysis", kPassInsertBefore },
   // FIXME: this pass is disabled and should be eliminated
   // completely because Google has implemented a similar
   // optimization, called "select_generator".
@@ -97,26 +112,13 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   { "non_temporal_move", "trivial_loop_evaluator", kPassInsertAfter },
   { "constant_calculation_sinking", "non_temporal_move", kPassInsertAfter },
   { "remove_loop_suspend_checks", "constant_calculation_sinking", kPassInsertAfter },
-  { "pure_invokes_analysis", "remove_loop_suspend_checks", kPassInsertAfter },
-  { "loadhoist_storesink", "pure_invokes_analysis", kPassInsertAfter },
+  { "loadhoist_storesink", "remove_loop_suspend_checks", kPassInsertAfter },
   { "remove_unused_loops", "loadhoist_storesink", kPassInsertAfter },
   { "loop_full_unrolling", "remove_unused_loops", kPassInsertAfter },
   { "load_store_elimination", "value_propagation_through_heap", kPassInsertBefore },
   { "aur", "remove_unused_loops", kPassInsertBefore },
   { "phi_cleanup_after_aur", "aur", kPassInsertAfter },
   { "abi_transition_helper", "", kPassAppend },
-
-  // Devirtualization is always inserted before sharpening. We also insert it twice to increase
-  // its effectiveness - before and after inlining.
-  { HDevirtualization::kDevirtualizationPassName,
-    HSharpening::kSharpeningPassName,
-    kPassInsertBefore },
-  { HDevirtualization::kDevirtualizationAfterInliningPassName,
-    HInliner::kInlinerPassName,
-    kPassInsertAfter },
-  { HSharpeningWrapper::kSharpeningAfterInliningPassName,
-    HDevirtualization::kDevirtualizationAfterInliningPassName,
-    kPassInsertAfter },
 };
 
 /**
@@ -399,7 +401,11 @@ void RunOptimizationsX86(HGraph* graph,
 
 
   HOptimization_X86* opt_array[] = {
+    devirtualization,
+    devirtualization2,
+    sharpening2,
     peeling,
+    pure_invokes_analysis,
     formation_before_peeling,
     // &generate_selects
     form_bottom_loops,
@@ -415,15 +421,11 @@ void RunOptimizationsX86(HGraph* graph,
 #endif
     ccs,
     remove_suspends,
-    pure_invokes_analysis,
     lhss,
     remove_unused_loops,
     loop_full_unrolling,
     aur,
     phi_cleanup_after_aur,
-    devirtualization,
-    devirtualization2,
-    sharpening2,
     abi_helper,
   };
 

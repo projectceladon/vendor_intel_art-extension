@@ -4059,6 +4059,8 @@ class HInvokeStaticOrDirect : public HInvoke {
 
   bool CanBeMoved() const OVERRIDE { return IsPure() || HInvoke::CanBeMoved(); }
 
+  bool CanThrow() const OVERRIDE { return !IsPure() && HInvoke::CanThrow(); }
+
   DECLARE_INSTRUCTION(InvokeStaticOrDirect);
 
  protected:

@@ -227,7 +227,7 @@ void HPureInvokesAnalysis::Run() {
 }
 
 bool HPureInvokesAnalysis::CanReturnNull(HInstruction* insn) {
-  if (insn->IsNewInstance()) {
+  if (insn->IsNewInstance() || insn->IsNewArray()) {
     // Constructors never return null.
     return false;
   }
@@ -317,7 +317,7 @@ void HPureInvokesAnalysis::ProcessPureInvokes() {
       DCHECK(insn != nullptr);
 
       if (insn->IsNullCheck()) {
-        if (!insn->HasEnvironmentUses() && !CanReturnNull(insn->InputAt(0))) {
+        if (!CanReturnNull(insn->InputAt(0))) {
           insn->ReplaceWith(insn->InputAt(0));
           PRINT_PASS_OSTREAM_MESSAGE(this, "Eliminated nullcheck " << insn
                                            << " because its argument is guaranteed to be not null");
@@ -352,11 +352,8 @@ void HPureInvokesAnalysis::ProcessPureInvokes() {
         // The argument should not be null to prove that this invoke cannot throw
         // NullPointerException.
         HInstruction* callee_object = call->InputAt(0);
-        if (CanReturnNull(callee_object)) {
-          continue;
-        }
 
-        if (!call->HasUses()) {
+        if (!CanReturnNull(callee_object) && !call->HasUses()) {
           PRINT_PASS_OSTREAM_MESSAGE(this, "Eliminated direct invoke " << call
                                            << " of pure method "
                                            << CalledMethodName(call)

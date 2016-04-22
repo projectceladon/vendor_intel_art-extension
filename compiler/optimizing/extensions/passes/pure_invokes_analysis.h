@@ -31,9 +31,11 @@ class HPureInvokesAnalysis : public HOptimization_X86 {
  public:
   HPureInvokesAnalysis(HGraph* graph,
                        OptimizingCompilerStats* stats = nullptr)
-  : HOptimization_X86(graph, kPureInvokesHoistingPassName, stats) {}
+  : HOptimization_X86(graph, kPureInvokesAnalysisPassName, stats) {}
 
   void Run() OVERRIDE;
+
+  static constexpr const char* kPureInvokesAnalysisPassName = "pure_invokes_analysis";
 
  private:
   /**
@@ -74,8 +76,6 @@ class HPureInvokesAnalysis : public HOptimization_X86 {
    *         true, otherwise.
    */
   bool IsInvokeThatCanReturnNull(HInvokeStaticOrDirect* call);
-
-  static constexpr const char* kPureInvokesHoistingPassName = "pure_invokes_analysis";
 
   // Method reference -> known answer for this method.
   SafeMap<const MethodReference, MethodPurityInfo, MethodReferenceComparator> pure_invokes_;
