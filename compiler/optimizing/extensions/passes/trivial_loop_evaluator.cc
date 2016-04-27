@@ -274,7 +274,7 @@ class TLEVisitor : public HGraphVisitor {
   void VisitLessThanOrEqual(HLessThanOrEqual* instr) OVERRIDE {
     NOTHING_IF_ERROR;
     values_.Overwrite(instr,
-      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->GetBias()) >= 0 ? 1 : 0));
+      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->GetBias()) <= 0 ? 1 : 0));
   }
   void VisitGreaterThan(HGreaterThan* instr) OVERRIDE {
     NOTHING_IF_ERROR;
