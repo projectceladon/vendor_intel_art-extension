@@ -68,6 +68,11 @@ class OatFileAssistant {
     // up to date, patchoat must be run on the oat file.
     // Matches Java: dalvik.system.DexFile.SELF_PATCHOAT_NEEDED = 3
     kSelfPatchOatNeeded = 3,
+
+    // kInflationNeeded - In order to make the code for this dex location up
+    // to date, the compressed odex file must be uncompressed and patched.
+    // Matches Java: dalvik.system.DexFile.INFLATION_NEEDED = 4
+    kInflationNeeded = 4,
   };
 
   enum OatStatus {
@@ -201,6 +206,10 @@ class OatFileAssistant {
   // Returns false if there is no original dex file, or if the original dex
   // file is an apk/zip without a classes.dex entry.
   bool HasOriginalDexFiles();
+
+  // Returns true if there is a precompiled odex.gz file that can be
+  // inflated by patchoat.
+  bool HasPrecompiledOatGzipped();
 
   // If the dex file has been installed with a compiled oat file alongside
   // it, the compiled oat file will have the extension .odex, and is referred

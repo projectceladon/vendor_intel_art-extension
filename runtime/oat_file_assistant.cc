@@ -195,7 +195,16 @@ OatFileAssistant::DexOptNeeded OatFileAssistant::GetDexOptNeeded(CompilerFilter:
   }
 
   // We can only run dex2oat if there are original dex files.
-  return HasOriginalDexFiles() ? kDex2OatNeeded : kNoDexOptNeeded;
+  if (HasOriginalDexFiles()) {
+    return kDex2OatNeeded;
+  }
+
+  // We must inflate and patch the precompiled&compressed odex file if it exists.
+  if (HasPrecompiledOatGzipped()) {
+    return kInflationNeeded;
+  }
+
+  return kNoDexOptNeeded;
 }
 
 bool OatFileAssistant::IsUpToDate() {
@@ -209,6 +218,9 @@ OatFileAssistant::MakeUpToDate(CompilerFilter::Filter target, std::string* error
     case kDex2OatNeeded: return GenerateOatFile(target, error_msg);
     case kPatchOatNeeded: return RelocateOatFile(OdexFileName(), error_msg);
     case kSelfPatchOatNeeded: return RelocateOatFile(OatFileName(), error_msg);
+    case kInflationNeeded:
+      *error_msg = "Compressed odex files cannot be extracted without PackageManagerService.";
+      return kUpdateFailed;
   }
   UNREACHABLE();
 }
@@ -311,6 +323,15 @@ bool OatFileAssistant::HasOriginalDexFiles() {
   // GetRequiredDexChecksum.
   GetRequiredDexChecksum();
   return has_original_dex_files_;
+}
+
+bool OatFileAssistant::HasPrecompiledOatGzipped() {
+  if (OdexFileName() == nullptr) {
+    return false;
+  }
+
+  std::string oat_gz_file_name = *OdexFileName() + ".gz";
+  return OS::FileExists(oat_gz_file_name.c_str());
 }
 
 const std::string* OatFileAssistant::OdexFileName() {
