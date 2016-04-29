@@ -410,9 +410,9 @@ class GlobalValueNumberer : public ValueObject {
         allocator_(allocator),
         side_effects_(side_effects),
         sets_(graph->GetBlocks().size(), nullptr, allocator->Adapter(kArenaAllocGvn)),
-        stats_(stats),
         visited_blocks_(
-            allocator, graph->GetBlocks().size(), /* expandable */ false, kArenaAllocGvn) {}
+            allocator, graph->GetBlocks().size(), /* expandable */ false, kArenaAllocGvn),
+        stats_(stats) {}
 
   void Run();
 

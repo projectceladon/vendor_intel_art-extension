@@ -289,11 +289,12 @@ namespace art {
   }
 
   void RemoveFromEnvironmentUsers(HInstruction* insn) {
-    for (HUseIterator<HEnvironment*> use_it(insn->GetEnvUses()); !use_it.Done();
-         use_it.Advance()) {
-      HUseListNode<HEnvironment*>* user_node = use_it.Current();
-      HEnvironment* user = user_node->GetUser();
-      user->SetRawEnvAt(user_node->GetIndex(), nullptr);
+    const HUseList<HEnvironment*>& env_uses = insn->GetEnvUses();
+    for (auto it = env_uses.begin(), end = env_uses.end(); it != end; /* ++it below */) {
+      HEnvironment* user = it->GetUser();
+      size_t index = it->GetIndex();
+      ++it;
+      user->SetRawEnvAt(index, nullptr);
     }
   }
 

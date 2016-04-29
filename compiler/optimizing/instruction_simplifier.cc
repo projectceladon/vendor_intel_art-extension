@@ -764,7 +764,7 @@ static HInstruction* GetZeroExtension(HInstruction* mem_read_instr) {
     return nullptr;
   }
 
-  HAnd* and_instr = mem_read_instr->GetUses().GetFirst()->GetUser()->AsAnd();
+  HAnd* and_instr = mem_read_instr->GetUses().front().GetUser()->AsAnd();
   if (and_instr != nullptr && Primitive::IsIntOrLongType(and_instr->GetType())) {
     HConstant* const_instr = and_instr->GetConstantRight();
     if (const_instr != nullptr) {

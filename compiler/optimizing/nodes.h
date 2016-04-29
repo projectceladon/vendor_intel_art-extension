@@ -1927,8 +1927,12 @@ class HInstruction : public ArenaObject<kArenaAllocInstruction> {
 
   void AddEnvUseAt(HEnvironment* user, size_t index, ArenaAllocator* arena) {
     DCHECK(user != nullptr);
-    HUseListNode<HEnvironment*>* env_use = env_uses_.AddUse(user, index, arena);
-    user->RecordEnvUse(env_use);
+    // Note: env_fixup_end remains valid across push_front().
+    auto env_fixup_end = env_uses_.empty() ? env_uses_.begin() : ++env_uses_.begin();
+    HUseListNode<HEnvironment*>* new_node =
+        new (arena) HUseListNode<HEnvironment*>(user, index);
+    env_uses_.push_front(*new_node);
+    FixUpUserRecordsAfterEnvUseInsertion(env_fixup_end);
   }
 
   void RemoveAsUserOfInput(size_t input) {

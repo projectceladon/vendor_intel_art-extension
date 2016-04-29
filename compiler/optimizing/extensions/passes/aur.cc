@@ -42,10 +42,9 @@ static void RemoveEnvAsUser(HInstruction* candidate,
               // So the reference is not null. Well it might still be dead if this
               // environment use is the last real use. One way we can determine if this
               // if all the uses strictly dominate this candidate.
-              for (HUseIterator<HInstruction*> it(instruction->GetUses());
-                  !it.Done();
-                  it.Advance()) {
-                HInstruction* user = it.Current()->GetUser();
+              const HUseList<HInstruction*>& uses = instruction->GetUses();
+              for (auto it = uses.begin(), end = uses.end(); it != end; ++it) {
+                HInstruction* user = it->GetUser();
                 if (!user->StrictlyDominates(candidate)) {
                   should_remove = false;
                   break;
@@ -91,16 +90,15 @@ static void RemoveEnvAsUser(HInstruction* candidate,
 
 static void RemovePhi(HPhi* phi, OptimizingCompilerStats* const stats) {
   bool used_in_deopt = false;
-  for (HUseIterator<HEnvironment*> use_it(phi->GetEnvUses());
-                                   !use_it.Done();
-                                   use_it.Advance()) {
-    auto use = use_it.Current();
-    HEnvironment* env_user = use->GetUser();
+  const HUseList<HEnvironment*>& uses = phi->GetEnvUses();
+  for (auto it = uses.begin(), end = uses.end(); it != end; /* ++it below */) {
+    HEnvironment* env_user = it->GetUser();
+    size_t index = it->GetIndex();
+    ++it;
     // We can only remove the Phi if it is not used for Deoptimize.
     if (env_user->GetHolder()->IsDeoptimize()) {
       used_in_deopt = true;
     } else {
-      size_t index = use->GetIndex();
       env_user->RemoveAsUserOfInput(index);
       env_user->SetRawEnvAt(index, nullptr);
     }

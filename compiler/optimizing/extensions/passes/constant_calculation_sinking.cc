@@ -34,9 +34,9 @@ void HConstantCalculationSinking::DeletePhiAndUsers(HPhi* phi) const {
   std::vector<HInstruction*> to_remove;
 
   // Add all phi users to list.
-  for (HUseIterator<HInstruction*> use_it(phi->GetUses()); !use_it.Done(); use_it.Advance()) {
-    HUseListNode<HInstruction*>* user_node = use_it.Current();
-    HInstruction* user = user_node->GetUser();
+  const HUseList<HInstruction*>& uses = phi->GetUses();
+  for (auto it = uses.begin(), end = uses.end(); it != end; ++it) {
+    HInstruction* user = it->GetUser();
     if (phi != user) {
       to_remove.push_back(user);
     }
@@ -68,9 +68,9 @@ void HConstantCalculationSinking::DeletePhiAndUsers(HPhi* phi) const {
  */
 bool HConstantCalculationSinking::HasNoDependenciesWithinLoop(HInstruction* candidate,
          HLoopInformation_X86* loop_info, HInstruction* phi) const {
-  for (HUseIterator<HInstruction*> it(candidate->GetUses()); !it.Done(); it.Advance()) {
-    HUseListNode<HInstruction*>* current = it.Current();
-    HInstruction* user = current->GetUser();
+  const HUseList<HInstruction*>& uses = candidate->GetUses();
+  for (auto it = uses.begin(), end = uses.end(); it != end; ++it) {
+    HInstruction* user = it->GetUser();
 
     if (user != phi && loop_info->Contains(*user->GetBlock())) {
       return false;
@@ -115,11 +115,10 @@ void HConstantCalculationSinking::FillAccumulator(HLoopInformation_X86* loop_inf
     // Check phi has only one user in loop and save the user found.
     uint32_t phi_users_in_loop = 0;
     bool phi_has_outside_loop_uses = false;
-    for (HUseIterator<HInstruction*> use_it(phi->GetUses());
-         !use_it.Done() && (phi_users_in_loop < 2);
-         use_it.Advance()) {
-      HUseListNode<HInstruction*>* current = use_it.Current();
-      HInstruction* user = current->GetUser();
+    const HUseList<HInstruction*>& uses = phi->GetUses();
+    for (auto it2 = uses.begin(), end2 = uses.end();
+         it2 != end2  && (phi_users_in_loop < 2) ; ++it2) {
+      HInstruction* user = it2->GetUser();
 
       if (!loop_info->Contains(*(user->GetBlock()))) {
         phi_has_outside_loop_uses = true;
@@ -905,10 +904,13 @@ void HConstantCalculationSinking::DoConstantSinking(const std::vector<Accumulato
         }
       }
 
-      for (HUseIterator<HInstruction*> use_it(inst->GetUses()); !use_it.Done(); use_it.Advance()) {
-        HInstruction* user = use_it.Current()->GetUser();
+      const HUseList<HInstruction*>& uses = inst->GetUses();
+      for (auto it = uses.begin(), end = uses.end(); it != end; /* ++it below */) {
+        HInstruction* user = it->GetUser();
+        size_t index = it->GetIndex();
+        ++it;
         if (!loop_info->ExecutedPerIteration(user)) {
-          user->ReplaceInput(to_replace, use_it.Current()->GetIndex());
+          user->ReplaceInput(to_replace, index);
         }
       }
 

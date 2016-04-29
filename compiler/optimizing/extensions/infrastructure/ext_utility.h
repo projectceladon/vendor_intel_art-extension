@@ -52,61 +52,70 @@ class HInstruction;
 class HAllUseIterator {
  public:
   explicit HAllUseIterator(HInstruction* insn) :
-      is_env_(false),
-      env_use_it_(insn->GetEnvUses()),
-      use_it_(insn->GetUses()) {
-    if (use_it_.Done()) {
-      is_env_ = true;
-    }
+      env_use_it_(insn->GetEnvUses().begin()),
+      env_use_it_end_(insn->GetEnvUses().end()),
+      use_it_(insn->GetUses().begin()),
+      use_it_end_(insn->GetUses().end()),
+      index_(0),
+      env_user_(nullptr),
+      user_(nullptr) {
+    Advance();
   }
 
   bool Done() {
-    return is_env_ && env_use_it_.Done();
+    return (use_it_ == use_it_end_) &&
+           (env_use_it_ == env_use_it_end_) &&
+           env_user_ == nullptr &&
+           user_ == nullptr;
   }
-
+  
   HInstruction* Current() {
-    return is_env_ ?
-        env_use_it_.Current()->GetUser()->GetHolder() :
-        use_it_.Current()->GetUser();
+    return IsEnv() ? env_user_->GetHolder() : user_;
   }
 
   bool IsEnv() {
-    return is_env_;
+    return env_user_ != nullptr;
   }
 
   void Advance() {
-    if (is_env_) {
-      env_use_it_.Advance();
-    } else {
-      use_it_.Advance();
-      if (use_it_.Done()) {
-        is_env_ = true;
+    if (use_it_ == use_it_end_) {
+      if (env_use_it_ == env_use_it_end_) {
+        env_user_ = nullptr;
+        user_ = nullptr;
+      } else {
+        index_ = env_use_it_->GetIndex();
+        env_user_ = env_use_it_->GetUser();
+        ++env_use_it_;
       }
+    } else {
+      index_ = use_it_->GetIndex();
+      user_ = use_it_->GetUser();
+      ++use_it_;
     }
   }
 
   void ReplaceInput(HInstruction* new_input) {
-    if (is_env_) {
-      HEnvironment* user = env_use_it_.Current()->GetUser();
-      size_t index = env_use_it_.Current()->GetIndex();
+    if (IsEnv()) {
       DCHECK(new_input == nullptr || new_input->GetBlock() != nullptr);
-      user->RemoveAsUserOfInput(index);
-      user->SetRawEnvAt(index, new_input);
+      env_user_->RemoveAsUserOfInput(index_);
+      env_user_->SetRawEnvAt(index_, new_input);
       if (new_input != nullptr) {
-        new_input->AddEnvUseAt(user, index);
+        new_input->AddEnvUseAt(env_user_, index_);
       }
     } else {
-      HInstruction* user = use_it_.Current()->GetUser();
-      size_t index = use_it_.Current()->GetIndex();
       DCHECK(new_input->GetBlock() != nullptr);
-      user->ReplaceInput(new_input, index);
+      user_->ReplaceInput(new_input, index_);
     }
   }
 
  private:
-  bool is_env_;
-  HUseIterator<HEnvironment*> env_use_it_;
-  HUseIterator<HInstruction*> use_it_;
+  HUseList<HEnvironment*>::const_iterator env_use_it_;
+  HUseList<HEnvironment*>::const_iterator env_use_it_end_;
+  HUseList<HInstruction*>::const_iterator use_it_;
+  HUseList<HInstruction*>::const_iterator use_it_end_;
+  size_t index_;
+  HEnvironment* env_user_;
+  HInstruction* user_;
 };
 
   /**

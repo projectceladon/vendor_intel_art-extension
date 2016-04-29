@@ -99,10 +99,9 @@ bool HPhiCleanup::RemoveCliqueHelper(HInstruction* to_check,
 
   // We reject the instruction if its use is either a control flow or
   // it has side effects. In other cases we run the recursive check for it.
-  for (HUseIterator<HInstruction*> use_it(to_check->GetUses());
-       !use_it.Done();
-       use_it.Advance()) {
-    HInstruction* use = use_it.Current()->GetUser();
+  const HUseList<HInstruction*>& uses = to_check->GetUses();
+  for (auto it = uses.begin(), end = uses.end(); it != end; ++it) {
+    HInstruction* use = it->GetUser();
     if (use->IsControlFlow() || use->GetSideEffects().HasSideEffectsExcludingGC()) {
       // Instruction with side effects or control flow is not something that we can just remove.
       return false;

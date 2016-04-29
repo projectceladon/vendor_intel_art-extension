@@ -46,8 +46,9 @@ void HAbiTransitionHelper::CollectStats() const {
 
       if (instr->IsCurrentMethod()) {
         DCHECK_EQ(instr->GetEnvUses().SizeSlow(), 0u);
-        for (HUseIterator<HInstruction*> use_it(instr->GetUses()); !use_it.Done(); use_it.Advance()) {
-          HInstruction* user = use_it.Current()->GetUser();
+        const HUseList<HInstruction*>& uses = instr->GetUses();
+        for (auto it2 = uses.begin(), end = uses.end(); it2 != end; ++it2) {
+          HInstruction* user = it2->GetUser();
 
           switch(user->GetKind()) {
             case HInstruction::kNewInstance:

@@ -136,8 +136,9 @@ bool HRemoveUnusedLoops::CheckInstructionsInBlock(HLoopInformation_X86* loop_inf
 
     bool no_side_effects = true;  // All instructions are okay.
     std::unordered_set<HPhi*> worklist;
-    for (HUseIterator<HInstruction*> it2(instruction->GetUses()); !it2.Done(); it2.Advance()) {
-      HInstruction* insn = it2.Current()->GetUser();
+    const HUseList<HInstruction*>& uses = instruction->GetUses();
+    for (auto it2 = uses.begin(), end2 = uses.end(); it2 != end2; ++it2) {
+      HInstruction* insn = it2->GetUser();
       HBasicBlock* insn_block = insn->GetBlock();
       HLoopInformation* li = insn_block->GetLoopInformation();
       PRINT_PASS_OSTREAM_MESSAGE(this, "Result is used by: " << insn);
@@ -205,8 +206,9 @@ bool HRemoveUnusedLoops::CheckPhisInBlock(HLoopInformation_X86* loop_info,
       continue;
     }
 
-    for (HUseIterator<HInstruction*> it2(phi->GetUses()); !it2.Done(); it2.Advance()) {
-      HInstruction* insn = it2.Current()->GetUser();
+    const HUseList<HInstruction*>& uses = phi->GetUses();
+    for (auto it2 = uses.begin(), end2 = uses.end(); it2 != end2; ++it2) {
+      HInstruction* insn = it2->GetUser();
       HBasicBlock* insn_block = insn->GetBlock();
       HLoopInformation* li = insn_block->GetLoopInformation();
       PRINT_PASS_OSTREAM_MESSAGE(this, "Result is used by: " << insn);
