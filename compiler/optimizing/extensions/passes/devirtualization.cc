@@ -209,11 +209,8 @@ bool HDevirtualization::IsPredictionSame(HInstruction* instr, HInstruction* inst
     return true;
   }
 
-  // They are not same instance - but are they at least the same type?
-  TypeHandle type1 = GetPrimaryType(invoke1);
-  TypeHandle type2 = GetPrimaryType(invoke2);
-  ScopedObjectAccess soa(Thread::Current());
-  return (type1.Get() == type2.Get());
+  // They must have the exact same 'this' pointer to be guarded by the same guard.
+  return false;
 }
 
 HSpeculationGuard* HDevirtualization::InsertSpeculationGuard(HInstruction* instr_guarded,
