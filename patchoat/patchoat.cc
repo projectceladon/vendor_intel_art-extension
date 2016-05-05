@@ -264,10 +264,7 @@ bool PatchOat::Patch(const std::string& image_location,
       std::string output_oat_filename =
           ImageHeader::GetOatLocationFromImageLocation(output_image_filename);
 
-      if (!ReplaceOatFileWithSymlink(input_oat_file->GetPath(),
-                                     output_oat_filename,
-                                     false,
-                                     true)) {
+      if (!Symlink(input_oat_filename, output_oat_filename, false, true)) {
         // Errors already logged by above call.
         return false;
       }
@@ -423,10 +420,45 @@ PatchOat::MaybePic PatchOat::IsOatPic(const ElfFile* oat_in) {
   return is_pic ? PIC : NOT_PIC;
 }
 
-bool PatchOat::ReplaceOatFileWithSymlink(const std::string& input_oat_filename,
-                                         const std::string& output_oat_filename,
-                                         bool output_oat_opened_from_fd,
-                                         bool new_oat_out) {
+bool PatchOat::Copy(File* input_oat, File* output_oat) {
+  // Make a copy of the PIC oat file.
+  const size_t COPY_BUFLEN = 16384;
+
+  std::string output_oat_filename = output_oat->GetPath();
+  std::string input_oat_filename = input_oat->GetPath();
+
+  std::unique_ptr<char> buf(new char[COPY_BUFLEN]);
+  int64_t len;
+  int64_t read_size = 0;
+  while (true) {
+    len = input_oat->Read(buf.get(), COPY_BUFLEN, read_size);
+    if (len <= 0) {
+      break;
+    }
+    if (!output_oat->WriteFully(buf.get(), len)) {
+      len = -1;
+      break;
+    }
+    read_size += len;
+  }
+
+  if (len < 0) {
+    int err = errno;
+    LOG(ERROR) << "Failed to copy " << input_oat_filename << " to " << output_oat_filename
+               << ": error(" << err << "): " << strerror(err);
+    return false;
+  }
+
+  if (kIsDebugBuild) {
+    LOG(INFO) << "Copied " << input_oat_filename << " -> " << output_oat_filename;
+  }
+  return true;
+}
+
+bool PatchOat::Symlink(const std::string& input_oat_filename,
+                       const std::string& output_oat_filename,
+                       bool output_oat_opened_from_fd,
+                       bool new_oat_out) {
   // Need a file when we are PIC, since we symlink over it. Refusing to symlink into FD.
   if (output_oat_opened_from_fd) {
     // TODO: installd uses --output-oat-fd. Should we change class linking logic for PIC?
@@ -441,18 +473,18 @@ bool PatchOat::ReplaceOatFileWithSymlink(const std::string& input_oat_filename,
   }
 
   // Delete the original file, since we won't need it.
-  unlink(output_oat_filename.c_str());
+  TEMP_FAILURE_RETRY(unlink(output_oat_filename.c_str()));
 
-  // Create a symlink from the old oat to the new oat
-  if (symlink(input_oat_filename.c_str(), output_oat_filename.c_str()) < 0) {
+  // Create a symlink from the old oat to the new oat.
+  if (symlink(input_oat_filename.c_str(), output_oat_filename.c_str()) == 0) {
+    if (kIsDebugBuild) {
+      LOG(INFO) << "Created symlink " << output_oat_filename << " -> " << input_oat_filename;
+    }
+  } else {
     int err = errno;
     LOG(ERROR) << "Failed to create symlink at " << output_oat_filename
                << " error(" << err << "): " << strerror(err);
     return false;
-  }
-
-  if (kIsDebugBuild) {
-    LOG(INFO) << "Created symlink " << output_oat_filename << " -> " << input_oat_filename;
   }
 
   return true;
@@ -754,7 +786,8 @@ void PatchOat::FixupMethod(ArtMethod* object, ArtMethod* copy) {
 }
 
 bool PatchOat::Patch(File* input_oat, off_t delta, File* output_oat, TimingLogger* timings,
-                     bool output_oat_opened_from_fd, bool new_oat_out) {
+                     bool output_oat_opened_from_fd, bool new_oat_out,
+                     bool input_oat_filename_dummy) {
   CHECK(input_oat != nullptr);
   CHECK(output_oat != nullptr);
   CHECK_GE(input_oat->Fd(), 0);
@@ -774,12 +807,14 @@ bool PatchOat::Patch(File* input_oat, off_t delta, File* output_oat, TimingLogge
     // Error logged by IsOatPic
     return false;
   } else if (is_oat_pic == PIC) {
-    // Do not need to do ELF-file patching. Create a symlink and skip the rest.
+    // Do not need to do ELF-file patching. Create a symlink or make a copy.
     // Any errors will be logged by the function call.
-    return ReplaceOatFileWithSymlink(input_oat->GetPath(),
-                                     output_oat->GetPath(),
-                                     output_oat_opened_from_fd,
-                                     new_oat_out);
+    return input_oat_filename_dummy ?
+               Copy(input_oat, output_oat) :
+               Symlink(input_oat->GetPath(),
+                       output_oat->GetPath(),
+                       output_oat_opened_from_fd,
+                       new_oat_out);
   } else {
     CHECK(is_oat_pic == NOT_PIC);
   }
@@ -1190,10 +1225,12 @@ static int patchoat_oat(TimingLogger& timings,
       LOG(ERROR) << "Failed to inflate input file: " << err;
     }
   }
+
+  bool input_oat_filename_dummy = false;
   if (input_oat_fd != -1) {
     if (input_oat_filename.empty()) {
-      // TODO: make sure this will not be used to create symlink if input_oat_fd is PIC
       input_oat_filename = "input-oat-file";
+      input_oat_filename_dummy = true;
     }
     input_oat.reset(new File(input_oat_fd, input_oat_filename, false));
     if (input_oat_fd == output_oat_fd) {
@@ -1300,7 +1337,7 @@ static int patchoat_oat(TimingLogger& timings,
   TimingLogger::ScopedTiming pt("patch oat", &timings);
   bool ret = PatchOat::Patch(input_oat.get(), base_delta, output_oat.get(), &timings,
                              output_oat_fd >= 0,  // was it opened from FD?
-                             new_oat_out);
+                             new_oat_out, input_oat_filename_dummy);
   ret = FinishFile(output_oat.get(), ret);
 
   if (kIsDebugBuild) {
