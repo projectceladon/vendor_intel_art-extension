@@ -389,12 +389,12 @@ SpeculationRecoveryApproach HDevirtualization::GetRecoveryMethod(HInstruction* i
   }
 
   size_t prediction_count = imprecise_predictions_.find(instr)->second.size();
-  if (prediction_count == 1) {
+  if (prediction_count == 1 && Runtime::Current()->UseJitCompilation()) {
     // If the prediction is monomorphic call - we do not care about the overhead of deopt.
     return kRecoveryDeopt;
   }
 
-  // For multiple predictions - use versioning.
+  // For multiple predictions or not in JIT - use versioning.
   return kRecoveryCodeVersioning;
 }
 
