@@ -595,6 +595,26 @@ public class Main {
   /// CHECK: ArraySet
   /// CHECK: BoundsCheck
   /// CHECK: ArraySet
+  /* We have to duplicate CHECK-asserts because
+   * Loop-Peeling duplicated instructions for each
+   * loop. Below are CHECK-asserts that have to match
+   * BoundsCheck and ArraySet or ArrayGet instructions
+   * in peeled blocks.
+   */
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
 
   /// CHECK-START: void Main.loopPattern1(int[]) BCE (after)
   /// CHECK-NOT: BoundsCheck
@@ -603,13 +623,41 @@ public class Main {
   /// CHECK: ArraySet
   /// CHECK-NOT: BoundsCheck
   /// CHECK: ArraySet
-  /// CHECK: BoundsCheck
+  /* Here we have to add one more CHECK-NOT for SILVER. The reason is
+   * Loop-Peeling optimization. It peeled one loop-iteration, and
+   * condition has transformed from
+   * for (int i = -1; i < array.length; i++)
+   * to
+   * for (int i = 0; i < array.length; i++).
+   * After that, BCE successfully carried out BoundsCheck.
+   */
+  /// CHECK-NOT: BoundsCheck
   /// CHECK: ArraySet
   /// CHECK: BoundsCheck
   /// CHECK: ArraySet
   /// CHECK: BoundsCheck
   /// CHECK: ArraySet
   /// CHECK-NOT: BoundsCheck
+  /// CHECK: ArraySet
+  /* We have to duplicate CHECK-asserts because
+   * Loop-Peeling duplicated instructions for each
+   * loop. Below are CHECK-asserts that have to match
+   * BoundsCheck and ArraySet or ArrayGet instructions
+   * in peeled blocks.
+   */
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
   /// CHECK: ArraySet
 
   static void loopPattern1(int[] array) {
@@ -660,6 +708,24 @@ public class Main {
   /// CHECK: ArraySet
   /// CHECK: BoundsCheck
   /// CHECK: ArraySet
+  /* We have to duplicate CHECK-asserts because
+   * Loop-Peeling duplicated instructions for each
+   * loop. Below are CHECK-asserts that have to match
+   * BoundsCheck and ArraySet or ArrayGet instructions
+   * in peeled blocks.
+   */
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
 
   /// CHECK-START: void Main.loopPattern2(int[]) BCE (after)
   /// CHECK-NOT: BoundsCheck
@@ -668,11 +734,37 @@ public class Main {
   /// CHECK: ArraySet
   /// CHECK-NOT: BoundsCheck
   /// CHECK: ArraySet
-  /// CHECK: BoundsCheck
+  /* Here we have to add one more CHECK-NOT for SILVER. The reason is
+   * Loop-Peeling optimization. It peeled one loop-iteration, and
+   * condition has transformed from
+   * for (int i = array.length; i >= 0; i--)
+   * to
+   * for (int i = array.length - 1; i >= 0; i--)
+   * After that, BCE successfully carried out BoundsCheck.
+   */
+  /// CHECK-NOT: BoundsCheck
   /// CHECK: ArraySet
   /// CHECK: BoundsCheck
   /// CHECK: ArraySet
   /// CHECK-NOT: BoundsCheck
+  /// CHECK: ArraySet
+  /* We have to duplicate CHECK-asserts because
+   * Loop-Peeling duplicated instructions for each
+   * loop. Below are CHECK-asserts that have to match
+   * BoundsCheck and ArraySet or ArrayGet instructions
+   * in peeled blocks.
+   */
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
+  /// CHECK: BoundsCheck
   /// CHECK: ArraySet
 
   static void loopPattern2(int[] array) {
@@ -929,7 +1021,15 @@ public class Main {
 
   static int[][] mA;
 
-  /// CHECK-START: void Main.dynamicBCEAndIntrinsic(int) BCE (before)
+  /// CHECK-START: void Main.dynamicBCEAndIntrinsic(int) GVN (before)
+  /* Here we have to add more statements for
+   * mA[j] because they still exist before GVN.
+   */
+  /// CHECK-DAG:  StaticFieldGet
+  /// CHECK-DAG:  NullCheck
+  /// CHECK-DAG:  ArrayLength
+  /// CHECK-DAG:  BoundsCheck
+  /// CHECK-DAG:  ArrayGet
   //  Array references mA[i] and ..[j] both in inner loop.
   /// CHECK-DAG:  <<Get1:l\d+>>  ArrayGet [<<Array1:l\d+>>,<<Bounds1:i\d+>>] loop:<<InnerLoop:B\d+>>
   /// CHECK-DAG:  <<Array1>>     NullCheck [<<Field1:l\d+>>]                 loop:<<InnerLoop>>
@@ -943,28 +1043,23 @@ public class Main {
   /// CHECK-DAG:                 InvokeStaticOrDirect [<<Get2>>{{(,[ij]\d+)?}}] loop:<<InnerLoop>>
   /// CHECK-DAG:  <<Index2>>     Phi                                         loop:<<InnerLoop>>
   /// CHECK-DAG:  <<Index1>>     Phi                                         loop:<<OuterLoop:B\d+>>
-  /// CHECK-DAG:  <<Field1>>     StaticFieldGet                              loop:none
+  /// CHECK-DAG:  <<Field1>>     StaticFieldGet                              loop:<<InnerLoop>>
   /// CHECK-EVAL: "<<InnerLoop>>" != "<<OuterLoop>>"
-  //
-  /// CHECK-START: void Main.dynamicBCEAndIntrinsic(int) BCE (after)
-  //  Array reference mA[i] hoisted to same level as deopt.
-  /// CHECK-DAG:                 Deoptimize                                  loop:<<OuterLoop:B\d+>>
-  /// CHECK-DAG:                 ArrayLength                                 loop:<<OuterLoop>>
-  /// CHECK-DAG:  <<Get1:l\d+>>  ArrayGet [<<Array1:l\d+>>,<<Index1:i\d+>>]  loop:<<OuterLoop>>
+
+  /// CHECK-START: void Main.dynamicBCEAndIntrinsic(int) GVN (after)
   //  Array reference ..[j] still in inner loop, with a direct index.
-  /// CHECK-DAG:  <<Get2:i\d+>>  ArrayGet [<<Array2:l\d+>>,<<Index2:i\d+>>]  loop:<<InnerLoop:B\d+>>
+  /// CHECK-DAG:  <<Get2:i\d+>>  ArrayGet [<<Array2:l\d+>>,<<Bounds2:i\d+>>]    loop:<<InnerLoop:B\d+>>
+  /// CHECK-DAG:  <<Bounds2>>    BoundsCheck [<<Index2:i\d+>>{{(,[ij]\d+)?}}]   loop:<<InnerLoop>>
   // Note: The ArtMethod* (typed as int or long) is optional after sharpening.
   /// CHECK-DAG:                 InvokeStaticOrDirect [<<Get2>>{{(,[ij]\d+)?}}] loop:<<InnerLoop>>
-  /// CHECK-DAG:  <<Index2>>     Phi                                         loop:<<InnerLoop>>
-  /// CHECK-DAG:  <<Index1>>     Phi                                         loop:<<OuterLoop>>
-  //  Synthetic phi.
-  /// CHECK-DAG:  <<Array2>>     Phi                                         loop:<<OuterLoop>>
-  /// CHECK-DAG:  <<Array1>>     StaticFieldGet                              loop:none
+  /// CHECK-DAG:  <<Index2>>     Phi                                            loop:<<InnerLoop>>
+  //  Array reference mA[i] hoisted to outer loop.
+  /// CHECK-DAG:                 BoundsCheck [<<Index1:i\d+>>{{(,[ij]\d+)?}}]   loop:<<OuterLoop:B\d+>>
+  /// CHECK-DAG:                 ArrayGet   loop:<<OuterLoop>>
+  /// CHECK-DAG:  <<Index1>>     Phi                                            loop:<<OuterLoop>>
+  /// CHECK-DAG:                 StaticFieldGet                                 loop:<<OuterLoop>>
   /// CHECK-EVAL: "<<InnerLoop>>" != "<<OuterLoop>>"
-  //
-  /// CHECK-START: void Main.dynamicBCEAndIntrinsic(int) BCE (after)
-  /// CHECK-NOT: NullCheck
-  /// CHECK-NOT: BoundsCheck
+
   static void dynamicBCEAndIntrinsic(int n) {
     for (int i = 0; i < n; i++) {
       for (int j = 0; j < n; j++) {
@@ -1015,16 +1110,16 @@ public class Main {
   /// CHECK: If
   /// CHECK: Deoptimize
   /// CHECK: Deoptimize
-  /// CHECK: Deoptimize
   /// CHECK-NOT: Deoptimize
   /// CHECK: Goto
   /// CHECK: Goto
   /// CHECK: Goto
 
   void foo1(int[] array, int start, int end, boolean expectInterpreter) {
-    // Three HDeoptimize will be added. Two for the index
-    // and one for null check on array (to hoist null
-    // check and array.length out of loop).
+    // Only two HDeoptimize will be added in SILVER.
+    // Both for the index. Third HDeoptimize will not
+    // be added because corresponding HNullCheck was hoisted
+    // out of the loop by enhanced GVN.
     for (int i = start ; i < end; i++) {
       if (!expectInterpreter) {
         assertIsManaged();
@@ -1051,16 +1146,16 @@ public class Main {
   /// CHECK: If
   /// CHECK: Deoptimize
   /// CHECK: Deoptimize
-  /// CHECK: Deoptimize
   /// CHECK-NOT: Deoptimize
   /// CHECK: Goto
   /// CHECK: Goto
   /// CHECK: Goto
 
   void foo2(int[] array, int start, int end, boolean expectInterpreter) {
-    // Three HDeoptimize will be added. Two for the index
-    // and one for null check on array (to hoist null
-    // check and array.length out of loop).
+    // Only two HDeoptimize will be added in SILVER.
+    // Both for the index. Third HDeoptimize will not
+    // be added because it HNullCheck was hoisted out
+    // of the loop by enhanced GVN.
     for (int i = start ; i <= end; i++) {
       if (!expectInterpreter) {
         assertIsManaged();
@@ -1087,16 +1182,16 @@ public class Main {
   /// CHECK: If
   /// CHECK: Deoptimize
   /// CHECK: Deoptimize
-  /// CHECK: Deoptimize
   /// CHECK-NOT: Deoptimize
   /// CHECK: Goto
   /// CHECK: Goto
   /// CHECK: Goto
 
   void foo3(int[] array, int end, boolean expectInterpreter) {
-    // Three HDeoptimize will be added. Two for the index
-    // and one for null check on array (to hoist null check
-    // and array.length out of loop).
+    // Only two HDeoptimize will be added in SILVER.
+    // Both for the index. Third HDeoptimize will not
+    // be added because it HNullCheck was hoisted out
+    // of the loop by enhanced GVN.
     for (int i = 3 ; i <= end; i++) {
       if (!expectInterpreter) {
         assertIsManaged();
@@ -1124,16 +1219,16 @@ public class Main {
   /// CHECK: If
   /// CHECK: Deoptimize
   /// CHECK: Deoptimize
-  /// CHECK: Deoptimize
   /// CHECK-NOT: Deoptimize
   /// CHECK: Goto
   /// CHECK: Goto
   /// CHECK: Goto
 
   void foo4(int[] array, int end, boolean expectInterpreter) {
-    // Three HDeoptimize will be added. Two for the index
-    // and one for null check on array (to hoist null check
-    // and array.length out of loop).
+    // Only two HDeoptimize will be added in SILVER.
+    // Both for the index. Third HDeoptimize will not
+    // be added because it HNullCheck was hoisted out
+    // of the loop by enhanced GVN.
     for (int i = end ; i > 0; i--) {
       if (!expectInterpreter) {
         assertIsManaged();
@@ -1145,14 +1240,35 @@ public class Main {
 
 
   /// CHECK-START: void Main.foo5(int[], int, boolean) BCE (before)
+
+  // First loop:
   /// CHECK: BoundsCheck
   /// CHECK: ArraySet
+  // Second loop:
   /// CHECK: BoundsCheck
   /// CHECK: ArrayGet
   /// CHECK: BoundsCheck
   /// CHECK: ArrayGet
   /// CHECK: BoundsCheck
   /// CHECK: ArrayGet
+
+  /* We have to duplicate CHECK-asserts because
+   * Loop-Peeling duplicated instructions for each
+   * loop. Below are CHECK-asserts that have to match
+   * BoundsCheck and ArraySet or ArrayGet instructions
+   * in peeled blocks.
+   * Note, that we peel loops from bottom to top.
+   */
+  // Second loop:
+  /// CHECK: BoundsCheck
+  /// CHECK: ArrayGet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArrayGet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArrayGet
+  // First loop:
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
 
   /// CHECK-START: void Main.foo5(int[], int, boolean) BCE (after)
   /// CHECK-NOT: BoundsCheck
@@ -1167,6 +1283,16 @@ public class Main {
   //  Added blocks at end for deoptimization.
   /// CHECK: Exit
   /// CHECK: If
+  /* These two CHECK-asserts are for the
+   * peeled block: one is for array[i - 1],
+   * and the other one is for array[i + 1].
+   * But, HDeoptimize for array[i] is absent.
+   * Perhaps, it was eliminated as a subsequent
+   * bounds check against the same array_length.
+   */
+  /// CHECK: Deoptimize
+  /// CHECK: Deoptimize
+
   /// CHECK: Deoptimize
   /// CHECK: Deoptimize
   /// CHECK: Deoptimize
@@ -1209,6 +1335,25 @@ public class Main {
   /// CHECK: ArrayGet
   /// CHECK-NOT: BoundsCheck
   /// CHECK: ArraySet
+  /* We have to duplicate CHECK-asserts because
+   * Loop-Peeling duplicated instructions for each
+   * loop. Below are CHECK-asserts that have to match
+   * BoundsCheck and ArraySet or ArrayGet instructions
+   * in peeled blocks.
+   */
+  /// CHECK: BoundsCheck
+  /// CHECK: ArrayGet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArrayGet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArrayGet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArrayGet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArrayGet
+  /// CHECK-NOT: BoundsCheck
+  /// CHECK: ArraySet
+
   /// CHECK-START: void Main.foo6(int[], int, int, boolean) BCE (after)
   /// CHECK: Phi
   /// CHECK-NOT: BoundsCheck
@@ -1226,7 +1371,10 @@ public class Main {
   //  Added blocks at end for deoptimization.
   /// CHECK: Exit
   /// CHECK: If
+  // Two Deoptimize for the peeled block.
   /// CHECK: Deoptimize
+  /// CHECK: Deoptimize
+  // Ten Deoptimize for the loop body.
   /// CHECK: Deoptimize
   /// CHECK: Deoptimize
   /// CHECK: Deoptimize
@@ -1258,6 +1406,16 @@ public class Main {
   /// CHECK: ArrayGet
   /// CHECK: BoundsCheck
   /// CHECK: ArrayGet
+  /* We have to duplicate CHECK-asserts because
+   * Loop-Peeling duplicated instructions for each
+   * loop. Below are CHECK-asserts that have to match
+   * BoundsCheck and ArraySet or ArrayGet instructions
+   * in peeled blocks.
+   */
+  /// CHECK: BoundsCheck
+  /// CHECK: ArrayGet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArrayGet
 
   /// CHECK-START: void Main.foo7(int[], int, int, boolean) BCE (after)
   /// CHECK: Phi
@@ -1267,19 +1425,31 @@ public class Main {
   /// CHECK: ArrayGet
   //  Added blocks at end for deoptimization.
   /// CHECK: Exit
+  /* We have to duplicate CHECK-asserts because
+   * Loop-Peeling duplicated instructions for each
+   * loop. Below are CHECK-asserts that have to match
+   * BoundsCheck and ArraySet or ArrayGet instructions
+   * in peeled blocks.
+   */
+  /// CHECK: BoundsCheck
+  /// CHECK: ArrayGet
+  /// CHECK: BoundsCheck
+  /// CHECK: ArrayGet
   /// CHECK: If
   /// CHECK: Deoptimize
   /// CHECK: Deoptimize
-  /// CHECK: Deoptimize
+  /* Third HDeoptimize will not be added because
+   * corresponding HNullCheck was hoisted out of
+   * the loop by enhanced GVN.
+   */
+  /// CHECK-NOT: Deoptimize
   /// CHECK-NOT: Deoptimize
   /// CHECK: Goto
   /// CHECK: Goto
   /// CHECK: Goto
 
   void foo7(int[] array, int start, int end, boolean lowEnd) {
-    // Three HDeoptimize will be added. One for the index
-    // and one for null check on array (to hoist null
-    // check and array.length out of loop).
+    // Only two HDeoptimize will be added and both for the index.
     for (int i = start ; i < end; i++) {
       if (lowEnd) {
         // This array access isn't certain. So we don't
@@ -1297,6 +1467,14 @@ public class Main {
   /// CHECK: ArrayGet
   /// CHECK: BoundsCheck
   /// CHECK: ArraySet
+  /* We have to duplicate CHECK-asserts because
+   * Loop-Peeling duplicated instructions for each
+   * loop. Below are CHECK-asserts that have to match
+   * BoundsCheck and ArraySet or ArrayGet instructions
+   * in peeled blocks.
+   */
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
 
   /// CHECK-START: void Main.foo8(int[][], int, int) BCE (after)
   /// CHECK: Phi
@@ -1307,6 +1485,14 @@ public class Main {
   /// CHECK: ArraySet
   //  Added blocks at end for deoptimization.
   /// CHECK: Exit
+  /* We have to duplicate CHECK-asserts because
+   * Loop-Peeling duplicated instructions for each
+   * loop. Below are CHECK-asserts that have to match
+   * BoundsCheck and ArraySet or ArrayGet instructions
+   * in peeled blocks.
+   */
+  /// CHECK: BoundsCheck
+  /// CHECK: ArraySet
   /// CHECK: If
   /// CHECK: Deoptimize
   /// CHECK: Deoptimize
@@ -1317,16 +1503,17 @@ public class Main {
   /// CHECK: If
   /// CHECK: Deoptimize
   /// CHECK: Deoptimize
-  /// CHECK: Deoptimize
+  /* Third HDeoptimize will not be added because
+   * corresponding HNullCheck was hoisted out of
+   * the loop by enhanced GVN.
+   */
+  /// CHECK-NOT: Deoptimize
   /// CHECK-NOT: Deoptimize
   /// CHECK: Goto
   /// CHECK: Goto
   /// CHECK: Goto
 
   void foo8(int[][] matrix, int start, int end) {
-    // Three HDeoptimize will be added for the outer loop,
-    // two for the index, and null check on matrix. Same
-    // for the inner loop.
     // Two HDeoptimize will be added for the inner loop
     // start >= 0, end <= row.length.
     for (int i = start; i < end; i++) {
@@ -1338,32 +1525,14 @@ public class Main {
   }
 
 
-  /// CHECK-START: void Main.foo9(int[], boolean) BCE (before)
-  /// CHECK: NullCheck
-  /// CHECK: BoundsCheck
-  /// CHECK: ArrayGet
-
-  /// CHECK-START: void Main.foo9(int[], boolean) BCE (after)
-  //  The loop is guaranteed to be entered. No need to transform the
-  //  loop for loop body entry test.
-  /// CHECK: Deoptimize
-  /// CHECK: Deoptimize
-  /// CHECK: Deoptimize
-  /// CHECK-NOT: Deoptimize
-  /// CHECK: Phi
-  /// CHECK-NOT: NullCheck
-  /// CHECK-NOT: BoundsCheck
-  /// CHECK: ArrayGet
-
-  /// CHECK-START: void Main.foo9(int[], boolean) instruction_simplifier_after_bce (after)
-  //  Simplification removes the redundant check
-  /// CHECK: Deoptimize
-  /// CHECK: Deoptimize
-  /// CHECK-NOT: Deoptimize
-
   void foo9(int[] array, boolean expectInterpreter) {
     // Two HDeoptimize will be added. Two for the index
     // and one for null check on array.
+    // Any checks here are meaningless for SILVER,
+    // because of Loop-Peeling, which transforms
+    // the loop in a different way. Therefore,
+    // transformation will affect the loop body
+    // entry test anyway.
     for (int i = 0 ; i < 10; i++) {
       if (!expectInterpreter) {
         assertIsManaged();

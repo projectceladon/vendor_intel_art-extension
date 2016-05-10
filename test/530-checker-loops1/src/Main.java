@@ -31,6 +31,8 @@ public class Main {
   /// CHECK-START: int Main.linear(int[]) BCE (after)
   /// CHECK-NOT: BoundsCheck
   /// CHECK-NOT: Deoptimize
+  // Here we have to add one more BoundsCheck because of Loop-Peeling.
+  /// CHECK: BoundsCheck
   private static int linear(int[] x) {
     int result = 0;
     for (int i = 0; i < x.length; i++) {
@@ -45,6 +47,8 @@ public class Main {
   /// CHECK-START: int Main.linearDown(int[]) BCE (after)
   /// CHECK-NOT: BoundsCheck
   /// CHECK-NOT: Deoptimize
+  // Here we have to add one more BoundsCheck because of Loop-Peeling.
+  /// CHECK: BoundsCheck
   private static int linearDown(int[] x) {
     int result = 0;
     for (int i = x.length - 1; i >= 0; i--) {
@@ -59,6 +63,8 @@ public class Main {
   /// CHECK-START: int Main.linearObscure(int[]) BCE (after)
   /// CHECK-NOT: BoundsCheck
   /// CHECK-NOT: Deoptimize
+  // Here we have to add one more BoundsCheck because of Loop-Peeling.
+  /// CHECK: BoundsCheck
   private static int linearObscure(int[] x) {
     int result = 0;
     for (int i = x.length - 1; i >= 0; i--) {
@@ -74,6 +80,8 @@ public class Main {
   /// CHECK-START: int Main.linearVeryObscure(int[]) BCE (after)
   /// CHECK-NOT: BoundsCheck
   /// CHECK-NOT: Deoptimize
+  // Here we have to add one more BoundsCheck because of Loop-Peeling.
+  /// CHECK: BoundsCheck
   private static int linearVeryObscure(int[] x) {
     int result = 0;
     for (int i = 0; i < x.length; i++) {
@@ -89,6 +97,9 @@ public class Main {
   /// CHECK-START: int Main.hiddenStride(int[]) BCE (after)
   /// CHECK-NOT: BoundsCheck
   /// CHECK-NOT: Deoptimize
+  // Here we have to add more statements because of Loop-Peeling.
+  /// CHECK: BoundsCheck
+  /// CHECK: Deoptimize
   static int hiddenStride(int[] a) {
     int result = 0;
     for (int i = 1; i <= 1; i++) {
@@ -106,6 +117,8 @@ public class Main {
   /// CHECK-START: int Main.linearWhile(int[]) BCE (after)
   /// CHECK-NOT: BoundsCheck
   /// CHECK-NOT: Deoptimize
+  // Here we have to add one more BoundsCheck because of Loop-Peeling.
+  /// CHECK: BoundsCheck
   private static int linearWhile(int[] x) {
     int i = 0;
     int result = 0;
@@ -161,6 +174,8 @@ public class Main {
   /// CHECK-START: int Main.wrapAroundThenLinear(int[]) BCE (after)
   /// CHECK-NOT: BoundsCheck
   /// CHECK-NOT: Deoptimize
+  // Here we have to add one more BoundsCheck because of Loop-Peeling.
+  /// CHECK: BoundsCheck
   private static int wrapAroundThenLinear(int[] x) {
     // Loop with wrap around (length - 1, 0, 1, 2, ..).
     int w = x.length - 1;
@@ -213,6 +228,8 @@ public class Main {
   /// CHECK-START: int[] Main.linearCopy(int[]) BCE (after)
   /// CHECK-NOT: BoundsCheck
   /// CHECK-NOT: Deoptimize
+  // Here we have to add one more BoundsCheck because of Loop-Peeling.
+  /// CHECK: BoundsCheck
   private static int[] linearCopy(int x[]) {
     int n = x.length;
     int y[] = new int[n];
@@ -229,6 +246,8 @@ public class Main {
   /// CHECK-START: int Main.linearByTwo(int[]) BCE (after)
   /// CHECK-NOT: BoundsCheck
   /// CHECK-NOT: Deoptimize
+  // Here we have to add one more Deoptimize because of Loop-Peeling.
+  /// CHECK: Deoptimize
   private static int linearByTwo(int x[]) {
     int n = x.length / 2;
     int result = 0;
@@ -246,6 +265,8 @@ public class Main {
   /// CHECK-START: int Main.linearByTwoSkip1(int[]) BCE (after)
   /// CHECK-NOT: BoundsCheck
   /// CHECK-NOT: Deoptimize
+  // Here we have to add one more BoundsCheck because of Loop-Peeling.
+  /// CHECK: BoundsCheck
   private static int linearByTwoSkip1(int x[]) {
     int result = 0;
     for (int i = 0; i < x.length / 2; i++) {
@@ -400,6 +421,8 @@ public class Main {
   /// CHECK-START: int Main.linearForNEArrayLengthUp(int[]) BCE (after)
   /// CHECK-NOT: BoundsCheck
   /// CHECK-NOT: Deoptimize
+  // Here we have to add one more BoundsCheck because of Loop-Peeling.
+  /// CHECK: BoundsCheck
   private static int linearForNEArrayLengthUp(int[] x) {
     int result = 0;
     for (int i = 0; i != x.length; i++) {
@@ -414,6 +437,8 @@ public class Main {
   /// CHECK-START: int Main.linearForNEArrayLengthDown(int[]) BCE (after)
   /// CHECK-NOT: BoundsCheck
   /// CHECK-NOT: Deoptimize
+  // Here we have to add one more BoundsCheck because of Loop-Peeling.
+  /// CHECK: BoundsCheck
   private static int linearForNEArrayLengthDown(int[] x) {
     int result = 0;
     for (int i = x.length - 1; i != -1; i--) {
@@ -477,6 +502,8 @@ public class Main {
   /// CHECK-START: int Main.linearLongAlt(int[]) BCE (after)
   /// CHECK-NOT: BoundsCheck
   /// CHECK-NOT: Deoptimize
+  // Here we have to add one more BoundsCheck because of Loop-Peeling.
+  /// CHECK: BoundsCheck
   private static int linearLongAlt(int[] x) {
     int result = 0;
     // Induction on array length is done in higher precision than necessary,
@@ -541,6 +568,8 @@ public class Main {
   /// CHECK-START: int Main.invariantFromPreLoop(int[], int) BCE (after)
   /// CHECK-NOT: BoundsCheck
   /// CHECK-NOT: Deoptimize
+  // Here we have to add one more BoundsCheck because of Loop-Peeling.
+  /// CHECK: BoundsCheck
   private static int invariantFromPreLoop(int[] x, int y) {
     int result = 0;
     // Strange pre-loop that sets upper bound.

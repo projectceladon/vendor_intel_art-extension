@@ -80,12 +80,18 @@ public class Main {
   }
 
   /// CHECK-START: void Main.loop5(boolean) liveness (after)
-  /// CHECK:         <<Arg:z\d+>>  ParameterValue  liveness:<<ArgLiv:\d+>> ranges:{[<<ArgLiv>>,<<ArgLoopUse2:\d+>>)} uses:[<<ArgUse:\d+>>,<<ArgLoopUse1:\d+>>,<<ArgLoopUse2>>]
-  /// CHECK:                       InvokeVirtual   [{{l\d+}},<<Arg>>] method_name:java.io.PrintStream.println liveness:<<InvokeLiv:\d+>>
-  /// CHECK:                       Goto            liveness:<<GotoLiv1:\d+>>
+  /// CHECK:         <<Arg:z\d+>>  ParameterValue  liveness:<<ArgLiv:\d+>> ranges:{[<<ArgLiv>>,<<ArgLoopUse2:\d+>>)} uses:[<<ArgUse2:\d+>>,<<ArgUse1:\d+>>,<<ArgLoopUse1:\d+>>,<<ArgLoopUse2>>]
+  /// CHECK:                       InvokeVirtual   [{{l\d+}},<<Arg>>] method_name:java.io.PrintStream.println liveness:<<InvokeLiv1:\d+>>
   /// CHECK:                       Goto            liveness:<<GotoLiv2:\d+>>
   /// CHECK:                       Exit
-  /// CHECK-EVAL:    <<InvokeLiv>> == <<ArgUse>>
+  // Here we have to add more statements because of Loop-Peeling.
+  /// CHECK:                       InvokeVirtual
+  /// CHECK:                       Goto
+  /// CHECK:                       Goto
+  /// CHECK:                       Goto
+  /// CHECK:                       Goto
+  /// CHECK:                       Goto            liveness:<<GotoLiv1:\d+>>
+  /// CHECK-EVAL:    <<InvokeLiv1>> == <<ArgUse1>>
   /// CHECK-EVAL:    <<GotoLiv1>> < <<GotoLiv2>>
   /// CHECK-EVAL:    <<GotoLiv1>> + 2 == <<ArgLoopUse1>>
   /// CHECK-EVAL:    <<GotoLiv2>> + 2 == <<ArgLoopUse2>>
@@ -103,10 +109,14 @@ public class Main {
   /// CHECK:         <<Arg:z\d+>>  ParameterValue  liveness:<<ArgLiv:\d+>> ranges:{[<<ArgLiv>>,<<ArgLoopUse:\d+>>)} uses:[<<ArgUse:\d+>>,<<ArgLoopUse>>]
   /// CHECK:                       InvokeVirtual   [{{l\d+}},<<Arg>>] method_name:java.io.PrintStream.println liveness:<<InvokeLiv:\d+>>
   /// CHECK:                       Add
-  /// CHECK:                       Goto            liveness:<<GotoLiv1:\d+>>
   /// CHECK:                       Add
   /// CHECK:                       Goto            liveness:<<GotoLiv2:\d+>>
   /// CHECK:                       Exit
+  // Here we have to add more statements because of Loop-Peeling.
+  /// CHECK:                       Goto
+  /// CHECK:                       Goto
+  /// CHECK:                       Goto            liveness:<<GotoLiv1:\d+>>
+  /// CHECK:                       Goto
   /// CHECK-EVAL:    <<InvokeLiv>> == <<ArgUse>>
   /// CHECK-EVAL:    <<GotoLiv1>> < <<GotoLiv2>>
   /// CHECK-EVAL:    <<GotoLiv2>> + 2 == <<ArgLoopUse>>

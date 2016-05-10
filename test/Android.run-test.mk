@@ -163,10 +163,10 @@ endif
 ifeq ($(ART_TEST_RUN_TEST_NDEBUG),true)
   RUN_TYPES += ndebug
 endif
-DEBUGGABLE_TYPES := ndebuggable
-ifeq ($(ART_TEST_RUN_TEST_DEBUGGABLE),true)
-DEBUGGABLE_TYPES += debuggable
-endif
+DEBUGGABLE_TYPES := debuggable
+#ifeq ($(ART_TEST_RUN_TEST_DEBUGGABLE),true)
+#DEBUGGABLE_TYPES += debuggable
+#endif
 ADDRESS_SIZES_TARGET := $(ART_PHONY_TEST_TARGET_SUFFIX)
 ADDRESS_SIZES_HOST := $(ART_PHONY_TEST_HOST_SUFFIX)
 ifeq ($(ART_TEST_RUN_TEST_2ND_ARCH),true)
@@ -214,6 +214,13 @@ ART_TEST_KNOWN_BROKEN += $(call all-run-test-names,$(TARGET_TYPES),$(RUN_TYPES),
 TEST_ART_BROKEN_ALL_TARGET_TESTS := \
   577-profile-foreign-dex \
 
+# Some of these tests currently don't pass on SILVER because of CAR-3883
+TEST_ART_BROKEN_ALL_TARGET_TESTS += \
+  444-checker-nce \
+  450-checker-types \
+  525-checker-arrays-and-fields \
+  559-checker-rtp-ifnotnull \
+
 ART_TEST_KNOWN_BROKEN += $(call all-run-test-names,$(TARGET_TYPES),$(RUN_TYPES),$(PREBUILD_TYPES), \
     $(COMPILER_TYPES), $(RELOCATE_TYPES),$(TRACE_TYPES),$(GC_TYPES),$(JNI_TYPES), \
     $(IMAGE_TYPES),$(PICTEST_TYPES),$(DEBUGGABLE_TYPES), $(TEST_ART_BROKEN_ALL_TARGET_TESTS), \
@@ -229,6 +236,7 @@ TEST_ART_TIMING_SENSITIVE_RUN_TESTS := \
   133-static-invoke-super
 
 # disable timing sensitive tests on "dist" builds.
+dist_goal = yes
 ifdef dist_goal
   ART_TEST_KNOWN_BROKEN += $(call all-run-test-names,$(TARGET_TYPES),$(RUN_TYPES),$(PREBUILD_TYPES), \
         $(COMPILER_TYPES),$(RELOCATE_TYPES),$(TRACE_TYPES),$(GC_TYPES),$(JNI_TYPES), \

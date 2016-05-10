@@ -83,11 +83,11 @@ public class Main {
   // The checker is used to ensure hoisting occurred.
   //
 
-  /// CHECK-START: void Main.SInvLoopZ() licm (before)
+  /// CHECK-START: void Main.SInvLoopZ() GVN (before)
   /// CHECK-DAG: StaticFieldGet loop:{{B\d+}}
   /// CHECK-DAG: StaticFieldGet loop:{{B\d+}}
 
-  /// CHECK-START: void Main.SInvLoopZ() licm (after)
+  /// CHECK-START: void Main.SInvLoopZ() GVN (after)
   /// CHECK-DAG: StaticFieldGet loop:none
   /// CHECK-DAG: StaticFieldGet loop:none
 
@@ -97,11 +97,11 @@ public class Main {
     }
   }
 
-  /// CHECK-START: void Main.SInvLoopB() licm (before)
+  /// CHECK-START: void Main.SInvLoopB() GVN (before)
   /// CHECK-DAG: StaticFieldGet loop:{{B\d+}}
   /// CHECK-DAG: StaticFieldGet loop:{{B\d+}}
 
-  /// CHECK-START: void Main.SInvLoopB() licm (after)
+  /// CHECK-START: void Main.SInvLoopB() GVN (after)
   /// CHECK-DAG: StaticFieldGet loop:none
   /// CHECK-DAG: StaticFieldGet loop:none
 
@@ -111,11 +111,11 @@ public class Main {
     }
   }
 
-  /// CHECK-START: void Main.SInvLoopC() licm (before)
+  /// CHECK-START: void Main.SInvLoopC() GVN (before)
   /// CHECK-DAG: StaticFieldGet loop:{{B\d+}}
   /// CHECK-DAG: StaticFieldGet loop:{{B\d+}}
 
-  /// CHECK-START: void Main.SInvLoopC() licm (after)
+  /// CHECK-START: void Main.SInvLoopC() GVN (after)
   /// CHECK-DAG: StaticFieldGet loop:none
   /// CHECK-DAG: StaticFieldGet loop:none
 
@@ -125,11 +125,11 @@ public class Main {
     }
   }
 
-  /// CHECK-START: void Main.SInvLoopS() licm (before)
+  /// CHECK-START: void Main.SInvLoopS() GVN (before)
   /// CHECK-DAG: StaticFieldGet loop:{{B\d+}}
   /// CHECK-DAG: StaticFieldGet loop:{{B\d+}}
 
-  /// CHECK-START: void Main.SInvLoopS() licm (after)
+  /// CHECK-START: void Main.SInvLoopS() GVN (after)
   /// CHECK-DAG: StaticFieldGet loop:none
   /// CHECK-DAG: StaticFieldGet loop:none
 
@@ -139,11 +139,11 @@ public class Main {
     }
   }
 
-  /// CHECK-START: void Main.SInvLoopI() licm (before)
+  /// CHECK-START: void Main.SInvLoopI() GVN (before)
   /// CHECK-DAG: StaticFieldGet loop:{{B\d+}}
   /// CHECK-DAG: StaticFieldGet loop:{{B\d+}}
 
-  /// CHECK-START: void Main.SInvLoopI() licm (after)
+  /// CHECK-START: void Main.SInvLoopI() GVN (after)
   /// CHECK-DAG: StaticFieldGet loop:none
   /// CHECK-DAG: StaticFieldGet loop:none
 
@@ -153,11 +153,11 @@ public class Main {
     }
   }
 
-  /// CHECK-START: void Main.SInvLoopJ() licm (before)
+  /// CHECK-START: void Main.SInvLoopJ() GVN (before)
   /// CHECK-DAG: StaticFieldGet loop:{{B\d+}}
   /// CHECK-DAG: StaticFieldGet loop:{{B\d+}}
 
-  /// CHECK-START: void Main.SInvLoopJ() licm (after)
+  /// CHECK-START: void Main.SInvLoopJ() GVN (after)
   /// CHECK-DAG: StaticFieldGet loop:none
   /// CHECK-DAG: StaticFieldGet loop:none
 
@@ -167,11 +167,11 @@ public class Main {
     }
   }
 
-  /// CHECK-START: void Main.SInvLoopF() licm (before)
+  /// CHECK-START: void Main.SInvLoopF() GVN (before)
   /// CHECK-DAG: StaticFieldGet loop:{{B\d+}}
   /// CHECK-DAG: StaticFieldGet loop:{{B\d+}}
 
-  /// CHECK-START: void Main.SInvLoopF() licm (after)
+  /// CHECK-START: void Main.SInvLoopF() GVN (after)
   /// CHECK-DAG: StaticFieldGet loop:none
   /// CHECK-DAG: StaticFieldGet loop:none
 
@@ -181,11 +181,11 @@ public class Main {
     }
   }
 
-  /// CHECK-START: void Main.SInvLoopD() licm (before)
+  /// CHECK-START: void Main.SInvLoopD() GVN (before)
   /// CHECK-DAG: StaticFieldGet loop:{{B\d+}}
   /// CHECK-DAG: StaticFieldGet loop:{{B\d+}}
 
-  /// CHECK-START: void Main.SInvLoopD() licm (after)
+  /// CHECK-START: void Main.SInvLoopD() GVN (after)
   /// CHECK-DAG: StaticFieldGet loop:none
   /// CHECK-DAG: StaticFieldGet loop:none
 
@@ -195,11 +195,11 @@ public class Main {
     }
   }
 
-  /// CHECK-START: void Main.SInvLoopL() licm (before)
+  /// CHECK-START: void Main.SInvLoopL() GVN (before)
   /// CHECK-DAG: StaticFieldGet loop:{{B\d+}}
   /// CHECK-DAG: StaticFieldGet loop:{{B\d+}}
 
-  /// CHECK-START: void Main.SInvLoopL() licm (after)
+  /// CHECK-START: void Main.SInvLoopL() GVN (after)
   /// CHECK-DAG: StaticFieldGet loop:none
   /// CHECK-DAG: StaticFieldGet loop:none
 
@@ -423,11 +423,11 @@ public class Main {
   // The checker is used to ensure hoisting occurred.
   //
 
-  /// CHECK-START: void Main.InvLoopZ() licm (before)
+  /// CHECK-START: void Main.InvLoopZ() GVN (before)
   /// CHECK-DAG: InstanceFieldGet loop:{{B\d+}}
   /// CHECK-DAG: InstanceFieldGet loop:{{B\d+}}
 
-  /// CHECK-START: void Main.InvLoopZ() licm (after)
+  /// CHECK-START: void Main.InvLoopZ() GVN (after)
   /// CHECK-DAG: InstanceFieldGet loop:none
   /// CHECK-DAG: InstanceFieldGet loop:none
 
@@ -437,11 +437,11 @@ public class Main {
     }
   }
 
-  /// CHECK-START: void Main.InvLoopB() licm (before)
+  /// CHECK-START: void Main.InvLoopB() GVN (before)
   /// CHECK-DAG: InstanceFieldGet loop:{{B\d+}}
   /// CHECK-DAG: InstanceFieldGet loop:{{B\d+}}
 
-  /// CHECK-START: void Main.InvLoopB() licm (after)
+  /// CHECK-START: void Main.InvLoopB() GVN (after)
   /// CHECK-DAG: InstanceFieldGet loop:none
   /// CHECK-DAG: InstanceFieldGet loop:none
 
@@ -451,11 +451,11 @@ public class Main {
     }
   }
 
-  /// CHECK-START: void Main.InvLoopC() licm (before)
+  /// CHECK-START: void Main.InvLoopC() GVN (before)
   /// CHECK-DAG: InstanceFieldGet loop:{{B\d+}}
   /// CHECK-DAG: InstanceFieldGet loop:{{B\d+}}
 
-  /// CHECK-START: void Main.InvLoopC() licm (after)
+  /// CHECK-START: void Main.InvLoopC() GVN (after)
   /// CHECK-DAG: InstanceFieldGet loop:none
   /// CHECK-DAG: InstanceFieldGet loop:none
 
@@ -465,11 +465,11 @@ public class Main {
     }
   }
 
-  /// CHECK-START: void Main.InvLoopS() licm (before)
+  /// CHECK-START: void Main.InvLoopS() GVN (before)
   /// CHECK-DAG: InstanceFieldGet loop:{{B\d+}}
   /// CHECK-DAG: InstanceFieldGet loop:{{B\d+}}
 
-  /// CHECK-START: void Main.InvLoopS() licm (after)
+  /// CHECK-START: void Main.InvLoopS() GVN (after)
   /// CHECK-DAG: InstanceFieldGet loop:none
   /// CHECK-DAG: InstanceFieldGet loop:none
 
@@ -479,11 +479,11 @@ public class Main {
     }
   }
 
-  /// CHECK-START: void Main.InvLoopI() licm (before)
+  /// CHECK-START: void Main.InvLoopI() GVN (before)
   /// CHECK-DAG: InstanceFieldGet loop:{{B\d+}}
   /// CHECK-DAG: InstanceFieldGet loop:{{B\d+}}
 
-  /// CHECK-START: void Main.InvLoopI() licm (after)
+  /// CHECK-START: void Main.InvLoopI() GVN (after)
   /// CHECK-DAG: InstanceFieldGet loop:none
   /// CHECK-DAG: InstanceFieldGet loop:none
 
@@ -493,11 +493,11 @@ public class Main {
     }
   }
 
-  /// CHECK-START: void Main.InvLoopJ() licm (before)
+  /// CHECK-START: void Main.InvLoopJ() GVN (before)
   /// CHECK-DAG: InstanceFieldGet loop:{{B\d+}}
   /// CHECK-DAG: InstanceFieldGet loop:{{B\d+}}
 
-  /// CHECK-START: void Main.InvLoopJ() licm (after)
+  /// CHECK-START: void Main.InvLoopJ() GVN (after)
   /// CHECK-DAG: InstanceFieldGet loop:none
   /// CHECK-DAG: InstanceFieldGet loop:none
 
@@ -507,11 +507,11 @@ public class Main {
     }
   }
 
-  /// CHECK-START: void Main.InvLoopF() licm (before)
+  /// CHECK-START: void Main.InvLoopF() GVN (before)
   /// CHECK-DAG: InstanceFieldGet loop:{{B\d+}}
   /// CHECK-DAG: InstanceFieldGet loop:{{B\d+}}
 
-  /// CHECK-START: void Main.InvLoopF() licm (after)
+  /// CHECK-START: void Main.InvLoopF() GVN (after)
   /// CHECK-DAG: InstanceFieldGet loop:none
   /// CHECK-DAG: InstanceFieldGet loop:none
 
@@ -521,11 +521,11 @@ public class Main {
     }
   }
 
-  /// CHECK-START: void Main.InvLoopD() licm (before)
+  /// CHECK-START: void Main.InvLoopD() GVN (before)
   /// CHECK-DAG: InstanceFieldGet loop:{{B\d+}}
   /// CHECK-DAG: InstanceFieldGet loop:{{B\d+}}
 
-  /// CHECK-START: void Main.InvLoopD() licm (after)
+  /// CHECK-START: void Main.InvLoopD() GVN (after)
   /// CHECK-DAG: InstanceFieldGet loop:none
   /// CHECK-DAG: InstanceFieldGet loop:none
 
@@ -535,11 +535,11 @@ public class Main {
     }
   }
 
-  /// CHECK-START: void Main.InvLoopL() licm (before)
+  /// CHECK-START: void Main.InvLoopL() GVN (before)
   /// CHECK-DAG: InstanceFieldGet loop:{{B\d+}}
   /// CHECK-DAG: InstanceFieldGet loop:{{B\d+}}
 
-  /// CHECK-START: void Main.InvLoopL() licm (after)
+  /// CHECK-START: void Main.InvLoopL() GVN (after)
   /// CHECK-DAG: InstanceFieldGet loop:none
   /// CHECK-DAG: InstanceFieldGet loop:none
 

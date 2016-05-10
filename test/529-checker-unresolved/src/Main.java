@@ -141,17 +141,25 @@ public class Main extends UnresolvedSuperClass {
     testLicm(2);
   }
 
-  /// CHECK-START: void Main.testLicm(int) licm (before)
+  /// CHECK-START: void Main.testLicm(int) GVN (before)
   /// CHECK:      <<Class:l\d+>>        LoadClass                                     loop:B2
   /// CHECK-NEXT: <<Clinit:l\d+>>       ClinitCheck [<<Class>>]                       loop:B2
   /// CHECK-NEXT: <<New:l\d+>>          NewInstance [<<Clinit>>,<<Method:[i|j]\d+>>]  loop:B2
   /// CHECK-NEXT:                       InvokeUnresolved [<<New>>]                    loop:B2
+  // Here we have to add more statements because of Loop-Peeling.
+  /// CHECK:                            LoadClass                                     loop:none
+  /// CHECK-NEXT:                       ClinitCheck                                   loop:none
+  /// CHECK-NEXT:                       NewInstance                                   loop:none
+  /// CHECK-NEXT:                       InvokeUnresolved                              loop:none
 
-  /// CHECK-START: void Main.testLicm(int) licm (after)
-  /// CHECK:      <<Class:l\d+>>        LoadClass                                     loop:none
-  /// CHECK-NEXT: <<Clinit:l\d+>>       ClinitCheck [<<Class>>]                       loop:none
-  /// CHECK:      <<New:l\d+>>          NewInstance [<<Clinit>>,<<Method:[i|j]\d+>>]  loop:B2
+  /// CHECK-START: void Main.testLicm(int) GVN (after)
+  /// CHECK:      <<New:l\d+>>          NewInstance [<<Clinit:l\d+>>,<<Method:[i|j]\d+>>]  loop:B2
   /// CHECK-NEXT:                       InvokeUnresolved [<<New>>]                    loop:B2
+  /// CHECK:      <<Class:l\d+>>        LoadClass                                     loop:none
+  /// CHECK-NEXT: <<Clinit>>            ClinitCheck [<<Class>>]                       loop:none
+  // Here we have to add more statements because of Loop-Peeling.
+  /// CHECK-NEXT:                       NewInstance                                   loop:none
+  /// CHECK-NEXT:                       InvokeUnresolved                              loop:none
   static public void testLicm(int count) {
     // Test to make sure we keep the initialization check after loading an unresolved class.
     UnresolvedClass c;

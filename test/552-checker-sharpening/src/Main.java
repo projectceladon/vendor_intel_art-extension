@@ -121,13 +121,14 @@ public class Main {
 
   /// CHECK-START-X86: int Main.testLoop(int[], int) pc_relative_fixups_x86 (after)
   /// CHECK:                InvokeStaticOrDirect
+  // Here we have to add one more InvokeStaticOrDirect because of Loop-Peeling.
+  /// CHECK:                InvokeStaticOrDirect
   /// CHECK-NOT:            InvokeStaticOrDirect
 
   /// CHECK-START-X86: int Main.testLoop(int[], int) pc_relative_fixups_x86 (after)
   /// CHECK:                ArrayLength
-  /// CHECK-NEXT:           X86ComputeBaseMethodAddress
-  /// CHECK-NEXT:           Goto
-  /// CHECK:                begin_block
+  // Here we have a bit different graph, so CHECK-NEXT is not suitable.
+  /// CHECK:                X86ComputeBaseMethodAddress
   /// CHECK:                InvokeStaticOrDirect method_load_kind:dex_cache_pc_relative
 
   /// CHECK-START-ARM: int Main.testLoop(int[], int) dex_cache_array_fixups_arm (before)
@@ -162,9 +163,10 @@ public class Main {
   /// CHECK-START-X86: int Main.testLoopWithDiamond(int[], boolean, int) pc_relative_fixups_x86 (after)
   /// CHECK:                If
   /// CHECK:                begin_block
+  // Here we have a bit different graph, so CHECK-NEXT is not suitable.
   /// CHECK:                ArrayLength
-  /// CHECK-NEXT:           X86ComputeBaseMethodAddress
-  /// CHECK-NEXT:           Goto
+  /// CHECK:                X86ComputeBaseMethodAddress
+  /// CHECK:                Goto
 
   /// CHECK-START-ARM: int Main.testLoopWithDiamond(int[], boolean, int) dex_cache_array_fixups_arm (before)
   /// CHECK-NOT:            ArmDexCacheArraysBase

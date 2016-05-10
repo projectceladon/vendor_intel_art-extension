@@ -31,11 +31,9 @@ class ClassWithFinals {
   /// CHECK:      MemoryBarrier kind:StoreStore
   /// CHECK-NEXT: ReturnVoid
   public ClassWithFinals(boolean cond) {
-    x = 0;
-    if (doThrow) {
-      // avoid inlining
-      throw new RuntimeException();
-    }
+    x = 1;
+    throw new RuntimeException();
+    // Should not inline this constructor.
   }
 
   /// CHECK-START: void ClassWithFinals.<init>() register (after)
@@ -146,6 +144,7 @@ public class Main {
   /// CHECK-NOT:  MemoryBarrier kind:StoreStore
   public static ClassWithFinals noInlineNoConstructorBarrier() {
     return new ClassWithFinals(false);
+    // Should not inline the constructor.
   }
 
   /// CHECK-START: void Main.inlineNew() register (after)

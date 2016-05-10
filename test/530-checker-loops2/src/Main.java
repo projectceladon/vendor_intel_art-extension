@@ -492,10 +492,16 @@ public class Main {
     return a;
   }
 
-  /// CHECK-START: int Main.linearDynamicBCE1(int[], int, int) BCE (before)
+  /// CHECK-START: int Main.linearDynamicBCE1(int[], int, int) GVN (before)
   /// CHECK-DAG: ArrayGet    loop:<<Loop:B\d+>>
   /// CHECK-DAG: NullCheck   loop:<<Loop>>
   /// CHECK-DAG: ArrayLength loop:<<Loop>>
+  /// CHECK-DAG: BoundsCheck loop:<<Loop>>
+  //
+  /// CHECK-START: int Main.linearDynamicBCE1(int[], int, int) GVN (after)
+  /// CHECK-DAG: ArrayGet    loop:<<Loop:B\d+>>
+  /// CHECK-DAG: NullCheck   loop:none
+  /// CHECK-DAG: ArrayLength loop:none
   /// CHECK-DAG: BoundsCheck loop:<<Loop>>
   //
   /// CHECK-START: int Main.linearDynamicBCE1(int[], int, int) BCE (after)
@@ -514,10 +520,16 @@ public class Main {
     return result;
   }
 
-  /// CHECK-START: int Main.linearDynamicBCE2(int[], int, int, int) BCE (before)
+  /// CHECK-START: int Main.linearDynamicBCE2(int[], int, int, int) GVN (before)
   /// CHECK-DAG: ArrayGet    loop:<<Loop:B\d+>>
   /// CHECK-DAG: NullCheck   loop:<<Loop>>
   /// CHECK-DAG: ArrayLength loop:<<Loop>>
+  /// CHECK-DAG: BoundsCheck loop:<<Loop>>
+  //
+  /// CHECK-START: int Main.linearDynamicBCE2(int[], int, int, int) GVN (after)
+  /// CHECK-DAG: ArrayGet    loop:<<Loop:B\d+>>
+  /// CHECK-DAG: NullCheck   loop:none
+  /// CHECK-DAG: ArrayLength loop:none
   /// CHECK-DAG: BoundsCheck loop:<<Loop>>
   //
   /// CHECK-START: int Main.linearDynamicBCE2(int[], int, int, int) BCE (after)
@@ -536,10 +548,16 @@ public class Main {
     return result;
   }
 
-  /// CHECK-START: int Main.wrapAroundDynamicBCE(int[]) BCE (before)
+  /// CHECK-START: int Main.wrapAroundDynamicBCE(int[]) GVN (before)
   /// CHECK-DAG: ArrayGet    loop:<<Loop:B\d+>>
   /// CHECK-DAG: NullCheck   loop:<<Loop>>
   /// CHECK-DAG: ArrayLength loop:<<Loop>>
+  /// CHECK-DAG: BoundsCheck loop:<<Loop>>
+  //
+  /// CHECK-START: int Main.wrapAroundDynamicBCE(int[]) GVN (after)
+  /// CHECK-DAG: ArrayGet    loop:<<Loop:B\d+>>
+  /// CHECK-DAG: NullCheck   loop:none
+  /// CHECK-DAG: ArrayLength loop:none
   /// CHECK-DAG: BoundsCheck loop:<<Loop>>
   //
   /// CHECK-START: int Main.wrapAroundDynamicBCE(int[]) BCE (after)
@@ -560,10 +578,16 @@ public class Main {
     return result;
   }
 
-  /// CHECK-START: int Main.periodicDynamicBCE(int[]) BCE (before)
+  /// CHECK-START: int Main.periodicDynamicBCE(int[]) GVN (before)
   /// CHECK-DAG: ArrayGet    loop:<<Loop:B\d+>>
   /// CHECK-DAG: NullCheck   loop:<<Loop>>
   /// CHECK-DAG: ArrayLength loop:<<Loop>>
+  /// CHECK-DAG: BoundsCheck loop:<<Loop>>
+  //
+  /// CHECK-START: int Main.periodicDynamicBCE(int[]) GVN (after)
+  /// CHECK-DAG: ArrayGet    loop:<<Loop:B\d+>>
+  /// CHECK-DAG: NullCheck   loop:none
+  /// CHECK-DAG: ArrayLength loop:none
   /// CHECK-DAG: BoundsCheck loop:<<Loop>>
   //
   /// CHECK-START: int Main.periodicDynamicBCE(int[]) BCE (after)
@@ -584,10 +608,16 @@ public class Main {
     return result;
   }
 
-  /// CHECK-START: int Main.dynamicBCEPossiblyInfiniteLoop(int[], int, int) BCE (before)
+  /// CHECK-START: int Main.dynamicBCEPossiblyInfiniteLoop(int[], int, int) GVN (before)
   /// CHECK-DAG: ArrayGet    loop:<<Loop:B\d+>>
   /// CHECK-DAG: NullCheck   loop:<<Loop>>
   /// CHECK-DAG: ArrayLength loop:<<Loop>>
+  /// CHECK-DAG: BoundsCheck loop:<<Loop>>
+  //
+  /// CHECK-START: int Main.dynamicBCEPossiblyInfiniteLoop(int[], int, int) GVN (after)
+  /// CHECK-DAG: ArrayGet    loop:<<Loop:B\d+>>
+  /// CHECK-DAG: NullCheck   loop:none
+  /// CHECK-DAG: ArrayLength loop:none
   /// CHECK-DAG: BoundsCheck loop:<<Loop>>
   //
   /// CHECK-START: int Main.dynamicBCEPossiblyInfiniteLoop(int[], int, int) BCE (after)
@@ -662,12 +692,20 @@ public class Main {
   //
   /// CHECK-START: int Main.dynamicBCEConstantRange(int[]) BCE (after)
   /// CHECK-NOT: BoundsCheck
+  // Here we have to add one more BoundsCheck because of Loop-Peeling.
+  /// CHECK: BoundsCheck
   //
   //  No additional top tests were introduced.
-  /// CHECK-START: int Main.dynamicBCEConstantRange(int[]) BCE (after)
-  /// CHECK-DAG: If
-  /// CHECK-DAG: If
-  /// CHECK-NOT: If
+  // CHECK-START: int Main.dynamicBCEConstantRange(int[]) BCE (after)
+  // CHECK-DAG: If
+  // CHECK-DAG: If
+  // CHECK-NOT: If
+  // These checks are incorrect. The reason is Loop-Peeling optimization.
+  // It peeled one loop-iteration, and condition has been transformed from
+  // for (int j = i - 2; j <= i + 2; j++)
+  // to
+  // for (int j = i - 1; j <= i + 2; j++)
+  // After that, BCE successfully carried out BoundsCheck.
   static int dynamicBCEConstantRange(int[] x) {
     int result = 0;
     for (int i = 2; i <= 6; i++) {
@@ -762,7 +800,7 @@ public class Main {
     return result;
   }
 
-  /// CHECK-START: int Main.dynamicBCEAndConstantIndexRefType(int[], java.lang.Integer[], int, int) BCE (before)
+  /// CHECK-START: int Main.dynamicBCEAndConstantIndexRefType(int[], java.lang.Integer[], int, int) GVN (before)
   /// CHECK-DAG: ArrayGet    loop:<<Loop:B\d+>>
   /// CHECK-DAG: NullCheck   loop:<<Loop>>
   /// CHECK-DAG: ArrayLength loop:<<Loop>>
@@ -771,6 +809,16 @@ public class Main {
   /// CHECK-DAG: NullCheck   loop:<<Loop>>
   /// CHECK-DAG: ArrayLength loop:<<Loop>>
   /// CHECK-DAG: BoundsCheck loop:<<Loop>>
+  //
+  /// CHECK-START: int Main.dynamicBCEAndConstantIndexRefType(int[], java.lang.Integer[], int, int) GVN (after)
+  /// CHECK-DAG: ArrayGet    loop:none
+  /// CHECK-DAG: NullCheck   loop:none
+  /// CHECK-DAG: ArrayLength loop:none
+  /// CHECK-DAG: BoundsCheck loop:<<Loop:B\d+>>
+  /// CHECK-DAG: ArrayGet    loop:<<Loop>>
+  /// CHECK-DAG: NullCheck   loop:none
+  /// CHECK-DAG: ArrayLength loop:none
+  /// CHECK-DAG: BoundsCheck loop:none
   //
   /// CHECK-START: int Main.dynamicBCEAndConstantIndexRefType(int[], java.lang.Integer[], int, int) BCE (after)
   /// CHECK-DAG: ArrayGet    loop:<<Loop:B\d+>>
