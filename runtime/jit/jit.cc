@@ -565,8 +565,9 @@ class JitCompileTask FINAL : public Task {
     if (kind_ == kCompile) {
       if (VLOG_IS_ON(jit)) {
         ProfilingInfo* info = method_->GetProfilingInfo(sizeof(void*));
-        DCHECK(info != nullptr);
-        info->LogInformation();
+        if (info != nullptr) {
+          info->LogInformation();
+        }
       }
       Runtime::Current()->GetJit()->CompileMethod(method_, self, /* osr */ false);
     } else if (kind_ == kCompileOsr) {
