@@ -87,6 +87,14 @@ ifeq ($(WITH_ART_JIT), true)
 ART_JIT := true
 endif
 
+# Enable Intel VTune JIT API support
+LIBART_VTUNE ?= true
+ifeq ($(LIBART_VTUNE), true)
+  LIBART_CFLAGS += -DVTUNE_ART
+  LIBART_COMPILER_CFLAGS += -DVTUNE_ART
+endif
+
+
 #
 # Used to change the default GC. Valid values are CMS, SS, GSS. The default is CMS.
 #

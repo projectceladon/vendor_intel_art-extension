@@ -230,6 +230,12 @@ LIBART_COMMON_SRC_FILES += \
   entrypoints/quick/quick_throw_entrypoints.cc \
   entrypoints/quick/quick_trampoline_entrypoints.cc
 
+ifeq ($(LIBART_VTUNE), true)
+  LIBART_COMMON_SRC_FILES += \
+    vtune/jitprofiling.cc \
+    vtune_support.cc
+endif
+
 LIBART_TARGET_LDFLAGS :=
 LIBART_HOST_LDFLAGS :=
 
@@ -382,7 +388,7 @@ LIBART_ENUM_OPERATOR_OUT_HEADER_FILES := \
 
 LIBOPENJDKJVM_SRC_FILES := openjdkjvm/OpenjdkJvm.cc
 
-LIBART_CFLAGS := -DBUILDING_LIBART=1
+LIBART_CFLAGS += -DBUILDING_LIBART=1
 
 LIBART_TARGET_CFLAGS :=
 LIBART_HOST_CFLAGS :=

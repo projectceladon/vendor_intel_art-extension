@@ -34,6 +34,10 @@
 #include "object_lock.h"
 #include "thread_list.h"
 
+#ifdef VTUNE_ART
+#include "vtune_support.h"
+#endif
+
 namespace art {
 namespace jit {
 
@@ -224,19 +228,26 @@ bool JitCompiler::CompileMethod(Thread* self, ArtMethod* method, bool osr) {
     TimingLogger::ScopedTiming t2("Compiling", &logger);
     JitCodeCache* const code_cache = runtime->GetJit()->GetCodeCache();
     success = compiler_driver_->GetCompiler()->JitCompile(self, code_cache, method, osr);
-    if (success && (perf_file_ != nullptr)) {
+    if (success) {
       const void* ptr = method->GetEntryPointFromQuickCompiledCode();
-      std::ostringstream stream;
-      stream << std::hex
-             << reinterpret_cast<uintptr_t>(ptr)
-             << " "
-             << code_cache->GetMemorySizeOfCodePointer(ptr)
-             << " "
-             << PrettyMethod(method)
-             << std::endl;
-      std::string str = stream.str();
-      bool res = perf_file_->WriteFully(str.c_str(), str.size());
-      CHECK(res);
+      size_t code_size = code_cache->GetMemorySizeOfCodePointer(ptr);
+      std::string method_name = PrettyMethod(method);
+#ifdef VTUNE_ART
+      SendMethodToVTune(method_name.c_str(), ptr, code_size);
+#endif
+      if (perf_file_ != nullptr) {
+        std::ostringstream stream;
+        stream << std::hex
+               << reinterpret_cast<uintptr_t>(ptr)
+               << " "
+               << code_size
+               << " "
+               << method_name
+               << std::endl;
+        std::string str = stream.str();
+        bool res = perf_file_->WriteFully(str.c_str(), str.size());
+        CHECK(res);
+      }
     }
   }
 
