@@ -94,26 +94,14 @@ void HSpeculationPass::GroupCandidatesWithOrdering(CandidatesMap& candidates_gro
         continue;
       }
       if (IsPredictionSame(top, it2)) {
-        if (top->GetBlock()->Dominates(it2->GetBlock())) {
-          // If candidates share one block, put them in id number order.
-          if (top->GetBlock()->GetBlockId() == it2->GetBlock()->GetBlockId()) {
-            if (top->GetId() < it2->GetId()) {
-              // If this is a root element, delete it from root.
-              if (candidates_grouped.find(it2) != candidates_grouped.end()) {
-                candidates_grouped.erase(it2);
-              }
-              vec.push_back(it2);
-              handled_candidates.insert(it2);
-            }
-          } else {
-            // If this is a root element, delete it from root.
-            if (candidates_grouped.find(it2) != candidates_grouped.end()) {
-              candidates_grouped.erase(it2);
-            }
-            vec.push_back(it2);
-            handled_candidates.insert(it2);
+        if (top->StrictlyDominates(it2)) {
+          // If this is a root element, delete it from root.
+          if (candidates_grouped.find(it2) != candidates_grouped.end()) {
+            candidates_grouped.erase(it2);
           }
-        } else if (it2->GetBlock()->Dominates(top->GetBlock())) {
+          vec.push_back(it2);
+          handled_candidates.insert(it2);
+        } else if (it2->StrictlyDominates(top)) {
           vec.push_back(top);
           handled_candidates.insert(top);
           top = it2;
