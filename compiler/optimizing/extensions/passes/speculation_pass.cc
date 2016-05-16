@@ -35,39 +35,6 @@ bool HSpeculationPass::Gate() {
   return true;
 }
 
-void HSpeculationPass::GroupCandidatesNoOrdering(CandidatesMap& candidates_grouped,
-                           const std::vector<HInstruction*>* candidates) {
-  DCHECK(candidates != nullptr);
-
-  if (candidates->size() == 1) {
-    std::vector<HInstruction*> v;
-    candidates_grouped.insert(std::make_pair((*candidates)[0], v));
-    return;
-  }
-
-  std::set<HInstruction*> handled_candidates;
-  for (const auto& it: *candidates) {
-    std::vector<HInstruction*> vec;
-    if (handled_candidates.find(it) != handled_candidates.end()) {
-      continue;
-    }
-    handled_candidates.insert(it);
-    for (const auto& it2: *candidates) {
-      if (it == it2) {
-        continue;
-      }
-      if (handled_candidates.find(it2) != handled_candidates.end()) {
-        continue;
-      }
-      if (IsPredictionSame(it, it2)) {
-        vec.push_back(it2);
-        handled_candidates.insert(it2);
-      }
-    }
-    candidates_grouped.insert(std::make_pair(it, vec));
-  }
-}
-
 void HSpeculationPass::GroupCandidatesWithOrdering(CandidatesMap& candidates_grouped,
                            const std::vector<HInstruction*>* candidates) {
   DCHECK(candidates != nullptr);
@@ -232,16 +199,8 @@ bool HSpeculationPass::HandleCodeVersioning(HInstruction* candidate,
     // We treat the any versioning as local versioning so we do not bloat code.
 
     // First try to insert the guard. If we fail, we must reject this case.
-    HInstruction* cursor = candidate;
-
-    // If we handle unsorted candidates, we should put all guards to entry block.
-    if (no_ordering_) {
-      HBasicBlock* entry_bb = graph_->GetEntryBlock();
-      cursor = entry_bb->GetFirstInstruction();
-    }
-
     HSpeculationGuard* guard =
-        InsertSpeculationGuard(candidate, cursor);
+        InsertSpeculationGuard(candidate, candidate);
     if (guard == nullptr) {
       PRINT_PASS_OSTREAM_MESSAGE(this, "Failed to handle " << candidate << " because guard "
                                  "insertion failed.");
@@ -317,10 +276,6 @@ class ScopedMessage {
 void HSpeculationPass::Run() {
   ScopedMessage entry_exit_marker(this);
 
-  static PassOption<bool> no_ordering(this, compiler_driver_,
-                                      "NoOrdering", kDefaultNoOrdering);
-  no_ordering_ = no_ordering.GetValue();
-
   if (!Gate()) {
     return;
   }
@@ -350,12 +305,7 @@ void HSpeculationPass::Run() {
   }
 
   CandidatesMap candidates_grouped;
-
-  if (no_ordering_) {
-    GroupCandidatesNoOrdering(candidates_grouped, &candidates);
-  } else {
-    GroupCandidatesWithOrdering(candidates_grouped, &candidates);
-  }
+  GroupCandidatesWithOrdering(candidates_grouped, &candidates);
 
   // The new map should have at least one candidate.
   DCHECK(!candidates_grouped.empty());

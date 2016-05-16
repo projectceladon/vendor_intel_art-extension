@@ -37,8 +37,7 @@ class HSpeculationPass : public HOptimization_X86 {
                    OptimizingCompilerStats* stats = nullptr)
       : HOptimization_X86(graph, pass_name, stats),
         compiler_driver_(compiler_driver),
-        compilation_unit_(compilation_unit),
-        no_ordering_(kDefaultNoOrdering) { }
+        compilation_unit_(compilation_unit) { }
   virtual ~HSpeculationPass() { }
 
   void Run() OVERRIDE;
@@ -227,8 +226,6 @@ class HSpeculationPass : public HOptimization_X86 {
   // When code versioning is done, it does not increase critical path. It is the same code
   // as before the speculation.
   static constexpr uint32_t kCostCodeVersioning = 0u;
-  // If ordering is enabled the candidates will be sorted when grouping.
-  static constexpr bool kDefaultNoOrdering = false;
 
   // Protected because it might be used in subclass.
   CompilerDriver* const compiler_driver_;
@@ -236,15 +233,6 @@ class HSpeculationPass : public HOptimization_X86 {
   bool no_ordering_;
 
  private:
-  /**
-   * @brief Used to create groupings of similar candidates.
-   * This function doesn't take into account candidates dependency.
-   * @param candidates_grouped Map to put grouped instructions.
-   * @param candidates The vector of HInstructions to be grouped.
-   */
-  void GroupCandidatesNoOrdering(CandidatesMap& candidates_grouped,
-                       const std::vector<HInstruction*>* candidates);
-
   /**
    * @brief Used to create groupings of similar candidates.
    * This function guarantee all candidates will be sorted by dependency
