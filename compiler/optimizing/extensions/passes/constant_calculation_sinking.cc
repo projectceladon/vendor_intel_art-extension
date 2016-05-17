@@ -839,6 +839,21 @@ HInductionVariable* HConstantCalculationSinking::GetBasicInductionVariable(
   return bound_info.loop_biv_;
 }
 
+static void UpdateAllUsersOutsideLoop(HLoopInformation_X86* loop_info,
+                                      HInstruction* inst,
+                                      HInstruction* to_replace) {
+  for (HAllUseIterator use_it(inst); !use_it.Done(); use_it.Advance()) {
+    HInstruction* user = use_it.Current();
+    if (!loop_info->Contains(*user->GetBlock())) {
+      use_it.ReplaceInput(to_replace);
+    } else {
+      if (use_it.IsEnv()) {
+        use_it.ReplaceInput(nullptr);
+      }
+    }
+  }
+}
+
 void HConstantCalculationSinking::DoConstantSinking(const std::vector<AccumulatorAssociation>& to_sink,
         HLoopInformation_X86* loop_info, std::vector<AccumulatorAssociation>& to_remove) const {
   std::vector<AccumulatorAssociation>::const_iterator sink_iter;
@@ -893,26 +908,8 @@ void HConstantCalculationSinking::DoConstantSinking(const std::vector<Accumulato
       }
 
       // Replace calculation result with constant or new instruction.
-      for (HAllUseIterator use_it(phi); !use_it.Done(); use_it.Advance()) {
-        HInstruction* user = use_it.Current();
-        if (!loop_info->ExecutedPerIteration(user)) {
-          use_it.ReplaceInput(to_replace);
-        } else {
-          if (use_it.IsEnv()) {
-            use_it.ReplaceInput(nullptr);
-          }
-        }
-      }
-
-      const HUseList<HInstruction*>& uses = inst->GetUses();
-      for (auto it = uses.begin(), end = uses.end(); it != end; /* ++it below */) {
-        HInstruction* user = it->GetUser();
-        size_t index = it->GetIndex();
-        ++it;
-        if (!loop_info->ExecutedPerIteration(user)) {
-          user->ReplaceInput(to_replace, index);
-        }
-      }
+      UpdateAllUsersOutsideLoop(loop_info, phi, to_replace);
+      UpdateAllUsersOutsideLoop(loop_info, inst, to_replace);
 
       to_remove.push_back(accum_assoc);
       PRINT_PASS_MESSAGE(this, "Constant has been sunk for the loop with head bb %d",
