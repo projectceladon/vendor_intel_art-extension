@@ -102,7 +102,9 @@ bool HPhiCleanup::RemoveCliqueHelper(HInstruction* to_check,
   const HUseList<HInstruction*>& uses = to_check->GetUses();
   for (auto it = uses.begin(), end = uses.end(); it != end; ++it) {
     HInstruction* use = it->GetUser();
-    if (use->IsControlFlow() || use->GetSideEffects().HasSideEffectsExcludingGC()) {
+    if (use->IsControlFlow() ||
+        use->GetSideEffects().HasSideEffectsExcludingGC() ||
+        use->CanThrow()) {
       // Instruction with side effects or control flow is not something that we can just remove.
       return false;
     } else if (!RemoveCliqueHelper(use, seen_insns, candidates)) {
