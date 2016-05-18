@@ -298,6 +298,14 @@ bool HInliner::TryInline(HInvoke* invoke_instruction) {
     return false;
   }
 
+  if (Runtime::Current()->UseJitCompilation()) {
+    int32_t count = resolved_method->GetCounter();
+    if (count == 0) {
+      VLOG(compiler) << "Method has never been called " << PrettyMethod(method_index, caller_dex_file);
+      return false;
+    }
+  }
+
   if (actual_method != nullptr) {
     bool result = TryInlineAndReplace(invoke_instruction, actual_method, /* do_rtp */ true);
     bool is_virtual_or_interface = !invoke_instruction->IsInvokeStaticOrDirect();
