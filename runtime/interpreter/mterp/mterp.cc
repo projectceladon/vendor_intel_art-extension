@@ -666,6 +666,9 @@ extern "C" int MterpSetUpHotnessCountdown(ArtMethod* method, ShadowFrame* shadow
       int32_t priority_thread_weight = jit->PriorityThreadWeight();
       countdown_value = std::min(countdown_value, countdown_value / priority_thread_weight);
     }
+    if (method->GetProfilingInfo(sizeof(void*)) != nullptr) {
+      shadow_frame->SetProfilingActive(true);
+    }
   }
   /*
    * The actual hotness threshold may exceed the range of our int16_t countdown value.  This is
@@ -726,6 +729,17 @@ extern "C" bool MterpMaybeDoOnStackReplacement(Thread* self,
   }
   // Assumes caller has already determined that an OSR check is appropriate.
   return jit::Jit::MaybeDoOnStackReplacement(self, method, dex_pc, offset, result);
+}
+
+extern "C" void MterpIncrementBB(ShadowFrame* shadow_frame)
+    SHARED_REQUIRES(Locks::mutator_lock_) {
+  DCHECK(Runtime::Current()->GetJit() != nullptr);
+  ArtMethod* method = shadow_frame->GetMethod();
+  ProfilingInfo* profiling_info = method->GetProfilingInfo(sizeof(void*));
+  if (profiling_info != nullptr) {
+    uint32_t dex_pc = shadow_frame->GetDexPC();
+    profiling_info->IncrementBBCount(dex_pc);
+  }
 }
 
 }  // namespace interpreter

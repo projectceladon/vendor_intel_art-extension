@@ -133,6 +133,7 @@ unspecified registers or condition codes.
 #define OFF_FP_DEX_PC_PTR OFF_FP(SHADOWFRAME_DEX_PC_PTR_OFFSET)
 #define OFF_FP_CODE_ITEM OFF_FP(SHADOWFRAME_CODE_ITEM_OFFSET)
 #define OFF_FP_COUNTDOWN_OFFSET OFF_FP(SHADOWFRAME_HOTNESS_COUNTDOWN_OFFSET)
+#define OFF_FP_PROFILE_ACTIVE OFF_FP(SHADOWFRAME_PROFILING_ACTIVE_OFFSET)
 #define OFF_FP_SHADOWFRAME (-SHADOWFRAME_VREGS_OFFSET)
 
 /* Frame size must be 16-byte aligned.
@@ -1294,7 +1295,15 @@ SYMBOL(artMterpAsmInstructionStart) = .L_op_nop
 1:
     cmpl    $JIT_CHECK_OSR, rPROFILE
     je      .L_check_not_taken_osr
+    cmpl    $0, OFF_FP_PROFILE_ACTIVE(rFP)
+    jne     2f
     ADVANCE_PC_FETCH_AND_GOTO_NEXT 2
+2:  ADVANCE_PC 2
+    EXPORT_PC
+    leaq    OFF_FP_SHADOWFRAME(rFP), OUT_ARG0
+    call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
+    FETCH_INST
+    GOTO_NEXT
 
 
 /* ------------------------------ */
@@ -1322,7 +1331,15 @@ SYMBOL(artMterpAsmInstructionStart) = .L_op_nop
 1:
     cmpl    $JIT_CHECK_OSR, rPROFILE
     je      .L_check_not_taken_osr
+    cmpl    $0, OFF_FP_PROFILE_ACTIVE(rFP)
+    jne     2f
     ADVANCE_PC_FETCH_AND_GOTO_NEXT 2
+2:  ADVANCE_PC 2
+    EXPORT_PC
+    leaq    OFF_FP_SHADOWFRAME(rFP), OUT_ARG0
+    call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
+    FETCH_INST
+    GOTO_NEXT
 
 
 /* ------------------------------ */
@@ -1350,7 +1367,15 @@ SYMBOL(artMterpAsmInstructionStart) = .L_op_nop
 1:
     cmpl    $JIT_CHECK_OSR, rPROFILE
     je      .L_check_not_taken_osr
+    cmpl    $0, OFF_FP_PROFILE_ACTIVE(rFP)
+    jne     2f
     ADVANCE_PC_FETCH_AND_GOTO_NEXT 2
+2:  ADVANCE_PC 2
+    EXPORT_PC
+    leaq    OFF_FP_SHADOWFRAME(rFP), OUT_ARG0
+    call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
+    FETCH_INST
+    GOTO_NEXT
 
 
 /* ------------------------------ */
@@ -1378,7 +1403,15 @@ SYMBOL(artMterpAsmInstructionStart) = .L_op_nop
 1:
     cmpl    $JIT_CHECK_OSR, rPROFILE
     je      .L_check_not_taken_osr
+    cmpl    $0, OFF_FP_PROFILE_ACTIVE(rFP)
+    jne     2f
     ADVANCE_PC_FETCH_AND_GOTO_NEXT 2
+2:  ADVANCE_PC 2
+    EXPORT_PC
+    leaq    OFF_FP_SHADOWFRAME(rFP), OUT_ARG0
+    call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
+    FETCH_INST
+    GOTO_NEXT
 
 
 /* ------------------------------ */
@@ -1406,7 +1439,15 @@ SYMBOL(artMterpAsmInstructionStart) = .L_op_nop
 1:
     cmpl    $JIT_CHECK_OSR, rPROFILE
     je      .L_check_not_taken_osr
+    cmpl    $0, OFF_FP_PROFILE_ACTIVE(rFP)
+    jne     2f
     ADVANCE_PC_FETCH_AND_GOTO_NEXT 2
+2:  ADVANCE_PC 2
+    EXPORT_PC
+    leaq    OFF_FP_SHADOWFRAME(rFP), OUT_ARG0
+    call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
+    FETCH_INST
+    GOTO_NEXT
 
 
 /* ------------------------------ */
@@ -1434,7 +1475,15 @@ SYMBOL(artMterpAsmInstructionStart) = .L_op_nop
 1:
     cmpl    $JIT_CHECK_OSR, rPROFILE
     je      .L_check_not_taken_osr
+    cmpl    $0, OFF_FP_PROFILE_ACTIVE(rFP)
+    jne     2f
     ADVANCE_PC_FETCH_AND_GOTO_NEXT 2
+2:  ADVANCE_PC 2
+    EXPORT_PC
+    leaq    OFF_FP_SHADOWFRAME(rFP), OUT_ARG0
+    call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
+    FETCH_INST
+    GOTO_NEXT
 
 
 /* ------------------------------ */
@@ -1458,7 +1507,15 @@ SYMBOL(artMterpAsmInstructionStart) = .L_op_nop
 1:
     cmpl    $JIT_CHECK_OSR, rPROFILE
     je      .L_check_not_taken_osr
+    cmpl    $0, OFF_FP_PROFILE_ACTIVE(rFP)
+    jne     2f
     ADVANCE_PC_FETCH_AND_GOTO_NEXT 2
+2:  ADVANCE_PC 2
+    EXPORT_PC
+    leaq    OFF_FP_SHADOWFRAME(rFP), OUT_ARG0
+    call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
+    FETCH_INST
+    GOTO_NEXT
 
 
 /* ------------------------------ */
@@ -1482,7 +1539,15 @@ SYMBOL(artMterpAsmInstructionStart) = .L_op_nop
 1:
     cmpl    $JIT_CHECK_OSR, rPROFILE
     je      .L_check_not_taken_osr
+    cmpl    $0, OFF_FP_PROFILE_ACTIVE(rFP)
+    jne     2f
     ADVANCE_PC_FETCH_AND_GOTO_NEXT 2
+2:  ADVANCE_PC 2
+    EXPORT_PC
+    leaq    OFF_FP_SHADOWFRAME(rFP), OUT_ARG0
+    call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
+    FETCH_INST
+    GOTO_NEXT
 
 
 /* ------------------------------ */
@@ -1506,7 +1571,15 @@ SYMBOL(artMterpAsmInstructionStart) = .L_op_nop
 1:
     cmpl    $JIT_CHECK_OSR, rPROFILE
     je      .L_check_not_taken_osr
+    cmpl    $0, OFF_FP_PROFILE_ACTIVE(rFP)
+    jne     2f
     ADVANCE_PC_FETCH_AND_GOTO_NEXT 2
+2:  ADVANCE_PC 2
+    EXPORT_PC
+    leaq    OFF_FP_SHADOWFRAME(rFP), OUT_ARG0
+    call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
+    FETCH_INST
+    GOTO_NEXT
 
 
 /* ------------------------------ */
@@ -1530,7 +1603,15 @@ SYMBOL(artMterpAsmInstructionStart) = .L_op_nop
 1:
     cmpl    $JIT_CHECK_OSR, rPROFILE
     je      .L_check_not_taken_osr
+    cmpl    $0, OFF_FP_PROFILE_ACTIVE(rFP)
+    jne     2f
     ADVANCE_PC_FETCH_AND_GOTO_NEXT 2
+2:  ADVANCE_PC 2
+    EXPORT_PC
+    leaq    OFF_FP_SHADOWFRAME(rFP), OUT_ARG0
+    call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
+    FETCH_INST
+    GOTO_NEXT
 
 
 /* ------------------------------ */
@@ -1554,7 +1635,15 @@ SYMBOL(artMterpAsmInstructionStart) = .L_op_nop
 1:
     cmpl    $JIT_CHECK_OSR, rPROFILE
     je      .L_check_not_taken_osr
+    cmpl    $0, OFF_FP_PROFILE_ACTIVE(rFP)
+    jne     2f
     ADVANCE_PC_FETCH_AND_GOTO_NEXT 2
+2:  ADVANCE_PC 2
+    EXPORT_PC
+    leaq    OFF_FP_SHADOWFRAME(rFP), OUT_ARG0
+    call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
+    FETCH_INST
+    GOTO_NEXT
 
 
 /* ------------------------------ */
@@ -1578,7 +1667,15 @@ SYMBOL(artMterpAsmInstructionStart) = .L_op_nop
 1:
     cmpl    $JIT_CHECK_OSR, rPROFILE
     je      .L_check_not_taken_osr
+    cmpl    $0, OFF_FP_PROFILE_ACTIVE(rFP)
+    jne     2f
     ADVANCE_PC_FETCH_AND_GOTO_NEXT 2
+2:  ADVANCE_PC 2
+    EXPORT_PC
+    leaq    OFF_FP_SHADOWFRAME(rFP), OUT_ARG0
+    call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
+    FETCH_INST
+    GOTO_NEXT
 
 
 /* ------------------------------ */
@@ -11898,16 +11995,20 @@ MterpCommonTakenBranch:
     decl    rPROFILE
     je      .L_add_batch                    # counted down to zero - report
 .L_resume_backward_branch:
+    leaq    (rPC, rINSTq, 2), rPC
+    EXPORT_PC
+    cmpl    $0, OFF_FP_PROFILE_ACTIVE(rFP)
+    je      1f
+    leaq    OFF_FP_SHADOWFRAME(rFP), OUT_ARG0
+    call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
     movq    rSELF, %rax
     testl   $(THREAD_SUSPEND_REQUEST | THREAD_CHECKPOINT_REQUEST), THREAD_FLAGS_OFFSET(%rax)
     REFRESH_IBASE
-    leaq    (rPC, rINSTq, 2), rPC
-    FETCH_INST
+1:  FETCH_INST
     jnz     .L_suspend_request_pending
     GOTO_NEXT
 
 .L_suspend_request_pending:
-    EXPORT_PC
     movq    rSELF, OUT_ARG0
     call    SYMBOL(MterpSuspendCheck)       # (self)
     testb   %al, %al
@@ -11933,7 +12034,12 @@ MterpCommonTakenBranch:
     je      .L_check_osr_forward
 .L_resume_forward_branch:
     leaq    (rPC, rINSTq, 2), rPC
-    FETCH_INST
+    cmpl    $0, OFF_FP_PROFILE_ACTIVE(rFP)
+    je      1f
+    EXPORT_PC
+    leaq    OFF_FP_SHADOWFRAME(rFP), OUT_ARG0
+    call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
+1:  FETCH_INST
     GOTO_NEXT
 
 .L_check_osr_forward:

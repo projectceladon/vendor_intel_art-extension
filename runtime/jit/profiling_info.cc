@@ -247,12 +247,19 @@ void ProfilingInfo::AddInvokeInfo(uint32_t dex_pc, mirror::Class* cls) {
 void ProfilingInfo::IncrementBBCount(uint32_t dex_pc) {
   BBCounts* counts = GetBBCounts();
 
-  // Linear search for now.
-  // TODO: replace with binary search if needed.
-  for (size_t i = 0; i < number_of_bb_counts_; i++) {
-    if (counts[i].dex_pc_ == dex_pc) {
-      if (counts[i].count_ != std::numeric_limits<uint32_t>::max()) {
-        counts[i].count_++;
+  int lo = 0;
+  int hi = number_of_bb_counts_ - 1;
+  while (lo <= hi) {
+    int mid = (lo + hi) >> 1;
+
+    uint32_t found_dex_pc = counts[mid].dex_pc_;
+    if (dex_pc < found_dex_pc) {
+      hi = mid - 1;
+    } else if (dex_pc > found_dex_pc) {
+      lo = mid + 1;
+    } else {
+      if (counts[mid].count_ != std::numeric_limits<uint32_t>::max()) {
+        counts[mid].count_++;
       }
       return;
     }

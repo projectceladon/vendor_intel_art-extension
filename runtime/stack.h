@@ -394,6 +394,10 @@ class ShadowFrame {
     return OFFSETOF_MEMBER(ShadowFrame, hotness_countdown_);
   }
 
+  static size_t ProfilingActiveOffset() {
+    return OFFSETOF_MEMBER(ShadowFrame, profiling_active_);
+  }
+
   // Create ShadowFrame for interpreter using provided memory.
   static ShadowFrame* CreateShadowFrameImpl(uint32_t num_vregs,
                                             ShadowFrame* link,
@@ -411,11 +415,21 @@ class ShadowFrame {
     return result_register_;
   }
 
+  void SetProfilingActive(bool is_active) {
+    profiling_active_ = is_active;
+  }
+
+  bool GetProfilingActive() const {
+    return profiling_active_ != 0;
+  }
+
  private:
   ShadowFrame(uint32_t num_vregs, ShadowFrame* link, ArtMethod* method,
               uint32_t dex_pc, bool has_reference_array)
       : link_(link), method_(method), result_register_(nullptr), dex_pc_ptr_(nullptr),
-        code_item_(nullptr), number_of_vregs_(num_vregs), dex_pc_(dex_pc) {
+        code_item_(nullptr), number_of_vregs_(num_vregs), dex_pc_(dex_pc),
+        profiling_active_(0)
+  {
     // TODO(iam): Remove this parameter, it's an an artifact of portable removal
     DCHECK(has_reference_array);
     if (has_reference_array) {
@@ -447,6 +461,7 @@ class ShadowFrame {
   uint32_t dex_pc_;
   int16_t cached_hotness_countdown_;
   int16_t hotness_countdown_;
+  uint32_t profiling_active_;
 
   // This is a two-part array:
   //  - [0..number_of_vregs) holds the raw virtual registers, and each element here is always 4

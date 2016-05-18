@@ -102,6 +102,9 @@ class Jit {
   void MethodEntered(Thread* thread, ArtMethod* method)
       SHARED_REQUIRES(Locks::mutator_lock_);
 
+  void IncrementBBCount(Thread* thread, ArtMethod* method, uint32_t dex_pc)
+      SHARED_REQUIRES(Locks::mutator_lock_);
+
   void AddSamples(Thread* self, ArtMethod* method, uint16_t samples, bool with_backedges)
       SHARED_REQUIRES(Locks::mutator_lock_);
 

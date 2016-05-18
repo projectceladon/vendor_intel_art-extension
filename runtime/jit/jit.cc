@@ -27,6 +27,7 @@
 #include "oat_quick_method_header.h"
 #include "offline_profiling_info.h"
 #include "profile_saver.h"
+#include "profiling_info.h"
 #include "runtime.h"
 #include "runtime_options.h"
 #include "stack_map.h"
@@ -681,8 +682,20 @@ void Jit::MethodEntered(Thread* thread, ArtMethod* method) {
   if ((profiling_info != nullptr) && (profiling_info->GetSavedEntryPoint() != nullptr)) {
     Runtime::Current()->GetInstrumentation()->UpdateMethodsCode(
         method, profiling_info->GetSavedEntryPoint());
+    profiling_info->IncrementBBCount(0);
   } else {
     AddSamples(thread, method, 1, /* with_backedges */false);
+    if (profiling_info != nullptr) {
+      profiling_info->IncrementBBCount(0);
+    }
+  }
+}
+
+void Jit::IncrementBBCount(Thread* thread, ArtMethod* method, uint32_t dex_pc) {
+  ScopedAssertNoThreadSuspension ants(thread, __FUNCTION__);
+  ProfilingInfo* profiling_info = method->GetProfilingInfo(sizeof(void*));
+  if (profiling_info != nullptr) {
+    profiling_info->IncrementBBCount(dex_pc);
   }
 }
 

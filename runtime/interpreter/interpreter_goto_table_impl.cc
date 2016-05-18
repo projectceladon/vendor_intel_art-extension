@@ -69,6 +69,9 @@ namespace interpreter {
     if (UNLIKELY(instrumentation->HasBranchListeners())) {                                      \
       instrumentation->Branch(self, method, dex_pc, offset);                                    \
     }                                                                                           \
+    if (jit != nullptr) {                                                                      \
+      jit->IncrementBBCount(self, method, dex_pc + offset);                                    \
+    }                                                                                          \
     JValue result;                                                                              \
     if (jit::Jit::MaybeDoOnStackReplacement(self, method, dex_pc, offset, &result)) {           \
       return result;                                                                            \

@@ -169,13 +169,20 @@ MterpCommonTakenBranch:
     movl    rSELF, %eax
     testl   $$(THREAD_SUSPEND_REQUEST | THREAD_CHECKPOINT_REQUEST), THREAD_FLAGS_OFFSET(%eax)
     leal    (rPC, rINST, 2), rPC
-    FETCH_INST
+    EXPORT_PC
+    cmpl    $$0, OFF_FP_PROFILE_ACTIVE(rFP)
+    je      1f
+    leal    OFF_FP_SHADOWFRAME(rFP), %ecx
+    movl    %ecx, OUT_ARG0(%esp)
+    call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
+    RESTORE_IBASE
+1:  FETCH_INST
     jnz     .L_suspend_request_pending
     REFRESH_IBASE
     GOTO_NEXT
 
 .L_suspend_request_pending:
-    EXPORT_PC
+    movl    rSELF, %eax
     movl    %eax, OUT_ARG0(%esp)            # rSELF in eax
     call    SYMBOL(MterpSuspendCheck)       # (self)
     testb   %al, %al
@@ -203,7 +210,14 @@ MterpCommonTakenBranch:
     je      .L_check_osr_forward
 .L_resume_forward_branch:
     leal    (rPC, rINST, 2), rPC
-    FETCH_INST
+    cmpl    $$0, OFF_FP_PROFILE_ACTIVE(rFP)
+    je      1f
+    EXPORT_PC
+    leal    OFF_FP_SHADOWFRAME(rFP), %ecx
+    movl    %ecx, OUT_ARG0(%esp)
+    call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
+    RESTORE_IBASE
+1:  FETCH_INST
     GOTO_NEXT
 
 .L_check_osr_forward:
