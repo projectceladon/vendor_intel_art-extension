@@ -1607,7 +1607,9 @@ void RegisterAllocator::ConnectSiblings(LiveInterval* interval) {
     HInstruction* insn = interval->GetDefinedBy();
     HLoopInformation* loop_info = insn->GetBlock()->GetLoopInformation();
     // If we are in loop body try to spill outside the loop.
-    if (loop_info != nullptr) {
+    // We can do it for non-references only.
+    // TODO: implement movement of spills for references.
+    if ((current->GetType() != Primitive::kPrimNot) && (loop_info != nullptr)) {
       size_t range_end_position = current->GetFirstRange()->GetEnd() / 2;
       HInstruction* range_end_insn = liveness_.GetInstructionFromPosition(range_end_position);
       // If we are at block boundary lets get previous block.
