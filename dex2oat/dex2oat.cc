@@ -724,6 +724,8 @@ class Dex2Oat FINAL {
 #endif
       // Mark this as the 'boot image' for any optimization that needs to care.
       compiler_options_->is_boot_image_ = true;
+    } else if (!boot_profile_.empty()) {
+      Usage("--boot-profile may only be used when building an image");
     }
 
     if (oat_filenames_.empty() && oat_fd_ == -1) {
@@ -1223,6 +1225,12 @@ class Dex2Oat FINAL {
         }
       } else if (option == "--use-profile") {
         use_exact_profiles_ = true;
+      } else if (option.starts_with("--profile-dir=")) {
+        StringPiece prof_dir_str = option.substr(strlen("--profile-dir=")).data();
+        profile_dir_ = prof_dir_str.data();
+        use_exact_profiles_ = true;
+      } else if (option.starts_with("--boot-profile=")) {
+        boot_profile_ = option.substr(strlen("--boot-profile=")).data();
       } else if (!compiler_options_->ParseCompilerOption(option, Usage)) {
         Usage("Unknown argument %s", option.data());
       }
@@ -1258,6 +1266,17 @@ class Dex2Oat FINAL {
     // Only support profiling for boot.oat.
     if (image_classes_filename_ == nullptr) {
       profiling_counts_ = CompilerOptions::kProfilingNone;
+      if (!profile_dir_.empty()) {
+        Usage("--profile-dir only valid with boot.oat build");
+      }
+    } else {
+#if GENERATE_PROFILE
+      if (!profile_dir_.empty()) {
+        Usage("--profile-dir not valid with boot.oat profile build");
+      }
+      // Force profile generation for boot.oat.
+      profiling_counts_ = CompilerOptions::kProfilingBasicBlocks;
+#endif
     }
 
     ProcessOptions(parser_options.get());
@@ -1433,7 +1452,7 @@ class Dex2Oat FINAL {
         // Multiple oat files.
         bool found_at_least_one = false;
         for (auto& oat_file_name : oat_filenames_) {
-          exact_profilers_.emplace_back(new ExactProfiler(oat_file_name));
+          exact_profilers_.emplace_back(new ExactProfiler(oat_file_name, profile_dir_));
           ExactProfiler* ep = exact_profilers_.back().get();
           if (use_exact_profiles_) {
             AddProfileFile(ep, oat_file_name);
@@ -1447,7 +1466,7 @@ class Dex2Oat FINAL {
         }
       } else {
         DCHECK(!oat_location_.empty());
-        exact_profilers_.emplace_back(new ExactProfiler(oat_location_));
+        exact_profilers_.emplace_back(new ExactProfiler(oat_location_, profile_dir_));
         ExactProfiler* ep = exact_profilers_.back().get();
         if (use_exact_profiles_) {
           AddProfileFile(ep, oat_location_);
@@ -1525,14 +1544,12 @@ class Dex2Oat FINAL {
       for (size_t i = 0, size = oat_writers_.size(); i != size; ++i) {
         rodata_.push_back(elf_writers_[i]->StartRoData());
         ExactProfiler* ep = nullptr;
-        if (!exact_profilers_.empty()) {
-          if (exact_profilers_.size() > i) {
-            ep = exact_profilers_[i].get();
-            if (ep != nullptr) {
-              key_value_store_->Overwrite("profile", ep->GetRelativeProfileFileName());
-              if (profiling_counts_ != CompilerOptions::kProfilingNone) {
-                key_value_store_->Overwrite("profile-generate", OatHeader::kTrueValue);
-              }
+        if (exact_profilers_.size() > i) {
+          ep = exact_profilers_[i].get();
+          if (ep != nullptr && profile_dir_.empty()) {
+            key_value_store_->Overwrite("profile", ep->GetRelativeProfileFileName());
+            if (profiling_counts_ != CompilerOptions::kProfilingNone) {
+              key_value_store_->Overwrite("profile-generate", OatHeader::kTrueValue);
             }
           }
         }
@@ -2709,6 +2726,8 @@ class Dex2Oat FINAL {
   std::vector<std::unique_ptr<ExactProfiler>> exact_profilers_;
   CompilerOptions::ProfilingCounts profiling_counts_ = CompilerOptions::kProfilingNone;
   bool use_exact_profiles_ = false;
+  std::string boot_profile_;
+  std::string profile_dir_;
 
   DISALLOW_IMPLICIT_CONSTRUCTORS(Dex2Oat);
 };

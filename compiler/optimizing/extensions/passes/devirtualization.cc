@@ -214,9 +214,9 @@ std::vector<HDevirtualization::TypeHandle> HDevirtualization::FindTypesFromProfi
       PRINT_PASS_OSTREAM_MESSAGE(this, "prof_info = " << prof_info
                                        << ", dex_pc = 0x" << std::hex << invoke->GetDexPc());
       const InlineCache& ic = *prof_info->GetInlineCache(invoke->GetDexPc());
-      if (ic.IsMonomorphic()) {
-        mirror::Class* invoke_type = ic.GetMonomorphicType();
-        PRINT_PASS_OSTREAM_MESSAGE(this, "Found monomorphic type "
+      if (ic.IsAOTMonomorphic()) {
+        mirror::Class* invoke_type = ic.GetAOTMonomorphicType();
+        PRINT_PASS_OSTREAM_MESSAGE(this, "Found (effectively) monomorphic type "
                                          << PrettyDescriptor(invoke_type)
                                          << " for " << invoke);
         results.push_back(handles_->NewHandle(ic.GetMonomorphicType()));
@@ -293,28 +293,66 @@ bool HDevirtualization::IsPredictionSame(HInstruction* instr, HInstruction* inst
 
   // Same instance means it should use the same prediction.
   bool same_instance = (invoke1->InputAt(0) == invoke2->InputAt(0));
-  if (same_instance) {
-    // For predictions from CHA, we need to compare types predicted by CHA.
-    if (Runtime::Current()->UseCHA()) {
-      auto iter1 = cha_prediction_.find(instr);
-      auto iter2 = cha_prediction_.find(instr2);
-      if (iter1 != cha_prediction_.end() && iter2 != cha_prediction_.end()) {
-        ScopedObjectAccess soa(Thread::Current());
-        return  iter1->second.Get() == iter2->second.Get();
-      } else if (iter1 == cha_prediction_.end() && iter2 == cha_prediction_.end()) {
-        // Both predictions are not from CHA, so they are the same.
-        return true;
-      } else {
-        // One prediction is from CHA.  We don't know if they are the same.
+  if (!same_instance) {
+    // They must have the exact same 'this' pointer to be guarded by the same guard.
+    return false;
+  }
+
+  // For predictions from CHA, we need to compare types predicted by CHA.
+  if (Runtime::Current()->UseCHA()) {
+    auto iter1 = cha_prediction_.find(instr);
+    auto iter2 = cha_prediction_.find(instr2);
+    if (iter1 != cha_prediction_.end() && iter2 != cha_prediction_.end()) {
+      return iter1->second.Get() == iter2->second.Get();
+    }
+    if (iter1 != cha_prediction_.end() || iter2 != cha_prediction_.end()) {
+      // Only one prediction is from CHA.  We don't know if they are the same.
+      return false;
+    }
+  }
+
+  // We have to be more careful for imprecise types.  The possible types
+  // need to match too.
+  auto instr_precise = precise_prediction_.find(instr);
+  auto instr_imprecise = imprecise_predictions_.find(instr);
+  auto instr2_precise = precise_prediction_.find(instr2);
+  auto instr2_imprecise = imprecise_predictions_.find(instr2);
+  if (instr_precise != precise_prediction_.end()) {
+    // First type is precise.
+    if (instr2_precise != precise_prediction_.end()) {
+      // Both precise.  Are we checking for the same type?
+      return instr_precise->second.Get() == instr2_precise->second.Get();
+    }
+    DCHECK(instr2_imprecise != imprecise_predictions_.end());
+    const std::vector<TypeHandle>& types = instr2_imprecise->second;
+    return types.size() == 1 && types[0].Get() == instr_precise->second.Get();
+  }
+
+  // First type is imprecise.
+  if (instr2_precise != precise_prediction_.end()) {
+    // Matching an imprecise with a precise.
+    const std::vector<TypeHandle>& types = instr_imprecise->second;
+    return types.size() == 1 && types[0].Get() == instr2_precise->second.Get();
+  }
+
+  // Both are imprecise.
+  if (instr_imprecise != imprecise_predictions_.end() &&
+      instr2_imprecise != imprecise_predictions_.end()) {
+    const std::vector<TypeHandle>& instr_types = instr_imprecise->second;
+    const std::vector<TypeHandle>& instr2_types = instr2_imprecise->second;
+    if (instr_types.size() != instr2_types.size()) {
+      return false;
+    }
+
+    // All types must match.
+    for (size_t i = 0; i < instr_types.size(); i++) {
+      if (instr_types[i].Get() != instr2_types[i].Get()) {
         return false;
       }
     }
-
-    return true;
   }
 
-  // They must have the exact same 'this' pointer to be guarded by the same guard.
-  return false;
+  return true;
 }
 
 HSpeculationGuard* HDevirtualization::InsertSpeculationGuard(HInstruction* instr_guarded,
@@ -374,9 +412,9 @@ HSpeculationGuard* HDevirtualization::InsertSpeculationGuard(HInstruction* instr
   // Handle the insertion.
   HBasicBlock* insertion_bb = instr_cursor->GetBlock();
   DCHECK(insertion_bb != nullptr);
-  insertion_bb->InsertInstructionBefore(prediction, instr_cursor);
-  insertion_bb->InsertInstructionAfter(class_getter, prediction);
-  insertion_bb->InsertInstructionAfter(guard, class_getter);
+  insertion_bb->InsertInstructionBefore(class_getter, instr_cursor);
+  insertion_bb->InsertInstructionAfter(prediction, class_getter);
+  insertion_bb->InsertInstructionAfter(guard, prediction);
 
   return guard;
 }
@@ -403,7 +441,9 @@ bool HDevirtualization::HandleSpeculation(HInstruction* instr,
       uint32_t class_index = FindClassIndexIn(type.Get(), caller_dex_file,
                                               compilation_unit_.GetDexCache());
       if (kIsDebugBuild && guard_inserted) {
-        CHECK_NE(class_index, DexFile::kDexNoIndex);
+        CHECK_NE(class_index, DexFile::kDexNoIndex)
+            << "Cannot find " << PrettyDescriptor(type.Get())
+            << " in the dex cache for " << invoke;
       } else if (class_index == DexFile::kDexNoIndex) {
         PRINT_PASS_OSTREAM_MESSAGE(this, "Sharpening failed because we cannot find " <<
                                    PrettyDescriptor(type.Get()) << " in the dex cache for " <<

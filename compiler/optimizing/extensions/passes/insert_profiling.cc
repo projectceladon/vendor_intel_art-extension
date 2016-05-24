@@ -62,14 +62,118 @@ class ScopedProfilingInfoInlineUse {
 };
 
 
+void HInsertProfiling::CollectInformation(
+    std::map<uint32_t, HInvoke*>* virtual_invoke_map,
+    OrderedBlocks& blocks,
+    int32_t& max_profiled_block,
+    CompilerOptions::ProfilingCounts profiling_counts) {
+
+  std::set<uint32_t> dex_pcs_seen;
+  max_profiled_block = -1;
+  for (HBasicBlock* block : graph_->GetBlocks()) {
+    if (block == nullptr) {
+      continue;
+    }
+
+    int32_t block_id = block->GetBlockId();
+
+    if (block == graph_->GetExitBlock()) {
+      // We don't profile the exit block.
+      continue;
+    }
+
+    if (virtual_invoke_map != nullptr) {
+      for (HInstructionIterator inst_it(block->GetInstructions());
+           !inst_it.Done();
+           inst_it.Advance()) {
+        HInstruction* insn = inst_it.Current();
+        switch(insn->GetKind()) {
+          case HInstruction::kInvokeUnresolved:
+            switch (insn->AsInvokeUnresolved()->GetOriginalInvokeType()) {
+              case kVirtual:
+              case kInterface:
+                // Will fall through to code below to add instrumentation.
+                break;
+              default:
+                // Ignore this invoke.
+                continue;
+            }
+            FALLTHROUGH_INTENDED;
+          case HInstruction::kInvokeVirtual:
+          case HInstruction::kInvokeInterface:
+            virtual_invoke_map->insert(
+                std::pair<uint32_t, HInvoke*>(insn->GetDexPc(), insn->AsInvoke()));
+            break;
+          default:
+            break;
+        }
+      }
+    }
+
+    // We know we have to profile block 0 and 1.
+    bool is_entry_block = (block == graph_->GetEntryBlock());
+    if (block_id < 2) {
+      blocks.insert(block);
+      max_profiled_block = std::max(max_profiled_block, block_id);
+      if (is_entry_block && profiling_counts == CompilerOptions::kProfilingMethod) {
+        // All done.
+        return;
+      }
+      dex_pcs_seen.insert(0);
+      continue;
+    }
+
+    // Have we seen this block before?
+    uint32_t dex_pc = block->GetDexPc();
+    if (dex_pc == kNoDexPc) {
+      // Give up now.
+      PRINT_PASS_OSTREAM_MESSAGE(this, "Exiting: seen kNoDexPc in block " << block_id);
+      break;
+    }
+
+    if (dex_pcs_seen.find(dex_pc) != dex_pcs_seen.end()) {
+      // We have a duplicate block.  Is this the special case of a try block?
+      HInstruction* insn = block->GetFirstInstruction();
+      if (insn->IsSuspendCheck()) {
+        insn = insn->GetNext();
+      }
+      if (insn->IsTryBoundary()) {
+        PRINT_PASS_OSTREAM_MESSAGE(this, "Seen TryBoundary in block " << block_id);
+        continue;
+      }
+      // It might be a block introduced for a Phi.
+      if (!block->IsSingleGoto()) {
+        PRINT_PASS_OSTREAM_MESSAGE(this, "Saw duplicate dex_pc in block " << block_id);
+        break;
+      }
+    }
+
+    HInstruction* insn = block->GetFirstInstruction();
+    if (insn != nullptr) {
+      if (insn->IsLoadException()) {
+        // We can't insert the increment until after the ClearException.
+        while (insn != nullptr && !insn->IsClearException()) {
+          insn = insn->GetNext();
+        }
+      } else if (insn->IsSuspendCheck()) {
+        insn = insn->GetNext();
+      }
+      if (insn != nullptr) {
+        max_profiled_block = std::max(max_profiled_block, block_id);
+        blocks.insert(block);
+        dex_pcs_seen.insert(dex_pc);
+      }
+    }
+  }
+}
+
 void HInsertProfiling::Run() {
   // Is there anything to do?
   CompilerOptions::ProfilingCounts profiling_counts =
       driver_->GetCompilerOptions().GetProfilingCounts();
   bool use_profiles = driver_->GetCompilerOptions().UseExactProfiles();
   bool use_jit = Runtime::Current()->UseJitCompilation();
-  if (profiling_counts == CompilerOptions::kProfilingNone && !use_profiles &&
-      !use_jit) {
+  if (profiling_counts == CompilerOptions::kProfilingNone && !use_profiles && !use_jit) {
     return;  // nothing to do.
   }
 
@@ -117,48 +221,22 @@ void HInsertProfiling::Run() {
 
   ArenaAllocator* arena = graph_->GetArena();
 
-  // Walk the blocks, and insert profiling code.  Do this for original blocks
-  // formed from the Dex code only.
-  // Also remember all the virtual/interface invokes and dex_pcs.
-  std::set<uint32_t> dex_pcs_seen;
-  HX86ReturnExecutionCountTable* count_table = nullptr;
-  int32_t max_profiled_block = -1;
+  // Collect necessary information.
   std::map<uint32_t, HInvoke*> virtual_invoke_map;
-  for (HBasicBlock* block : graph_->GetBlocks()) {
-    if (block == nullptr) {
-      continue;
-    }
+  int32_t max_profiled_block = -1;
+  OrderedBlocks blocks_to_instrument;
+  CollectInformation(&virtual_invoke_map,
+                     blocks_to_instrument,
+                     max_profiled_block,
+                     profiling_counts);
 
-    int block_id = block->GetBlockId();
+  // Walk the blocks, and insert profiling code.
+  HX86ReturnExecutionCountTable* count_table = nullptr;
 
-    if (block == graph_->GetExitBlock()) {
-      // We don't profile the exit block.
-      continue;
-    }
-
-    for (HInstructionIterator inst_it(block->GetInstructions()); !inst_it.Done(); inst_it.Advance()) {
-      HInstruction* insn = inst_it.Current();
-      switch(insn->GetKind()) {
-        case HInstruction::kInvokeUnresolved:
-          switch (insn->AsInvokeUnresolved()->GetOriginalInvokeType()) {
-            case kVirtual:
-            case kInterface:
-              // Will fall through to code below to add instrumentation.
-              break;
-            default:
-              // Ignore this invoke.
-              continue;
-          }
-          FALLTHROUGH_INTENDED;
-        case HInstruction::kInvokeVirtual:
-        case HInstruction::kInvokeInterface:
-          virtual_invoke_map.insert(
-              std::pair<uint32_t, HInvoke*>(insn->GetDexPc(), insn->AsInvoke()));
-          break;
-        default:
-          break;
-      }
-    }
+  for (HBasicBlock* block : blocks_to_instrument) {
+    DCHECK(block != nullptr);
+    DCHECK(block != graph_->GetExitBlock());
+    int32_t block_id = block->GetBlockId();
 
     // We know we have to profile block 0 and 1, and they will have a duplicate dex_pc.
     bool is_entry_block = block == graph_->GetEntryBlock();
@@ -187,38 +265,11 @@ void HInsertProfiling::Run() {
         }
         block->InsertInstructionBefore(increment, insn);
       }
-      max_profiled_block = std::max(max_profiled_block, block_id);
       PRINT_PASS_OSTREAM_MESSAGE(this, "Insert increment into block " << block_id);
-      if (is_entry_block && profiling_counts == CompilerOptions::kProfilingMethod) {
-        // All done.
-        break;
-      }
-      dex_pcs_seen.insert(0);
       continue;
     }
 
-    // Have we seen this block before?
-    uint32_t dex_pc = block->GetDexPc();
-    if (dex_pc == kNoDexPc) {
-      // Give up now.
-      PRINT_PASS_OSTREAM_MESSAGE(this, "Exiting: seen kNoDexPc in block " << block_id);
-      break;
-    }
-
-    if (dex_pcs_seen.find(dex_pc) != dex_pcs_seen.end()) {
-      // We have a duplicate block.  Is this the special case of a try block?
-      HInstruction* insn = block->GetFirstInstruction();
-      if (insn->IsSuspendCheck()) {
-        insn = insn->GetNext();
-      }
-      if (insn->IsTryBoundary()) {
-        PRINT_PASS_OSTREAM_MESSAGE(this, "Seen TryBoundary in block " << block_id);
-        continue;
-      }
-      PRINT_PASS_OSTREAM_MESSAGE(this, "Saw duplicate dex_pc in block " << block_id);
-      break;
-    }
-
+    DCHECK(count_table != nullptr);
     HInstruction* increment =
         new(arena) HX86IncrementExecutionCount(block_id, count_table, block->GetDexPc());
     // We have to be careful about catch blocks, as there are assumptions made
@@ -235,9 +286,7 @@ void HInsertProfiling::Run() {
       }
       if (insn != nullptr) {
         block->InsertInstructionBefore(increment, insn);
-        max_profiled_block = std::max(max_profiled_block, block_id);
         PRINT_PASS_OSTREAM_MESSAGE(this, "Insert increment into block " << block_id);
-        dex_pcs_seen.insert(dex_pc);
       }
     }
   }
@@ -247,13 +296,13 @@ void HInsertProfiling::Run() {
 
   if (!virtual_invoke_map.empty()) {
     // Generate the profiling information for virtual invokes.
-    int index = 0;
+    int32_t index = 0;
     ArenaVector<uint16_t>& dex_pcs = graph->GetProfiledInvokesDexPcs();
     dex_pcs.reserve(virtual_invoke_map.size());
     for (auto& it : virtual_invoke_map) {
       uint32_t dex_pc = it.first;
       HInvoke* insn = it.second;
-      HX86ProfileInvoke* prof_insn = 
+      HX86ProfileInvoke* prof_insn =
           new(arena) HX86ProfileInvoke(index,
                                        graph_->GetCurrentMethod(),
                                        insn->InputAt(0),
@@ -312,19 +361,39 @@ void HInsertProfiling::InsertProfilingInformationFromProfile(ExactProfiler* ep)
 
   // Associate counts with the existing blocks, if we match and
   // have executed the method at least once.
-  // Note: We don't add an increment to the exit block.
-  if (graph_->GetBlocks().size() - 1 == method_info->num_blocks &&
+
+  // Figure out which blocks we generated code for, to see if we match.
+  OrderedBlocks blocks_to_instrument;
+  int32_t max_profiled_block = -1;
+  CollectInformation(nullptr,
+                     blocks_to_instrument,
+                     max_profiled_block,
+                     CompilerOptions::kProfilingNone);
+  if (static_cast<uint32_t>(max_profiled_block + 1) == method_info->num_blocks &&
       method_info->counts[0] != 0) {
     // Enter the block count information for each block.
+    const ArenaVector<HBasicBlock*>& blocks = graph_->GetBlocks();
     for (uint32_t i = 0; i < method_info->num_blocks; i++) {
-      HBasicBlock* block = graph_->GetBlocks()[i];
+      HBasicBlock* block = blocks[i];
       if (block != nullptr) {
         block->SetBlockCount(method_info->counts[i]);
-       }
+      }
     }
     HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
     graph->SetProfileCountKind(
         method_info->num_blocks == 1 ? HGraph_X86::kMethodCount : HGraph_X86::kBasicBlockCounts);
+
+    // Fix up entry/exit block if needed, since they are set to kNoDexPc.
+    FixupBlockCountIfNeeded(graph_->GetEntryBlock(), blocks[1]);
+    FixupBlockCountIfNeeded(graph_->GetExitBlock(), blocks[1]);
+  } else {
+    if (method_info->counts[0] == 0) {
+      VLOG(exact_profiler) << "Block 0 has 0 count in " << GetMethodName(graph_);
+    } else {
+      VLOG(exact_profiler) << "Number of blocks did not match: "
+                           << max_profiled_block << " expected, and "
+                           << method_info->num_blocks << " found for " << GetMethodName(graph_);
+    }
   }
 
   if (method_info->num_method_invokes != 0) {
@@ -356,7 +425,7 @@ void HInsertProfiling::InsertProfilingInformationFromProfile(ExactProfiler* ep)
         continue;
       }
       size_t jit_class_index = 0;
-      for (int m = 0; m < OneCallSite::kNumInvokeTargets; m++) {
+      for (int32_t m = 0; m < OneCallSite::kNumInvokeTargets; m++) {
         OneInvoke& invoke = call_site->targets[m];
         if (invoke.class_index.IsNull()) {
           break;
@@ -391,6 +460,32 @@ void HInsertProfiling::InsertProfilingInformationFromProfile(ExactProfiler* ep)
   }
 }
 
+void HInsertProfiling::FixupBlockCountIfNeeded(HBasicBlock* block_to_fix,
+                                               HBasicBlock* known_block) {
+  if (block_to_fix == nullptr || known_block == nullptr) {
+    // Can't help.
+    return;
+  }
+
+  if (!known_block->HasBlockCount()) {
+    // Nothing to fix it with.
+    return;
+  }
+
+  if (block_to_fix->HasBlockCount()) {
+    // Nothing to do.
+    return;
+  }
+
+  block_to_fix->SetBlockCount(known_block->GetBlockCount());
+  if (should_dump()) {
+    LOG(INFO) << GetPassName() << ": Set count for block "
+              << block_to_fix->GetBlockId() << " to "
+              << known_block->GetBlockCount()
+              << " for " << GetMethodName(graph_);
+  }
+}
+
 void HInsertProfiling::InsertProfilingInformationFromProfile(ProfilingInfo* info) {
   if (!jit_bbs()) {
     PRINT_PASS_OSTREAM_MESSAGE(this, "Ignoring BB counts for " << GetMethodName(graph_));
@@ -418,15 +513,14 @@ void HInsertProfiling::InsertProfilingInformationFromProfile(ProfilingInfo* info
     }
   }
 
-  // Fix up block 0 if needed, since it is set to kNoDexPc.
-  if (!blocks[0]->HasBlockCount() && blocks[1]->HasBlockCount()) {
-    blocks[0]->SetBlockCount(blocks[1]->GetBlockCount());
-  }
+  // Fix up entry/exit block if needed, since they are set to kNoDexPc.
+  FixupBlockCountIfNeeded(graph_->GetEntryBlock(), blocks[1]);
+  FixupBlockCountIfNeeded(graph_->GetExitBlock(), blocks[1]);
 }
 
 int32_t HInsertProfiling::FindCountIndex(HBasicBlock* bb,
-                                     ProfilingInfo::BBCounts* counts,
-                                     uint32_t num_bb_counts) {
+                                         ProfilingInfo::BBCounts* counts,
+                                         uint32_t num_bb_counts) {
   DCHECK(bb != nullptr);
   uint32_t dex_pc = bb->GetDexPc();
 

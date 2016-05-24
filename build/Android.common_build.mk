@@ -94,7 +94,6 @@ ifeq ($(LIBART_VTUNE), true)
   LIBART_COMPILER_CFLAGS += -DVTUNE_ART
 endif
 
-
 #
 # Used to change the default GC. Valid values are CMS, SS, GSS, GENCOPYING. The default is CMS.
 #
@@ -172,7 +171,6 @@ ifneq ($(HOST_OS),darwin)
   art_clang_cflags += -Wmissing-noreturn
 endif
 
-
 # GCC-only warnings.
 art_gcc_cflags := -Wunused-but-set-parameter
 # Suggest const: too many false positives, but good for a trial run.
@@ -184,6 +182,11 @@ art_gcc_cflags := -Wunused-but-set-parameter
 #                  -Wzero-as-null-pointer-constant \
 # Suggest final: Have to move to a more recent GCC.
 #                  -Wsuggest-final-types
+
+# Enable building of profiles for boot.oat.
+ifeq ($(GENERATE_PROFILE),true)
+  art_clang_cflags += -DGENERATE_PROFILE
+endif
 
 ART_TARGET_CLANG_CFLAGS := $(art_clang_cflags)
 ifeq ($(ART_HOST_CLANG),true)

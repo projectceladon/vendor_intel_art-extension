@@ -244,9 +244,10 @@ class ExactProfiler {
   /*
    * @brief Construct the data structures for profiling counts.
    * @param oat_file_name Name of the OAT file, to be used to generate the
+   * @param profile_dir Name of the profile_dir (empty if not boot.oat)
    * '.prof' filename.
    */
-  explicit ExactProfiler(const std::string& oat_file_name);
+  ExactProfiler(const std::string& oat_file_name, const std::string& profile_dir);
 
   /*
    * Destructor

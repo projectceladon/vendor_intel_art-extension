@@ -60,7 +60,8 @@ class HDevirtualization : public HSpeculationPass {
   uint64_t GetCost(HInstruction* instr) OVERRIDE;
   std::pair<uint64_t, uint64_t> GetMispredictRate(HInstruction* instr) OVERRIDE;
   uint64_t GetProfit(HInstruction* instr) OVERRIDE;
-  bool IsPredictionSame(HInstruction* instr, HInstruction* instr2) OVERRIDE;
+  bool IsPredictionSame(HInstruction* instr, HInstruction* instr2) OVERRIDE
+      SHARED_REQUIRES(Locks::mutator_lock_);
   HSpeculationGuard* InsertSpeculationGuard(HInstruction* instr_guarded,
                                             HInstruction* instr_cursor) OVERRIDE;
   bool HandleSpeculation(HInstruction* instr, HInstruction* instr_copy,
@@ -161,7 +162,7 @@ class HDevirtualization : public HSpeculationPass {
 
   // Ideally, we would use a cost framework for this. But since it does not
   // exist, for now simply estimate these.
-  static constexpr uint32_t kCostOfLoadClass = 5;
+  static constexpr uint32_t kCostOfLoadClass = 4;
   static constexpr uint32_t kCostOfLoadReferrerClass = 1;
   static constexpr uint32_t kCostOfDevirtCheck = 2;
   // The benefit of prediction must include the overhead of call we eliminate.

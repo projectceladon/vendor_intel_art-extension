@@ -68,7 +68,7 @@ class HAllUseIterator {
            env_user_ == nullptr &&
            user_ == nullptr;
   }
-  
+
   HInstruction* Current() {
     return IsEnv() ? env_user_->GetHolder() : user_;
   }

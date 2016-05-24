@@ -119,6 +119,51 @@ class InlineCache {
     return classes_[0].Read();
   }
 
+  bool IsAOTMonomorphic() const {
+    // Like IsEffectively monomorphic, but used for AOT compiles.
+    // Is it skewed towards one single target?
+    if (IsActualPolymorphic()) {
+      // Ok is it skewed towards one single target?
+      //   What we are trying to do here is see if the maximum is really bigger
+      //    than all of the others.
+      // Get the maximum.
+      const uint32_t* max_ptr = std::max_element(class_counts_,
+                                                 class_counts_ + kIndividualCacheSize);
+      const uint32_t max = *max_ptr;
+
+      static constexpr double ratio = 0.20;
+
+      // Count how many are more than a 20% of max, we will count the max
+      // of course, so we get 1 at least.
+      size_t res = std::count_if(class_counts_, class_counts_ + kIndividualCacheSize,
+                                  [=](int val) {
+                                     return (((double) val) / max) > ratio;
+                                    });
+
+      // If we have only 1, we are skewed, suppose we are only at one.
+      return res == 1;
+    }
+
+    // Is it actually really monomorphic?
+    return IsActualMonomorphic();
+  }
+
+  mirror::Class* GetAOTMonomorphicType() const SHARED_REQUIRES(Locks::mutator_lock_) {
+    // Note that we cannot ensure the inline cache is actually monomorphic
+    // at this point, as other threads may have updated it.
+    DCHECK(!classes_[0].IsNull());
+
+    if (IsAOTMonomorphic()) {
+      // Get the maximum.
+      const uint32_t* max_ptr = std::max_element(class_counts_,
+                                  class_counts_ + kIndividualCacheSize);
+      const uint32_t idx = max_ptr - class_counts_;
+      return classes_[idx].Read();
+    }
+
+    return classes_[0].Read();
+  }
+
   bool IsUninitialized() const {
     return classes_[0].IsNull();
   }

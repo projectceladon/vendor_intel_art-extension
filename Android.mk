@@ -21,10 +21,3 @@
 # Android build system from skipping this folder and going straight into the
 # other folders which have makefiles. If this occurs, the build will fail because
 # multiple targets with same name will be added.
-
-# Support for profdump (not present in ART)
-ifneq ($(VENDOR_ART_PATH),)
-ifneq ($(VENDOR_ART_PATH),art)
-  include $(VENDOR_ART_PATH)/profdump/Android.mk
-endif
-endif

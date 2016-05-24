@@ -17,6 +17,8 @@
 #ifndef ART_COMPILER_OPTIMIZING_INSERT_PROFILING_H_
 #define ART_COMPILER_OPTIMIZING_INSERT_PROFILING_H_
 
+#include "driver/compiler_options.h"
+#include "jit/profiling_info.h"
 #include "optimization_x86.h"
 #include "jit/profiling_info.h"
 
@@ -59,6 +61,21 @@ class HInsertProfiling : public HOptimization_X86 {
   void SetBBFromDexPC(HBasicBlock* bb,
                       ProfilingInfo::BBCounts* counts,
                       uint32_t num_bb_counts);
+
+  void FixupBlockCountIfNeeded(HBasicBlock* block_to_fix, HBasicBlock* known_block);
+
+  struct BlockOrderer {
+    // Ensure that we keep the blocks in a sorted order, to ensure B0 is first.
+    bool operator()(HBasicBlock* a, HBasicBlock*b) {
+      return a->GetBlockId() < b->GetBlockId();
+    }
+  };
+
+  typedef std::set<HBasicBlock*, BlockOrderer> OrderedBlocks;
+  void CollectInformation(std::map<uint32_t, HInvoke*>* virtual_invoke_map,
+                          OrderedBlocks& blocks,
+                          int32_t& max_profiled_block,
+                          CompilerOptions::ProfilingCounts profiling_counts);
 
   void ResetLastIndex() {
     last_bb_index_ = 0;

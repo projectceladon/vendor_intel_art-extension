@@ -1,0 +1,21 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+
+use Time::HiRes qw(usleep);
+while(1) {
+  open(DISPLAY, "adb shell dumpsys deviceidle|") || die "Unable to invoke dumpsys: $!";
+  while(<DISPLAY>) {
+    if (/mScreenOn=(.*)/) {
+      if ($1 eq "true") {
+        exit (0);
+      }
+      last;
+    }
+  }
+  close(DISPLAY);
+
+  # screen is off. toggle it on.
+  system("adb shell input keyevent KEYCODE_POWER");
+  usleep(250);
+}

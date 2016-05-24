@@ -1,0 +1,3 @@
+#!/bin/bash
+./screen_on
+adb shell input keyevent KEYCODE_HOME

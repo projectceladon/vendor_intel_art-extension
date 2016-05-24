@@ -64,10 +64,12 @@ namespace art {
 std::set<ExactProfiler*> ExactProfiler::all_exact_profiles_;
 ExactProfiler::MethodProfileMap ExactProfiler::profile_infos_;
 
-ExactProfiler::ExactProfiler(const std::string& oat_file_name)
+ExactProfiler::ExactProfiler(const std::string& oat_file_name,
+                             const std::string& profile_dir)
     : method_lock_("method info lock"),
       oat_file_name_(oat_file_name) {
-  VLOG(exact_profiler) << "ExactProfiler ctor: " << oat_file_name;
+  VLOG(exact_profiler) << "ExactProfiler ctor: " << oat_file_name
+                       << ", " << profile_dir;
 
   // Compute the prof filename from the name of the OAT file.
   size_t last_dot = oat_file_name.rfind('.');
@@ -78,12 +80,17 @@ ExactProfiler::ExactProfiler(const std::string& oat_file_name)
     last_dot = std::string::npos;
   }
 
-  // Figure out the directory name.
-  if (last_slash == std::string::npos) {
-    // The file is in the current directory.
-    prof_file_name_ = "profile/";
+  // Use the profile_dir if we have one.
+  if (!profile_dir.empty()) {
+      prof_file_name_ = profile_dir;
   } else {
-    prof_file_name_ = oat_file_name.substr(0, last_slash+1) + "profile";
+    // Figure out the directory name.
+    if (last_slash == std::string::npos) {
+      // The file is in the current directory.
+      prof_file_name_ = "profile/";
+    } else {
+      prof_file_name_ = oat_file_name.substr(0, last_slash+1) + "profile";
+    }
   }
 
   // Save the path up until the last component for later use.
@@ -1657,8 +1664,8 @@ ExactProfileFile* ExactProfiler::AddProfileFile(const std::string& oat_location,
 
     VLOG(exact_profiler) << "profile name(2): " << prof_name;;
     VLOG(exact_profiler) << "OAT name(2): " << oat_file_name;;
-  } else if (!is_image && !prof_file_name_.empty()) {
-    // 2. We have an existing profile name. This is compiling the main profile file.
+  } else if (!prof_file_name_.empty()) {
+    // 2. We have already computed the name.
     prof_name = prof_file_name_;
     VLOG(exact_profiler) << "profile name(3): " << prof_name;
   } else {

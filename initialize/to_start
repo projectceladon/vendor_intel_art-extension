@@ -1,0 +1,7 @@
+#!/bin/bash
+./screen_on
+./back
+sleep 1
+./back
+sleep 1
+./back
