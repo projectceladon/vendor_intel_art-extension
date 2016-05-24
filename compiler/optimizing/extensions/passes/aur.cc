@@ -193,7 +193,8 @@ class AggressiveEnvUseRemover : public HGraphVisitor {
 void HAggressiveUseRemoverPass::Run() {
   // The aggressive use removal makes it so method is no longer debuggable. Thus if debuggability
   // is needed, we cannot run this pass.
-  if (graph_->IsDebuggable()) {
+  // The boot image also needs to be treated as debuggable for this purpose.
+  if (is_boot_image_ || graph_->IsDebuggable()) {
     return;
   }
 

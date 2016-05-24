@@ -97,6 +97,10 @@ class CompilerOptions FINAL {
     return use_exact_profiles_;
   }
 
+  bool IsBootImage() const {
+    return is_boot_image_;
+  }
+
   CompilerFilter::Filter GetCompilerFilter() const {
     return compiler_filter_;
   }
@@ -328,6 +332,7 @@ class CompilerOptions FINAL {
   bool compile_pic_;
   ProfilingCounts profiling_counts_ = kProfilingNone;
   bool use_exact_profiles_ = false;
+  bool is_boot_image_ = false;
 
   // Vector of methods to have verbose output enabled for.
   const std::vector<std::string>* verbose_methods_;

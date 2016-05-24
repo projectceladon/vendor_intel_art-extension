@@ -164,6 +164,10 @@ define build-art-executable
     endif
   endif
 
+  ifeq (true, $(BOOT_DEBUGGABLE))
+    LOCAL_CFLAGS += -DBOOT_DEBUGGABLE
+  endif
+
   LOCAL_NATIVE_COVERAGE := $(ART_COVERAGE)
 
   ifeq ($$(art_target_or_host),target)

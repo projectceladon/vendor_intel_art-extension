@@ -716,9 +716,14 @@ class Dex2Oat FINAL {
     }
 
     if (IsBootImage()) {
+#if BOOT_DEBUGGABLE
       // We need the boot image to always be debuggable.
       // TODO: Remove this once we better deal with full frame deoptimization.
+      // Default to non-debuggable unless BOOT_DEBUGGABLE defined.
       compiler_options_->debuggable_ = true;
+#endif
+      // Mark this as the 'boot image' for any optimization that needs to care.
+      compiler_options_->is_boot_image_ = true;
     }
 
     if (oat_filenames_.empty() && oat_fd_ == -1) {

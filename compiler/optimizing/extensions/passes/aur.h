@@ -24,6 +24,8 @@
 
 #include "nodes.h"
 #include "optimization_x86.h"
+#include "driver/compiler_driver-inl.h"
+#include "driver/compiler_options.h"
 
 namespace art {
 
@@ -40,10 +42,15 @@ class CompilerDriver;
 class HAggressiveUseRemoverPass : public HOptimization_X86 {
  public:
   HAggressiveUseRemoverPass(HGraph* graph,
+                            CompilerDriver* compiler_driver,
                             OptimizingCompilerStats* stats = nullptr)
-    : HOptimization_X86(graph, "aur", stats) {}
+    : HOptimization_X86(graph, "aur", stats),
+      is_boot_image_(compiler_driver->GetCompilerOptions().IsBootImage()) {}
 
   void Run() OVERRIDE;
+
+ private:
+  const bool is_boot_image_;
 };
 
 }  // namespace art
