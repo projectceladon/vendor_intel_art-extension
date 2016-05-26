@@ -999,6 +999,34 @@ bool RegisterAllocator::AllocateBlockedReg(LiveInterval* current) {
     DCHECK(first_register_use != kNoLifetime || (current->GetNextSibling() != nullptr));
   } else if (first_register_use == kNoLifetime) {
     AllocateSpillSlotFor(current);
+    HBasicBlock* bb = liveness_.GetBlockFromPosition(current->GetStart() / 2);
+    // At this point we don't have register uses for our current interval anymore.
+    // If we don't allocate part of interval in loop on register, we can avoid extra fills
+    // on back branch in case if we don't have uses on register in loop.
+    HLoopInformation* loop = bb->GetLoopInformation();
+    if (loop != nullptr && !loop->IsIrreducible()) {
+      LiveInterval* prev_sibling = current->GetPrevSibling();
+      // If prev_sibling starts outside the loop and ends inside of it.
+      size_t loop_header_start_position = loop->GetHeader()->GetLifetimeStart();
+      if (loop_header_start_position > prev_sibling->GetStart() &&
+          loop_header_start_position < prev_sibling->GetEnd()) {
+        // Find last register use. If it's before loop it means that we don't have register uses
+        // inside the loop, which makes fill of this register on backbranch excess.
+        UsePosition* last_use = prev_sibling->GetFirstUse();
+        if (last_use != nullptr) {
+          while (last_use->GetNext() != nullptr &&
+                 last_use->GetNext()->GetPosition() <= prev_sibling->GetEnd()) {
+            last_use = last_use->GetNext();
+          }
+          if (last_use->GetPosition() < loop_header_start_position) {
+            LiveInterval* split = Split(prev_sibling, loop_header_start_position);
+            split->AddSibling(current);
+            handled_.push_back(prev_sibling);
+            handled_.push_back(split);
+          }
+        }
+      }
+    }
     return false;
   }
 
@@ -1270,7 +1298,7 @@ LiveInterval* RegisterAllocator::SplitBetween(LiveInterval* interval, size_t fro
 
 LiveInterval* RegisterAllocator::Split(LiveInterval* interval, size_t position) {
   DCHECK_GE(position, interval->GetStart());
-  DCHECK(!interval->IsDeadAt(position));
+  DCHECK(!interval->IsDeadAt(position) || interval->IsDeadAt(interval->GetEnd()));
   if (position == interval->GetStart()) {
     // Spill slot will be allocated when handling `interval` again.
     interval->ClearRegister();
