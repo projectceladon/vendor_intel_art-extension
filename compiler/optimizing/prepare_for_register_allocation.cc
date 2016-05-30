@@ -31,24 +31,34 @@ void PrepareForRegisterAllocation::Run() {
 }
 
 void PrepareForRegisterAllocation::VisitNullCheck(HNullCheck* check) {
+  // When substituting be sure that we are in sync with "aur" phase.
+  DCHECK(check->CanBeSubstitutedWithItsInput());
   check->ReplaceWith(check->InputAt(0));
 }
 
 void PrepareForRegisterAllocation::VisitDivZeroCheck(HDivZeroCheck* check) {
+  // When substituting be sure that we are in sync with "aur" phase.
+  DCHECK(check->CanBeSubstitutedWithItsInput());
   check->ReplaceWith(check->InputAt(0));
 }
 
 void PrepareForRegisterAllocation::VisitBoundsCheck(HBoundsCheck* check) {
+  // When substituting be sure that we are in sync with "aur" phase.
+  DCHECK(check->CanBeSubstitutedWithItsInput());
   check->ReplaceWith(check->InputAt(0));
 }
 
 #if defined(ART_ENABLE_CODEGEN_x86) || defined(ART_ENABLE_CODEGEN_x86_64)
 void PrepareForRegisterAllocation::VisitX86BoundsCheckMemory(HX86BoundsCheckMemory* check) {
+  // When substituting be sure that we are in sync with "aur" phase.
+  DCHECK(check->CanBeSubstitutedWithItsInput());
   check->ReplaceWith(check->InputAt(0));
 }
 #endif
 
 void PrepareForRegisterAllocation::VisitBoundType(HBoundType* bound_type) {
+  // When substituting be sure that we are in sync with "aur" phase.
+  DCHECK(bound_type->CanBeSubstitutedWithItsInput());
   bound_type->ReplaceWith(bound_type->InputAt(0));
   bound_type->GetBlock()->RemoveInstruction(bound_type);
 }
@@ -107,6 +117,8 @@ void PrepareForRegisterAllocation::VisitClinitCheck(HClinitCheck* check) {
   HLoadClass* load_class = check->GetLoadClass();
   bool can_merge_with_load_class = CanMoveClinitCheck(load_class, check);
 
+  // When substituting be sure that we are in sync with "aur" phase.
+  DCHECK(check->CanBeSubstitutedWithItsInput());
   check->ReplaceWith(load_class);
 
   if (implicit_clinit != nullptr) {

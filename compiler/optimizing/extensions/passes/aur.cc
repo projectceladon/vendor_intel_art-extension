@@ -107,7 +107,8 @@ class AggressiveEnvUseRemover : public HGraphVisitor {
                 const HUseList<HInstruction*>& uses = instruction->GetUses();
                 for (auto it = uses.begin(), end = uses.end(); it != end; ++it) {
                   HInstruction* user = it->GetUser();
-                  if (!user->StrictlyDominates(candidate)) {
+                  if (!user->StrictlyDominates(candidate) ||
+                      user->CanBeSubstitutedWithItsInput()) {
                     should_remove = false;
                     break;
                   }

@@ -501,6 +501,8 @@ TEST_ART_BROKEN_OPTIMIZING_MIPS64_RUN_TESTS :=
 TEST_ART_BROKEN_OPTIMIZING_NONDEBUGGABLE_RUN_TESTS := \
   454-get-vreg \
   457-regs \
+  004-ReferenceMap \
+  099-vmdebug \
 
 ifneq (,$(filter optimizing,$(COMPILER_TYPES)))
   ART_TEST_KNOWN_BROKEN += $(call all-run-test-names,$(TARGET_TYPES),$(RUN_TYPES),$(PREBUILD_TYPES), \

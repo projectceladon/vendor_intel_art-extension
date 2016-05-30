@@ -2051,6 +2051,10 @@ class HInstruction : public ArenaObject<kArenaAllocInstruction> {
   FOR_EACH_ABSTRACT_INSTRUCTION(INSTRUCTION_TYPE_CHECK)
 #undef INSTRUCTION_TYPE_CHECK
 
+  // Returns whether the instruction can be substituted with its input.
+  // This will be used in two phases: "aur" and "prepare for register allocation".
+  virtual bool CanBeSubstitutedWithItsInput() const { return false; }
+
   // Returns whether the instruction can be moved within the graph.
   virtual bool CanBeMoved() const { return false; }
 
@@ -4462,6 +4466,8 @@ class HDivZeroCheck : public HExpression<1> {
 
   Primitive::Type GetType() const OVERRIDE { return InputAt(0)->GetType(); }
 
+  bool CanBeSubstitutedWithItsInput() const OVERRIDE { return true; }
+
   bool CanBeMoved() const OVERRIDE { return true; }
 
   bool InstructionDataEquals(HInstruction* other ATTRIBUTE_UNUSED) const OVERRIDE {
@@ -5058,8 +5064,9 @@ class HNullCheck : public HExpression<1> {
 
   bool CanThrow() const OVERRIDE { return true; }
 
-  bool CanBeNull() const OVERRIDE { return false; }
+  bool CanBeSubstitutedWithItsInput() const OVERRIDE { return true; }
 
+  bool CanBeNull() const OVERRIDE { return false; }
 
   DECLARE_INSTRUCTION(NullCheck);
 
@@ -5407,6 +5414,8 @@ class HBoundsCheck : public HExpression<2> {
   }
 
   bool NeedsEnvironment() const OVERRIDE { return true; }
+
+  bool CanBeSubstitutedWithItsInput() const OVERRIDE { return true; }
 
   bool CanThrow() const OVERRIDE { return true; }
 
@@ -5880,6 +5889,8 @@ class HClinitCheck : public HExpression<1> {
     return true;
   }
 
+  bool CanBeSubstitutedWithItsInput() const OVERRIDE { return true; }
+
   bool CanThrow() const OVERRIDE { return true; }
 
   HLoadClass* GetLoadClass() const { return InputAt(0)->AsLoadClass(); }
@@ -6247,6 +6258,8 @@ class HBoundType : public HExpression<1> {
     DCHECK(GetUpperCanBeNull() || !can_be_null);
     SetPackedFlag<kFlagCanBeNull>(can_be_null);
   }
+
+  bool CanBeSubstitutedWithItsInput() const OVERRIDE { return true; }
 
   bool CanBeNull() const OVERRIDE { return GetPackedFlag<kFlagCanBeNull>(); }
 

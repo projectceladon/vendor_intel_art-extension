@@ -136,6 +136,8 @@ class HX86BoundsCheckMemory : public HExpression<2> {
 
   bool NeedsEnvironment() const OVERRIDE { return true; }
 
+  bool CanBeSubstitutedWithItsInput() const OVERRIDE { return true; }
+
   bool CanThrow() const OVERRIDE { return true; }
 
   virtual size_t GetBaseInputIndex() const OVERRIDE { return 1; }

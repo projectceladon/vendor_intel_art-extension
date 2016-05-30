@@ -471,11 +471,9 @@ static void MaybeRunInliner(HGraph* graph,
       /* depth */ 0);
   HOptimization* optimizations[] = { inliner };
 
-  // FIXME: We don't invoke SILVER for methods with try/catch
-  if (graph->HasTryCatch() ||
   // FIXME: We don't invoke SILVER for methods with irreducible
   // loops because of a crash in full loop unrolling phase.
-      graph->HasIrreducibleLoops()) {
+  if (graph->HasIrreducibleLoops()) {
     RunOptimizations(optimizations, arraysize(optimizations), pass_observer);
   } else {
     for (size_t i = 0; i < arraysize(optimizations); ++i) {
@@ -621,11 +619,9 @@ static void RunOptimizations(HGraph* graph,
     dce1,
   };
 
-  // FIXME: We don't invoke SILVER for methods with try/catch
-  if (graph->HasTryCatch() ||
   // FIXME: We don't invoke SILVER for methods with irreducible
   // loops because of a crash in full loop unrolling phase.
-      graph->HasIrreducibleLoops()) {
+  if (graph->HasIrreducibleLoops()) {
     RunOptimizations(optimizations1, arraysize(optimizations1), pass_observer);
   } else {
     for (size_t i = 0; i < arraysize(optimizations1); ++i) {
@@ -655,11 +651,9 @@ static void RunOptimizations(HGraph* graph,
     simplify3,
   };
 
-  // FIXME: We don't invoke SILVER for methods with try/catch
-  if (graph->HasTryCatch() ||
   // FIXME: We don't invoke SILVER for methods with irreducible
   // loops because of a crash in full loop unrolling phase.
-      graph->HasIrreducibleLoops()) {
+  if (graph->HasIrreducibleLoops()) {
     RunOptimizations(optimizations2, arraysize(optimizations2), pass_observer);
   } else {
     for (size_t i = 0; i < arraysize(optimizations2); ++i) {
