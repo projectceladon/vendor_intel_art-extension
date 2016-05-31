@@ -226,15 +226,22 @@ void SendMethodToVTune(const char* method_name,
 
   int is_notified = iJIT_NotifyEvent(iJVM_EVENT_TYPE_METHOD_LOAD_FINISHED, (void*)&jit_method);
   if (is_notified) {
-    LOG(DEBUG) << "JIT API: method '" << jit_method.method_name
-               << "' is written successfully: id=" << jit_method.method_id
-               << ", address=" << jit_method.method_load_address
-               << ", size=" << jit_method.method_size;
-  } else if (true) {
+    VLOG(jni) << "JIT API: method '" << jit_method.method_name
+              << "' is written successfully: id=" << jit_method.method_id
+              << ", address=" << jit_method.method_load_address
+              << ", size=" << jit_method.method_size;
+  } else if (VLOG_IS_ON(jit)) {
     LOG(WARNING) << "JIT API: failed to write method '" << jit_method.method_name
                  << "': id=" << jit_method.method_id
                  << ", address=" << jit_method.method_load_address
                  << ", size=" << jit_method.method_size;
+  } else {
+    static bool printedOnce = false;
+    if (!printedOnce) {
+      printedOnce = true;
+      LOG(WARNING) << "JIT API: Did not write some methods. "
+                   << "Enable verbose:jit mode for more details.";
+    }
   }
 }
 
