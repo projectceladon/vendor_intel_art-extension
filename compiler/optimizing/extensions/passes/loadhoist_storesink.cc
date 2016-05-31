@@ -79,36 +79,6 @@ static HInstruction* GetValueToSet(HInstruction* set) {
   }
 }
 
-// FIXME: declaration of GetFloatOrDoubleEquivalent was changed
-// to non-static private, and that breaks compilation.
-//
-// This workaround reverts the commit:
-// Author: Serguei Katkov <serguei.i.katkov@intel.com>
-// Date:   Tue Nov 10 12:22:00 2015 +0600
-//
-// ART-Extension: Fix LHSS with Phi of different types.
-// #define CAR_2838
-//
-// Perhaps, this issue is already gone after commit:
-// Author: David Brazdil <dbrazdil@google.com>
-// Date:   Wed Dec 16 10:37:39 2015 +0000
-//
-// ART: Refactor SsaBuilder for more precise typing info
-//
-// So, it needs to be checked before reverting it back.
-
-#ifdef CAR_2838
-static void ReplaceValueToSet(HInstruction* set, HInstruction* value) {
-  DCHECK(set != nullptr);
-
-  if (set->IsArraySet()) {
-    set->ReplaceInput(value, 2);
-  } else {
-    set->ReplaceInput(value, 1);
-  }
-}
-#endif
-
 static bool IsSet(HInstruction* insn) {
   DCHECK(insn != nullptr);
   HInstruction::InstructionKind kind = insn->GetKind();
@@ -210,30 +180,6 @@ bool LoadHoistStoreSink::DoLoadHoistStoreSink(HLoopInformation_X86* loop,
     HInstruction* get = load_store->first;
     HInstruction* set = load_store->second;
 
-#ifdef CAR_2838
-    HInstruction* value_to_set = GetValueToSet(set);
-    // First, check whether we can create a Phi node.
-    // We should be careful here. Phi node must have the inputs of the same type.
-    // However set is not typed if the value has not been obtained from some computation.
-    // It is possible that get is of type fp while
-    // set for constant will be of integral type. To avoid problems with Phi node we should
-    // handle this case.
-    if (HPhi::ToPhiType(get->GetType()) != HPhi::ToPhiType(value_to_set->GetType())) {
-      if ((value_to_set->IsLongConstant() && get->GetType() == Primitive::kPrimDouble) ||
-          (value_to_set->IsIntConstant() && get->GetType() == Primitive::kPrimFloat)) {
-        value_to_set =
-            SsaBuilder::GetFloatOrDoubleEquivalent(nullptr, value_to_set, value_to_set->GetType());
-        ReplaceValueToSet(set, value_to_set);
-      } else {
-        PRINT_PASS_OSTREAM_MESSAGE(this, "We cannot set Phi node with inputs of different types"
-                                         << Primitive::PrettyDescriptor(get->GetType())
-                                         << " and "
-                                         << Primitive::PrettyDescriptor(value_to_set->GetType()));
-        continue;
-      }
-    }
-#endif
-
     // Now, we move the load at the end of the loop pre-header.
     get->MoveBefore(pre_header->GetLastInstruction());
 
@@ -251,9 +197,7 @@ bool LoadHoistStoreSink::DoLoadHoistStoreSink(HLoopInformation_X86* loop,
 
     // Set the new phi its inputs.
     phi->SetRawInputAt(0, get);  // First input of the phi is the get.
-#ifndef CAR_2838
     HInstruction* value_to_set = GetValueToSet(set);
-#endif
 
     phi->SetRawInputAt(1, value_to_set);  // Second input is the input defined in the loop.
 
