@@ -39,7 +39,6 @@ ifeq ($(findstring graph_x86,$(LIBART_COMPILER_SRC_FILES)),)
     $(VENDOR_EXTENSIONS_FOLDER)/passes/devirtualization_helper.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/find_ivs.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/form_bottom_loops.cc \
-    $(VENDOR_EXTENSIONS_FOLDER)/passes/generate_selects.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/gvn_after_fbl.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/insert_profiling.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/loadhoist_storesink.cc \

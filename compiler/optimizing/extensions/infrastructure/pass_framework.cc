@@ -32,7 +32,6 @@
 #include "ext_utility.h"
 #include "form_bottom_loops.h"
 #include "find_ivs.h"
-#include "generate_selects.h"
 #include "graph_visualizer.h"
 #include "gvn_after_fbl.h"
 #include "inliner.h"
@@ -99,10 +98,6 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   { "pure_invokes_analysis", "loop_peeling", kPassInsertBefore },
   { "loop_formation_before_peeling", "pure_invokes_analysis", kPassInsertBefore },
   { "value_propagation_through_heap", "pure_invokes_analysis", kPassInsertBefore },
-  // FIXME: this pass is disabled and should be eliminated
-  // completely because Google has implemented a similar
-  // optimization, called "select_generator".
-  // { "generate_selects", "boolean_simplifier", kPassInsertAfter },
   { "form_bottom_loops", "load_store_elimination", kPassInsertAfter },
   { "loop_formation_before_bottom_loops", "form_bottom_loops", kPassInsertBefore },
   { "GVN_after_form_bottom_loops", "form_bottom_loops", kPassInsertAfter },
@@ -378,7 +373,6 @@ void RunOptimizationsX86(HGraph* graph,
   HFormBottomLoops* form_bottom_loops =
       new (arena) HFormBottomLoops(graph, dex_compilation_unit, handles, stats);
   GVNAfterFormBottomLoops* gvn_after_fbl = new (arena) GVNAfterFormBottomLoops(graph);
-  // HGenerateSelects* generate_selects = new (arena) HGenerateSelects(graph, stats);
   HConstantFolding_X86* constant_folding =
       new (arena) HConstantFolding_X86(graph, stats, "constant_folding_after_phi_cleanup");
   HLoopFullUnrolling* loop_full_unrolling = new (arena) HLoopFullUnrolling(graph, driver, stats);
@@ -412,7 +406,6 @@ void RunOptimizationsX86(HGraph* graph,
     peeling,
     pure_invokes_analysis,
     formation_before_peeling,
-    // &generate_selects
     form_bottom_loops,
     formation_before_bottom_loops,
     gvn_after_fbl,
