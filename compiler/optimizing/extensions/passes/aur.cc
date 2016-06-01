@@ -20,82 +20,19 @@
  */
 
 #include "aur.h"
+#include "ext_utility.h"
 #include "pass_option.h"
 
 namespace art {
 
-static void RemoveEnvAsUser(HInstruction* candidate,
-                            bool remove_references,
-                            OptimizingCompilerStats* const stats) {
-  for (HEnvironment* environment = candidate->GetEnvironment();
-      environment != nullptr;
-      environment = environment->GetParent()) {
-    for (size_t i = 0, e = environment->Size(); i < e; ++i) {
-      HInstruction* instruction = environment->GetInstructionAt(i);
-      if (instruction != nullptr) {
-        bool should_remove = true;
-
-        if (!remove_references) {
-          if (instruction->GetType() == Primitive::kPrimNot) {
-            if (!instruction->IsNullConstant()) {
-              // So the reference is not null. Well it might still be dead if this
-              // environment use is the last real use. One way we can determine if this
-              // if all the uses strictly dominate this candidate.
-              const HUseList<HInstruction*>& uses = instruction->GetUses();
-              for (auto it = uses.begin(), end = uses.end(); it != end; ++it) {
-                HInstruction* user = it->GetUser();
-                if (!user->StrictlyDominates(candidate)) {
-                  should_remove = false;
-                  break;
-                }
-              }
-            }
-          }
-        }
-
-        if (should_remove) {
-          environment->RemoveAsUserOfInput(i);
-          environment->SetRawEnvAt(i, nullptr);
-
-          // Verify that the instruction has a definition - it must be the case since
-          // it was used.
-          DCHECK_NE(instruction->GetType(), Primitive::kPrimVoid);
-
-          // We removed this instruction as input. Now consider it for complete removal.
-          if (!instruction->GetSideEffects().HasSideEffectsExcludingGC()
-              && !instruction->CanThrow()
-              && !instruction->IsParameterValue()
-              && !instruction->HasUses()
-              && (!instruction->IsInvoke() // Can remove pure invokes only.
-                  || instruction->CanBeMoved())) {
-            HBasicBlock* block = instruction->GetBlock();
-            DCHECK(block != nullptr);
-            block->RemoveInstructionOrPhi(instruction);
-
-            if (stats != nullptr) {
-              stats->RecordStat(MethodCompilationStat::kRemovedDeadInstruction);
-              // This stat is a lower estimate since we do not actively remove instructions
-              // that were caused to be dead from the current removal.
-              stats->RecordStat(MethodCompilationStat::kIntelRemovedDeadInstructionViaAUR);
-              if (instruction->GetType() == Primitive::kPrimNot) {
-                // We also count reference removals since those are great for GC
-                // since the root set becomes smaller.
-                stats->RecordStat(MethodCompilationStat::kIntelRemovedDeadReferenceViaAUR);
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
 class AggressiveEnvUseRemover : public HGraphVisitor {
  public:
   AggressiveEnvUseRemover(HGraph* graph,
-                          OptimizingCompilerStats* const stats) :
+                          OptimizingCompilerStats* const stats,
+                          HAggressiveUseRemoverPass* const pass) :
         HGraphVisitor(graph),
-        stats_(stats) {}
+        stats_(stats),
+        pass_(pass) {}
   virtual ~AggressiveEnvUseRemover() {}
 
   // These are throwers which are guaranteed to end current frame if there are no catches.
@@ -151,6 +88,82 @@ class AggressiveEnvUseRemover : public HGraphVisitor {
     return instr->GetBlock()->IsTryBlock();
   }
 
+  void RemoveEnvAsUser(HInstruction* candidate,
+      bool remove_references) {
+    for (HEnvironment* environment = candidate->GetEnvironment();
+        environment != nullptr;
+        environment = environment->GetParent()) {
+      for (size_t i = 0, e = environment->Size(); i < e; ++i) {
+        HInstruction* instruction = environment->GetInstructionAt(i);
+        if (instruction != nullptr) {
+          bool should_remove = true;
+
+          if (!remove_references) {
+            if (instruction->GetType() == Primitive::kPrimNot) {
+              if (!instruction->IsNullConstant()) {
+                // So the reference is not null. Well it might still be dead if this
+                // environment use is the last real use. One way we can determine if this
+                // if all the uses strictly dominate this candidate.
+                const HUseList<HInstruction*>& uses = instruction->GetUses();
+                for (auto it = uses.begin(), end = uses.end(); it != end; ++it) {
+                  HInstruction* user = it->GetUser();
+                  if (!user->StrictlyDominates(candidate)) {
+                    should_remove = false;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+
+          if (should_remove) {
+            PRINT_PASS_OSTREAM_MESSAGE(pass_, "Environment of " << candidate << " no longer uses"
+                                       " the value defined by " << instruction);
+
+            environment->RemoveAsUserOfInput(i);
+            environment->SetRawEnvAt(i, nullptr);
+
+            // Verify that the instruction has a definition - it must be the case since
+            // it was used.
+            DCHECK_NE(instruction->GetType(), Primitive::kPrimVoid);
+
+            // We removed this instruction as input. Now consider it for complete removal.
+            if (!instruction->GetSideEffects().HasSideEffectsExcludingGC()
+                && !instruction->CanThrow()
+                && !instruction->IsParameterValue()
+                && !instruction->HasUses()
+                && (!instruction->IsInvoke()  // Can remove pure invokes only.
+                    || instruction->CanBeMoved())) {
+              PRINT_PASS_OSTREAM_MESSAGE(pass_, "Removing " << instruction << " because it is no "
+                                         "longer used by any other instruction or environment.");
+
+
+              HBasicBlock* block = instruction->GetBlock();
+              DCHECK(block != nullptr);
+              block->RemoveInstructionOrPhi(instruction);
+
+              if (stats_ != nullptr) {
+                stats_->RecordStat(MethodCompilationStat::kRemovedDeadInstruction);
+                // This stat is a lower estimate since we do not actively remove instructions
+                // that were caused to be dead from the current removal.
+                stats_->RecordStat(MethodCompilationStat::kIntelRemovedDeadInstructionViaAUR);
+                if (instruction->GetType() == Primitive::kPrimNot) {
+                  // We also count reference removals since those are great for GC
+                  // since the root set becomes smaller.
+                  stats_->RecordStat(MethodCompilationStat::kIntelRemovedDeadReferenceViaAUR);
+                }
+              }
+            }
+          } else {
+            PRINT_PASS_OSTREAM_MESSAGE(pass_, "Environment of " << candidate << " still uses"
+                                       " the value defined by " << instruction << " because the "
+                                       "object is live into environment.");
+          }
+        }
+      }
+    }
+  }
+
   void HandleCaller(HInstruction* instr, bool may_trigger_gc) {
     if (IsInTryBlock(instr)) {
       // We cannot remove environment uses because we are in try block - they
@@ -160,7 +173,7 @@ class AggressiveEnvUseRemover : public HGraphVisitor {
     // Only remove references if we cannot trigger GC (or triggering GC
     // does not affect current frame).
     const bool remove_references = !may_trigger_gc;
-    RemoveEnvAsUser(instr, remove_references, stats_);
+    RemoveEnvAsUser(instr, remove_references);
   }
 
   void HandleThrower(HInstruction* instr) {
@@ -183,27 +196,35 @@ class AggressiveEnvUseRemover : public HGraphVisitor {
     DCHECK(suspend->HasEnvironment());
     // The whole point of suspend check is that we are not removing objects.
     const bool remove_references = false;
-    RemoveEnvAsUser(suspend, remove_references, stats_);
+    RemoveEnvAsUser(suspend, remove_references);
   }
 
   OptimizingCompilerStats* const stats_;
+  HAggressiveUseRemoverPass* const pass_;
   DISALLOW_COPY_AND_ASSIGN(AggressiveEnvUseRemover);
 };
 
 void HAggressiveUseRemoverPass::Run() {
+  PRINT_PASS_OSTREAM_MESSAGE(this, "Start " << GetMethodName(graph_));
+
   // The aggressive use removal makes it so method is no longer debuggable. Thus if debuggability
   // is needed, we cannot run this pass.
   // The boot image also needs to be treated as debuggable for this purpose.
   if (is_boot_image_ || graph_->IsDebuggable()) {
+    const char* reject_message = is_boot_image_ ? "Rejecting because we are compiling boot image."
+        : "Rejecting because the graph is marked as being debuggable.";
+    PRINT_PASS_OSTREAM_MESSAGE(this, "End " << GetMethodName(graph_) << ". " << reject_message);
     return;
   }
 
-  AggressiveEnvUseRemover aur(graph_, stats_);
+  AggressiveEnvUseRemover aur(graph_, stats_, this);
   // We use same walk as DCE.
   for (HPostOrderIterator b(*graph_); !b.Done(); b.Advance()) {
     HBasicBlock* block = b.Current();
     aur.VisitBasicBlock(block);
   }
+
+  PRINT_PASS_OSTREAM_MESSAGE(this, "End " << GetMethodName(graph_));
 }
 
 }  // namespace art
