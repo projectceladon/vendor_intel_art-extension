@@ -1647,6 +1647,14 @@ class Dex2Oat FINAL {
                                         soa.Decode<mirror::ClassLoader*>(class_loader_))));
     }
 
+    // For large apps, we don't compile.
+    if (!IsBootImage() &&
+        compiler_options_->IsJniCompilationEnabled() &&
+        dex_files_size > all_dex_file_max_) {
+      compiler_options_->SetCompilerFilter(CompilerFilter::kInterpretOnly);
+      LOG(INFO) << "App is over compilation threshold.";
+    }
+
     return true;
   }
 
@@ -1948,14 +1956,6 @@ class Dex2Oat FINAL {
         oat_writer.reset();
         elf_writer.reset();
       }
-    }
-
-    // For large apps, we don't compile.
-    if (!IsBootImage() &&
-        compiler_options_->IsCompilationEnabled() &&
-        dex_files_size > all_dex_file_max_) {
-      compiler_options_->SetCompilerFilter(CompilerFilter::kInterpretOnly);
-      LOG(INFO) << "App is over compilation threshold.";
     }
 
     return true;
