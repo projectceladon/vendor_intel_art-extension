@@ -440,8 +440,13 @@ inline bool Heap::IsOutOfMemoryOnAllocation(AllocatorType allocator_type, size_t
     if (UNLIKELY(new_footprint > growth_limit_)) {
       return true;
     }
+// For Emulator with only 48M, enable more conservative GC to avoid OOM for some rare cases.
+#if ENABLE_CONSERVATIVE_GC_FOR_EMULATOR
     if (!AllocatorMayHaveConcurrentGC(allocator_type) || !IsGcConcurrent() ||
-        foreground_collector_type_ == kCollectorTypeGenCopying) {
+        collector_type_ == kCollectorTypeGenCopying) {
+#else
+    if (!AllocatorMayHaveConcurrentGC(allocator_type) || !IsGcConcurrent()) {
+#endif
       if (!kGrow) {
         return true;
       }

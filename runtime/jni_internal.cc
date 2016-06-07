@@ -1779,14 +1779,23 @@ class JNI {
     mirror::String* s = soa.Decode<mirror::String*>(java_string);
     gc::Heap* heap = Runtime::Current()->GetHeap();
     if (heap->IsMovableObject(s)) {
-      StackHandleScope<1> hs(soa.Self());
-      HandleWrapper<mirror::String> h(hs.NewHandleWrapper(&s));
-      if (!kUseReadBarrier) {
-        heap->IncrementDisableMovingGC(soa.Self());
+      if (heap->CurrentCollectorType() != gc::kCollectorTypeGenCopying) {
+        StackHandleScope<1> hs(soa.Self());
+        HandleWrapper<mirror::String> h(hs.NewHandleWrapper(&s));
+        if (!kUseReadBarrier) {
+          heap->IncrementDisableMovingGC(soa.Self());
+        } else {
+          // For the CC collector, we only need to wait for the thread flip rather than the whole GC
+          // to occur thanks to the to-space invariant.
+          heap->IncrementDisableThreadFlip(soa.Self());
+        }
       } else {
-        // For the CC collector, we only need to wait for the thread flip rather than the whole GC
-        // to occur thanks to the to-space invariant.
-        heap->IncrementDisableThreadFlip(soa.Self());
+        jchar* chars = new jchar[s->GetLength()];
+        memcpy(chars, s->GetValue(), sizeof(jchar) * s->GetLength());
+        if (is_copy != nullptr) {
+          *is_copy = JNI_TRUE;
+        }
+        return chars;
       }
     }
     if (is_copy != nullptr) {
@@ -1795,19 +1804,21 @@ class JNI {
     return static_cast<jchar*>(s->GetValue());
   }
 
-  static void ReleaseStringCritical(JNIEnv* env,
-                                    jstring java_string,
-                                    const jchar* chars ATTRIBUTE_UNUSED) {
+  static void ReleaseStringCritical(JNIEnv* env, jstring java_string, const jchar* chars) {
     CHECK_NON_NULL_ARGUMENT_RETURN_VOID(java_string);
     ScopedObjectAccess soa(env);
     gc::Heap* heap = Runtime::Current()->GetHeap();
     mirror::String* s = soa.Decode<mirror::String*>(java_string);
-    if (heap->IsMovableObject(s)) {
-      if (!kUseReadBarrier) {
-        heap->DecrementDisableMovingGC(soa.Self());
-      } else {
-        heap->DecrementDisableThreadFlip(soa.Self());
+    if (heap->CurrentCollectorType() != gc::kCollectorTypeGenCopying) {
+      if (heap->IsMovableObject(s)) {
+        if (!kUseReadBarrier) {
+          heap->DecrementDisableMovingGC(soa.Self());
+        } else {
+          heap->DecrementDisableThreadFlip(soa.Self());
+        }
       }
+    } else if (chars != s->GetValue()) {
+      delete[] chars;
     }
   }
 
@@ -1971,15 +1982,29 @@ class JNI {
     }
     gc::Heap* heap = Runtime::Current()->GetHeap();
     if (heap->IsMovableObject(array)) {
-      if (!kUseReadBarrier) {
-        heap->IncrementDisableMovingGC(soa.Self());
+      if (heap->CurrentCollectorType() != gc::kCollectorTypeGenCopying) {
+        if (!kUseReadBarrier) {
+          heap->IncrementDisableMovingGC(soa.Self());
+        } else {
+          // For the CC collector, we only need to wait for the thread flip rather than the whole GC
+          // to occur thanks to the to-space invariant.
+          heap->IncrementDisableThreadFlip(soa.Self());
+        }
+        // Re-decode in case the object moved since IncrementDisableGC waits for GC to complete.
+        array = soa.Decode<mirror::Array*>(java_array);
       } else {
-        // For the CC collector, we only need to wait for the thread flip rather than the whole GC
-        // to occur thanks to the to-space invariant.
-        heap->IncrementDisableThreadFlip(soa.Self());
+        if (is_copy != nullptr) {
+          *is_copy = JNI_TRUE;
+        }
+        // GetPrimitiveArrayCritical is used by getHeapSpaceStats which are used by dumpsys for debugging.
+        // It's not used popularly by app developers.
+        // TODO: restore the original implementation after resolving possible race condidtion.
+        const size_t component_size = array->GetClass()->GetComponentSize();
+        size_t size = array->GetLength() * component_size;
+        void* data = new uint64_t[RoundUp(size, 8) / 8];
+        memcpy(data, array->GetRawData(component_size, 0), size);
+        return data;
       }
-      // Re-decode in case the object moved since IncrementDisableGC waits for GC to complete.
-      array = soa.Decode<mirror::Array*>(java_array);
     }
     if (is_copy != nullptr) {
       *is_copy = JNI_FALSE;
