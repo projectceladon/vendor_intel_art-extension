@@ -374,12 +374,13 @@ class SemiSpace : public GarbageCollector {
   accounting::AgingTable* to_age_table_;
   size_t threshold_age_;
 
-// Map stores the pair of thread and stack of the thread's roots.
+  // Map stores the pair of thread and stack of the thread's roots.
   ThreadRootStacksMap* thread_roots_stacks_;
   ThreadRootMarkStack* thread_mark_stack_;
- // Support parallel copy or not.
+  // Support parallel copy or not.
   // Used for ZygoteCompact because we don't want gaps in zygote space.
   bool support_parallel_;
+  bool support_parallel_default_;
  private:
   class BitmapSetSlowPathVisitor;
   class MarkObjectVisitor;

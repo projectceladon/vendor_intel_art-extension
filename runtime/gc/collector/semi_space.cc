@@ -60,7 +60,7 @@ static constexpr bool kProtectFromSpace = true;
 static constexpr bool kStoreStackTraces = false;
 static constexpr size_t kBytesPromotedThreshold = 4 * MB;
 static constexpr size_t kLargeObjectBytesAllocatedThreshold = 16 * MB;
-static constexpr bool kSSParallelCopy = false;
+static constexpr bool kSSParallelCopy = true;//false;
 static constexpr bool kSSUseMarkStackPrefetch = true;
 static constexpr size_t kSSMinimumParallelMarkStackSize = 32;
 static constexpr bool kCountTasks = false;
@@ -173,7 +173,8 @@ SemiSpace::SemiSpace(Heap* heap, bool generational,
       need_aging_table_(need_aging_table),
       thread_roots_stacks_(nullptr),
       thread_mark_stack_(nullptr),
-      support_parallel_(support_parallel) {
+      support_parallel_(support_parallel),
+      support_parallel_default_(support_parallel) {
 }
 
 void SemiSpace::NeedToWakeMutators() {
@@ -335,14 +336,23 @@ void SemiSpace::MarkingPhase() {
       name_ = collector_name_ + " bps";
     }
   }
+  // Set the default value of parallel copy support.
+  support_parallel_ = support_parallel_default_;
+  if (GetHeap()->GetPrimaryFreeListSpace()->Capacity() * 0.8 <= GetHeap()->GetBytesAllocated()) {
+    // Promote space is almost full, disable parallel copy.
+    support_parallel_ = false;
+  }
+
   if (GetCurrentIteration()->GetClearSoftReferences()) {
     force_copy_all_ = true;
+    support_parallel_ = false;
   }
 
   if (!collect_from_space_only_) {
     // If non-generational, always clear soft references.
     // If generational, clear soft references if a whole heap collection.
     GetCurrentIteration()->SetClearSoftReferences(true);
+    support_parallel_ = false;
   }
   Locks::mutator_lock_->AssertExclusiveHeld(self_);
   if (generational_) {
@@ -616,21 +626,37 @@ class MarkStackCopyTask : public Task {
     objects_processed_ += count;
   }
 
-  ALWAYS_INLINE void MarkStackPush(Object* obj) SHARED_REQUIRES(Locks::mutator_lock_) {
+  ALWAYS_INLINE void MarkStackPush(Object* obj) NO_THREAD_SAFETY_ANALYSIS {
     if (UNLIKELY(mark_stack_pos_ == kMaxSize)) {
       // Mark stack overflow, give 1/2 the stack to the thread pool as a new work task.
       mark_stack_pos_ /= 2;
       size_t size = kMaxSize - mark_stack_pos_;
       auto* task = new MarkStackCopyTask(thread_pool_, semi_space_, size,
                                      mark_stack_ + mark_stack_pos_);
+      // TODO: This is workaround that kClassLoaderClassesLock is used when class_table visit roots.
+      // The thread pool AddTask fail at checking lock level because kClassLoaderClassesLock is held
+      // However, if enlarge kClassLoaderClassesLock's level there is deadlock between reference
+      // processor and class table.
+      // To fix the root cause may require the redesign of lock levels for thread pool, reference
+      // processor and class table.
+      Thread* self = Thread::Current();
+      BaseMutex* bmu = self->GetHeldMutex(kClassLoaderClassesLock);
+      ReaderWriterMutex* rmu = down_cast<ReaderWriterMutex*>(bmu);
+      if (UNLIKELY(rmu != nullptr)) {
+        rmu->AssertSharedHeld(self);
+        rmu->SharedUnlock(self);
+      }
       thread_pool_->AddTask(Thread::Current(), task);
+      if (UNLIKELY(rmu != nullptr)) {
+        rmu->SharedLock(self);
+      }
     }
     DCHECK(obj != nullptr);
     DCHECK_LT(mark_stack_pos_, kMaxSize);
     mark_stack_[mark_stack_pos_++].Assign(obj);
   }
 
-  static const size_t kMaxSize = 4*KB;
+  static const size_t kMaxSize = 4 * KB;
 
  protected:
   class SSMarkObjectParallelVisitor {

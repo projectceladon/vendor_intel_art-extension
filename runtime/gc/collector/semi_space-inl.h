@@ -26,10 +26,6 @@ namespace art {
 namespace gc {
 namespace collector {
 
-// Reuse TLAB as PLAB since this is for STW GC.
-static constexpr bool kUsePlab = kUseTlab;
-static constexpr size_t kDefaultPLABSize = 64 * KB;
-
 inline mirror::Object* SemiSpace::GetForwardingAddressInFromSpace(mirror::Object* obj) const {
   DCHECK(from_space_->HasAddress(obj));
   LockWord lock_word = obj->GetLockWord(false);
@@ -198,7 +194,7 @@ inline mirror::Object* SemiSpace::TryInstallForwardingAddress(mirror::Object* ob
            // Try just the required size.
            new_tlab_size = byte_count;
            if (!bump_pointer_space->AllocNewTlab(self, new_tlab_size)) {
-             CHECK(forward_address != nullptr) << "OutOfMemory when alloc TLAB in to_space!";
+             return nullptr;
            }
          }
        }

@@ -256,6 +256,9 @@ class MarkSweep : public GarbageCollector {
   void VerifyNoFromSpaceReferences(mirror::Object* obj)
       SHARED_REQUIRES(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
 
+  void EnableParallel(bool enable) {
+    enable_parallel_ = enable;
+  }
  protected:
   // Returns object if the object is marked in the heap bitmap, otherwise null.
   virtual mirror::Object* IsMarked(mirror::Object* object) OVERRIDE
@@ -330,20 +333,36 @@ class MarkSweep : public GarbageCollector {
   // Revoke all the thread-local buffers.
   void RevokeAllThreadLocalBuffers();
 
+  mirror::Object* TryInstallForwardingAddress(Thread* self, mirror::Object* obj,
+                                              space::ContinuousMemMapAllocSpace* dest_space,
+                                              size_t* bytes_allocated)
+      SHARED_REQUIRES(Locks::mutator_lock_);
+
   // Added for copying between two bump pointer spaces.
   void ForwardObjects()
       REQUIRES(Locks::heap_bitmap_lock_)
       REQUIRES(Locks::mutator_lock_);
+
+  void ForwardObjectsParallel()
+      REQUIRES(Locks::heap_bitmap_lock_)
+      REQUIRES(Locks::mutator_lock_);
+
   void UpdateReferences()
       REQUIRES(Locks::heap_bitmap_lock_)
       REQUIRES(Locks::mutator_lock_);
+
   static mirror::Object* MarkedForwardingAddressCallback(mirror::Object* obj, void* arg)
       REQUIRES(Locks::heap_bitmap_lock_)
       REQUIRES(Locks::mutator_lock_);
-  // Below can be parallel.
+
   void ForwardObject(mirror::Object* obj)
       SHARED_REQUIRES(Locks::heap_bitmap_lock_)
       REQUIRES(Locks::mutator_lock_);
+
+  void ForwardObjectParallel(Thread* self, mirror::Object* obj)
+      SHARED_REQUIRES(Locks::heap_bitmap_lock_)
+      REQUIRES(Locks::mutator_lock_);
+
   inline mirror::Object* GetMarkedForwardAddress(mirror::Object* obj) const
       SHARED_REQUIRES(Locks::heap_bitmap_lock_)
       SHARED_REQUIRES(Locks::mutator_lock_);
@@ -408,6 +427,7 @@ class MarkSweep : public GarbageCollector {
   accounting::HeapBitmap* mark_bitmap_;
 
   accounting::ObjectStack* mark_stack_;
+  std::unique_ptr<accounting::ObjectStack> copy_candidate_stack_;
 
   // Every object inside the immune spaces is assumed to be marked. Immune spaces that aren't in the
   // immune region are handled by the normal marking logic.
@@ -451,7 +471,10 @@ class MarkSweep : public GarbageCollector {
   bool updating_reference_;
 
   bool force_copy_all_ = false;
+
   size_t threshold_age_;
+
+  bool enable_parallel_;
 
  private:
   class CardScanTask;
@@ -468,6 +491,10 @@ class MarkSweep : public GarbageCollector {
   class VerifySystemWeakVisitor;
 
   friend class ForwardObjectsVisitor;
+  friend class CountLiveObjectsVisitor;
+  friend class ForwardObjectsParallelVisitor;
+  friend class ParallelForwardTask;
+  friend class RecursiveUpdateReferenceTask;
   friend class MarkSweepUpdateObjectReferencesVisitor;
   friend class MarkSweepUpdateReferenceVisitor;
   friend class MarkSweepUpdateRootVisitor;

@@ -580,7 +580,7 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
         collector_type_ == gc::kCollectorTypeSS ||
         collector_type_ == gc::kCollectorTypeGenCopying) {
         args.SetIfMissing(M::ParallelGCThreads,
-            static_cast<unsigned int>(sysconf(_SC_NPROCESSORS_CONF) - 1u) );
+            static_cast<unsigned int>(sysconf(_SC_NPROCESSORS_CONF) - 1u));
     } else {
       // Default to number of processors minus one since the main GC thread also does work.
       args.SetIfMissing(M::ParallelGCThreads, gc::Heap::kDefaultEnableParallelGC ?
