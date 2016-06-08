@@ -40,12 +40,20 @@ typedef std::unordered_map<HInstruction*, HInstruction*> InstrToInstrMap;
 
 class HFormBottomLoops : public HOptimization_X86 {
  public:
-  explicit HFormBottomLoops(HGraph* graph, OptimizingCompilerStats* stats = nullptr)
-      : HOptimization_X86(graph, kFormBottomLoopsPassName, stats) { }
+  explicit HFormBottomLoops(HGraph* graph,
+                            const DexCompilationUnit& dex_compilation_unit,
+                            StackHandleScopeCollection* handles,
+                            OptimizingCompilerStats* stats = nullptr)
+      : HOptimization_X86(graph, kFormBottomLoopsPassName, stats),
+                          handles_(handles),
+                          dex_compilation_unit_(dex_compilation_unit) { }
 
   void Run() OVERRIDE;
 
  private:
+  StackHandleScopeCollection* const handles_;
+  const DexCompilationUnit& dex_compilation_unit_;
+  bool has_reference_phis_ = false;
   static constexpr const char* kFormBottomLoopsPassName = "form_bottom_loops";
 
   /**

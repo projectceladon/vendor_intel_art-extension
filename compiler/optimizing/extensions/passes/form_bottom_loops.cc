@@ -25,6 +25,7 @@
 #include "ext_utility.h"
 #include "graph_x86.h"
 #include "loop_iterators.h"
+#include "reference_type_propagation.h"
 
 // For debugging purposes.
 #ifdef HAVE_ANDROID_OS
@@ -91,6 +92,7 @@ struct FBLContext {
 };
 
 void HFormBottomLoops::Run() {
+  DCHECK(handles_ != nullptr);
   HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
   HLoopInformation_X86* graph_loop = graph->GetLoopInformation();
 
@@ -122,6 +124,12 @@ void HFormBottomLoops::Run() {
   if (changed) {
     // Rebuild the loop data structures.
     graph->RebuildDomination();
+    if (has_reference_phis_) {
+      ReferenceTypePropagation(graph_,
+                               dex_compilation_unit_.GetDexCache(),
+                               handles_,
+                               /* is_first_run */ false).Run();
+    }
   }
   PRINT_PASS_OSTREAM_MESSAGE(this, "End: " << GetMethodName(graph));
 }
@@ -498,7 +506,9 @@ HPhi* HFormBottomLoops::NewPhi(HInstruction* in_1,
                                 HPhi::ToPhiType(in_1->GetType()));
 
   phi->SetRawInputAt(0, in_1);
-
+  if (phi->GetType() == Primitive::kPrimNot) {
+    has_reference_phis_ = true;
+  }
   if (in_2 != nullptr && block != nullptr) {
     phi->SetRawInputAt(1, in_2);
     block->AddPhi(phi);

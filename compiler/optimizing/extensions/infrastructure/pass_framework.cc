@@ -373,7 +373,8 @@ void RunOptimizationsX86(HGraph* graph,
   HPureInvokesAnalysis* pure_invokes_analysis = new (arena) HPureInvokesAnalysis(graph, stats);
   HLoopFormation* formation_before_bottom_loops =
       new (arena) HLoopFormation(graph, "loop_formation_before_bottom_loops");
-  HFormBottomLoops* form_bottom_loops = new (arena) HFormBottomLoops(graph, stats);
+  HFormBottomLoops* form_bottom_loops =
+      new (arena) HFormBottomLoops(graph, dex_compilation_unit, handles, stats);
   GVNAfterFormBottomLoops* gvn_after_fbl = new (arena) GVNAfterFormBottomLoops(graph);
   // HGenerateSelects* generate_selects = new (arena) HGenerateSelects(graph, stats);
   HLoopFullUnrolling* loop_full_unrolling = new (arena) HLoopFullUnrolling(graph, driver, stats);

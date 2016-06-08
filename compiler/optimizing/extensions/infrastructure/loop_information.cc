@@ -975,6 +975,9 @@ static void AddExitPhisAfterPeel(const HGraph_X86* graph, const HLoopInformation
           exit_bb->AddPhi(new_phi);
           new_phi->AddInput(orig);
           new_phi->AddInput(clone);
+          if (orig->GetType() == Primitive::kPrimNot) {
+            new_phi->SetReferenceTypeInfo(orig->GetReferenceTypeInfo());
+          }
         }
         use_it.ReplaceInput(new_phi);
       }
