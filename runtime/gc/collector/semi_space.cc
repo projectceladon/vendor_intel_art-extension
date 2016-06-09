@@ -1443,8 +1443,10 @@ void SemiSpace::ProcessMarkStack() {
       if (collect_from_space_only_ && promo_dest_space_->HasAddress(obj)) {
         // obj has just been promoted. Mark the live bitmap for it,
         // which is delayed from MarkObject().
-        DCHECK(!live_bitmap->Test(obj));
-        live_bitmap->Set(obj);
+        if (live_bitmap != nullptr) {
+          DCHECK(!live_bitmap->Test(obj));
+          live_bitmap->Set(obj);
+        }
       }
       ScanObject(obj);
     }

@@ -220,8 +220,11 @@ class PCRelativeHandlerVisitor : public HGraphVisitor {
         if (!base_added) {
           DCHECK(invoke_static_or_direct != nullptr);
           DCHECK(!invoke_static_or_direct->HasCurrentMethodInput());
-          InitializePCRelativeBasePointer();
-          invoke_static_or_direct->AddSpecialInput(base_);
+          if (invoke_static_or_direct != nullptr &&
+              !invoke_static_or_direct->HasCurrentMethodInput()) {
+            InitializePCRelativeBasePointer();
+            invoke_static_or_direct->AddSpecialInput(base_);
+          }
         }
         break;
       default:
