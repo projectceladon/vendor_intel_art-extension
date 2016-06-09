@@ -858,7 +858,7 @@ class RosAlloc {
   void UpdateRunMetadata(Thread* self, Run* run) NO_THREAD_SAFETY_ANALYSIS;
   ObjectBytePair SweepRun(Thread* self, Run* run, size_t bracket_idx, uintptr_t* live,
                           uintptr_t* mark, accounting::ContinuousSpaceBitmap* live_bitmap,
-                          uintptr_t live_bitmap_begin, bool swap_bitmaps);
+                          bool swap_bitmaps);
   // SweepWalkPagemap is using free_page_run_size_map_ table to bypass free pages.
   // The table is guarded by lock_. No need lock_ for SweepWalkPagemap, because it's
   // OK to bypass fewer pages if this table is modified by new allocation during walking,
@@ -867,7 +867,7 @@ class RosAlloc {
   void SweepWalkPagemapRange(Thread* self, size_t begin_page_idx, size_t end_page_idx,
                              uintptr_t* live, uintptr_t* mark,
                              accounting::ContinuousSpaceBitmap* live_bitmap,
-                             uintptr_t heap_begin, uintptr_t space_begin, bool swap_bitmaps,
+                             uintptr_t space_begin, bool swap_bitmaps,
                              ObjectBytePair* freed_pair_ptr)
       NO_THREAD_SAFETY_ANALYSIS;
   void SetPageMapSizeSnapshot();
