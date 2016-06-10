@@ -146,6 +146,11 @@ class Runtime {
     return cha_enabled_ && !IsCompilingBootImage();
   }
 
+  // If we use JIT, we can use deopt for CHA to avoid type guards.
+  bool UseDeoptForCHA() const {
+    return UseJitCompilation();
+  }
+
   bool CanRelocate() const;
 
   bool ShouldRelocate() const {

@@ -112,6 +112,17 @@ bool HDevirtualization::HasPrediction(HInstruction* instr, bool update) {
             no_prediction_from_cha_.insert(instr);
           } else {
             cha_prediction_.Put(invoke, possible_targets[0]);
+            if (Runtime::Current()->UseDeoptForCHA()) {
+              if (update) {
+                // Record the original type for the method.
+                cha_orig_type_.Put(invoke, handles_->NewHandle(resolved_method->GetDeclaringClass()));
+                // When using deopt, CHA sets precise_prediction_.
+                precise_prediction_.Put(invoke, possible_targets[0]);
+                PRINT_PASS_OSTREAM_MESSAGE(this, "CHA returned precise type " <<
+                  PrettyDescriptor(possible_targets[0].Get()) << " for " << invoke);
+              }
+              return true;
+            }
           }
         }
       }
@@ -478,8 +489,19 @@ bool HDevirtualization::HandleSpeculation(HInstruction* instr,
     instr_copy->AsInvoke()->SetDevirtualized();
   }
 
+  // If devirtualization uses CHA predictions, we will record the caller and the type.
+  if (Runtime::Current()->UseCHA() && Runtime::Current()->UseDeoptForCHA()) {
+    if (cha_orig_type_.find(invoke) != cha_orig_type_.end()) {
+      ScopedObjectAccess soa(Thread::Current());
+      TypeHandle type = cha_orig_type_.Get(invoke);
+      ClassLinker* class_linker = compilation_unit_.GetClassLinker();
+      class_linker->RecordCHACaller(graph_->GetArtMethod(), type.Get());
+    }
+  }
+
   invoke->GetBlock()->ReplaceAndRemoveInstructionWith(invoke, new_invoke);
   new_invoke->CopyEnvironmentFrom(invoke->GetEnvironment());
+
   return true;
 }
 

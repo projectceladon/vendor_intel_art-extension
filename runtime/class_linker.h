@@ -125,13 +125,22 @@ class ClassLinker {
   explicit ClassLinker(InternTable* intern_table);
   ~ClassLinker();
 
+  void RecordCHACaller(ArtMethod* method, mirror::Class* klass)
+      SHARED_REQUIRES(Locks::mutator_lock_)
+      REQUIRES(!cha_lock_);
+
+  void RecordCHACallerCallee(ArtMethod* caller, ArtMethod* callee)
+      SHARED_REQUIRES(Locks::mutator_lock_)
+      REQUIRES(!cha_lock_);
+
   void DumpCHA()
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!cha_lock_);
 
   void AddCHA(mirror::Class* parent, mirror::Class* child)
       SHARED_REQUIRES(Locks::mutator_lock_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   bool SearchChildren(std::vector<size_t>& match_class_index,
                       std::string parent,
@@ -189,13 +198,15 @@ class ClassLinker {
                         std::string* error_msg)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   // Initialize class linker from one or more boot images.
   bool InitFromBootImage(std::string* error_msg)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   // Add an image space to the class linker, may fix up classloader fields and dex cache fields.
   // The dex files that were newly opened for the space are placed in the out argument
@@ -210,6 +221,7 @@ class ClassLinker {
                      std::string* error_msg)
       REQUIRES(!dex_lock_)
       REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_)
       SHARED_REQUIRES(Locks::mutator_lock_);
 
   bool OpenImageDexFiles(gc::space::ImageSpace* space,
@@ -225,7 +237,8 @@ class ClassLinker {
                            Handle<mirror::ClassLoader> class_loader)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   // Finds a class in the path class loader, loading it if necessary without using JNI. Hash
   // function is supposed to be ComputeModifiedUtf8Hash(descriptor). Returns true if the
@@ -240,20 +253,23 @@ class ClassLinker {
                                   mirror::Class** result)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   // Finds a class by its descriptor using the "system" class loader, ie by searching the
   // boot_class_path_.
   mirror::Class* FindSystemClass(Thread* self, const char* descriptor)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   // Finds the array class given for the element class.
   mirror::Class* FindArrayClass(Thread* self, mirror::Class** element_class)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   // Returns true if the class linker is initialized.
   bool IsInitialized() const {
@@ -269,7 +285,8 @@ class ClassLinker {
                              const DexFile::ClassDef& dex_class_def)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   // Finds a class by its descriptor, returning null if it isn't wasn't loaded
   // by the given 'class_loader'.
@@ -327,7 +344,8 @@ class ClassLinker {
   mirror::Class* ResolveType(const DexFile& dex_file, uint16_t type_idx, mirror::Class* referrer)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_, !Roles::uninterruptible_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   // Resolve a Type with the given index from the DexFile, storing the
   // result in the DexCache. The referrer is used to identify the
@@ -335,12 +353,14 @@ class ClassLinker {
   mirror::Class* ResolveType(uint16_t type_idx, ArtMethod* referrer)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_, !Roles::uninterruptible_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   mirror::Class* ResolveType(uint16_t type_idx, ArtField* referrer)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_, !Roles::uninterruptible_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   // Resolve a type with the given ID from the DexFile, storing the
   // result in DexCache. The ClassLoader is used to search for the
@@ -352,7 +372,8 @@ class ClassLinker {
                              Handle<mirror::ClassLoader> class_loader)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_, !Roles::uninterruptible_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   // Determine whether a dex cache result should be trusted, or an IncompatibleClassChangeError
   // check should be performed even after a hit.
@@ -375,7 +396,8 @@ class ClassLinker {
                            InvokeType type)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_, !Roles::uninterruptible_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   ArtMethod* GetResolvedMethod(uint32_t method_idx, ArtMethod* referrer)
       SHARED_REQUIRES(Locks::mutator_lock_);
@@ -388,19 +410,22 @@ class ClassLinker {
                                                 Handle<mirror::ClassLoader> class_loader)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_, !Roles::uninterruptible_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
   template <ResolveMode kResolveMode>
   ArtMethod* ResolveMethod(Thread* self, uint32_t method_idx, ArtMethod* referrer, InvokeType type)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_, !Roles::uninterruptible_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
   ArtMethod* ResolveMethodWithoutInvokeType(const DexFile& dex_file,
                                             uint32_t method_idx,
                                             Handle<mirror::DexCache> dex_cache,
                                             Handle<mirror::ClassLoader> class_loader)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_, !Roles::uninterruptible_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   ArtField* GetResolvedField(uint32_t field_idx, mirror::Class* field_declaring_class)
       SHARED_REQUIRES(Locks::mutator_lock_);
@@ -409,7 +434,8 @@ class ClassLinker {
   ArtField* ResolveField(uint32_t field_idx, ArtMethod* referrer, bool is_static)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_, !Roles::uninterruptible_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   // Resolve a field with a given ID from the DexFile, storing the
   // result in DexCache. The ClassLinker and ClassLoader are used as
@@ -421,7 +447,8 @@ class ClassLinker {
                          Handle<mirror::ClassLoader> class_loader, bool is_static)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_, !Roles::uninterruptible_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   // Resolve a field with a given ID from the DexFile, storing the
   // result in DexCache. The ClassLinker and ClassLoader are used as
@@ -433,7 +460,8 @@ class ClassLinker {
                             Handle<mirror::ClassLoader> class_loader)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_, !Roles::uninterruptible_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   // Get shorty from method index without resolution. Used to do handlerization.
   const char* MethodShorty(uint32_t method_idx, ArtMethod* referrer, uint32_t* length)
@@ -448,14 +476,16 @@ class ClassLinker {
                          bool can_init_parents)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_, !Roles::uninterruptible_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   // Initializes classes that have instances in the image but that have
   // <clinit> methods so they could not be initialized by the compiler.
   void RunRootClinits()
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_, !Roles::uninterruptible_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   mirror::DexCache* RegisterDexFile(const DexFile& dex_file,
                                     mirror::ClassLoader* class_loader)
@@ -480,7 +510,8 @@ class ClassLinker {
   void VisitClassesWithoutClassesLock(ClassVisitor* visitor)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   void VisitClassRoots(RootVisitor* visitor, VisitRootFlags flags)
       REQUIRES(!Locks::classlinker_classes_lock_)
@@ -543,7 +574,8 @@ class ClassLinker {
                    LogSeverity log_level = LogSeverity::NONE)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
   bool VerifyClassUsingOatFile(const DexFile& dex_file,
                                mirror::Class* klass,
                                mirror::Class::Status& oat_file_class_status)
@@ -552,11 +584,13 @@ class ClassLinker {
   void ResolveClassExceptionHandlerTypes(Handle<mirror::Class> klass)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
   void ResolveMethodExceptionHandlerTypes(ArtMethod* klass)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   mirror::Class* CreateProxyClass(ScopedObjectAccessAlreadyRunnable& soa,
                                   jstring name,
@@ -565,7 +599,8 @@ class ClassLinker {
                                   jobjectArray methods,
                                   jobjectArray throws)
       SHARED_REQUIRES(Locks::mutator_lock_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
   std::string GetDescriptorForProxy(mirror::Class* proxy_class)
       SHARED_REQUIRES(Locks::mutator_lock_);
   ArtMethod* FindMethodForProxy(mirror::Class* proxy_class, ArtMethod* proxy_method)
@@ -762,6 +797,7 @@ class ClassLinker {
                                     Handle<mirror::Class> supertype)
       REQUIRES(!dex_lock_)
       REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_)
       SHARED_REQUIRES(Locks::mutator_lock_);
 
   static void DeleteClassLoader(Thread* self, const ClassLoaderData& data)
@@ -786,7 +822,8 @@ class ClassLinker {
   void FinishInit(Thread* self)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_, !Roles::uninterruptible_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   // For early bootstrapping by Init
   mirror::Class* AllocClass(Thread* self, mirror::Class* java_lang_Class, uint32_t class_size)
@@ -818,7 +855,8 @@ class ClassLinker {
                                   Handle<mirror::ClassLoader> class_loader)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_, !Roles::uninterruptible_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   void AppendToBootClassPath(Thread* self, const DexFile& dex_file)
       SHARED_REQUIRES(Locks::mutator_lock_)
@@ -881,13 +919,15 @@ class ClassLinker {
                        bool can_init_parents)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
   bool InitializeDefaultInterfaceRecursive(Thread* self,
                                            Handle<mirror::Class> klass,
                                            bool can_run_clinit,
                                            bool can_init_parents)
       REQUIRES(!dex_lock_)
       REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_)
       SHARED_REQUIRES(Locks::mutator_lock_);
   bool WaitForInitializeClass(Handle<mirror::Class> klass,
                               Thread* self,
@@ -921,7 +961,8 @@ class ClassLinker {
   bool LoadSuperAndInterfaces(Handle<mirror::Class> klass, const DexFile& dex_file)
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!dex_lock_)
-      REQUIRES(!cha_lock_);
+      REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_);
 
   bool LinkMethods(Thread* self,
                    Handle<mirror::Class> klass,
@@ -1183,6 +1224,7 @@ class ClassLinker {
   void CheckSystemClass(Thread* self, Handle<mirror::Class> c1, const char* descriptor)
       REQUIRES(!dex_lock_)
       REQUIRES(!cha_lock_)
+      REQUIRES(!cha_deopt_lock_)
       SHARED_REQUIRES(Locks::mutator_lock_);
 
   // Sets imt_ref appropriately for LinkInterfaceMethods.
@@ -1229,11 +1271,14 @@ class ClassLinker {
   // New class roots, only used by CMS since the GC needs to mark these in the pause.
   std::vector<GcRoot<mirror::Class>> new_class_roots_ GUARDED_BY(Locks::classlinker_classes_lock_);
 
+  Mutex cha_deopt_lock_ DEFAULT_MUTEX_ACQUIRED_AFTER;
   ReaderWriterMutex cha_lock_ DEFAULT_MUTEX_ACQUIRED_AFTER;
   std::unordered_map<std::string, size_t> cha_string_map_ GUARDED_BY(cha_lock_);
   std::vector<std::string> cha_string_table_ GUARDED_BY(cha_lock_);
   std::vector<std::vector<size_t>> cha_child_classes_ GUARDED_BY(cha_lock_);
   static constexpr int kCHAMaxNumChildren = 30;
+  std::unordered_map<ArtMethod*, std::set<size_t>> cha_caller_ GUARDED_BY(cha_lock_);
+  std::unordered_map<size_t, std::set<ArtMethod*>> cha_to_caller_ GUARDED_BY(cha_lock_);
 
   // Do we need to search dex caches to find boot image classes?
   bool dex_cache_boot_image_class_lookup_required_;
