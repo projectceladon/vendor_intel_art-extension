@@ -18,6 +18,7 @@
 #define ART_COMPILER_OPTIMIZING_INSERT_PROFILING_H_
 
 #include "optimization_x86.h"
+#include "jit/profiling_info.h"
 
 namespace art {
 
@@ -49,9 +50,27 @@ class HInsertProfiling : public HOptimization_X86 {
   void InsertProfilingInformationFromProfile(ExactProfiler* ep)
       NO_THREAD_SAFETY_ANALYSIS;
 
+  void InsertProfilingInformationFromProfile(ProfilingInfo* info);
+
+  int32_t FindCountIndex(HBasicBlock* bb,
+                         ProfilingInfo::BBCounts* counts,
+                         uint32_t num_bb_counts);
+
+  void SetBBFromDexPC(HBasicBlock* bb,
+                      ProfilingInfo::BBCounts* counts,
+                      uint32_t num_bb_counts);
+
+  void ResetLastIndex() {
+    last_bb_index_ = 0;
+  }
+
+  void DumpBBCountsIfNeeded();
+
   const CompilerDriver* driver_;
 
   const bool locked_;
+
+  uint32_t last_bb_index_;
 
   DISALLOW_COPY_AND_ASSIGN(HInsertProfiling);
 };

@@ -28,6 +28,10 @@
 #include <sstream>
 #include "utils.h"
 
+#ifdef __ANDROID__
+#include "cutils/properties.h"
+#endif
+
 namespace art {
 
   std::string GetMethodName(const HGraph* graph) {
@@ -393,6 +397,23 @@ BlockHotness GetBlockHotness(HBasicBlock* block) {
 
   // Everything else must be warm.
   return kWarm;
+}
+
+SetBoolValue::SetBoolValue(const char* property, const char* env_var) {
+#ifdef __ANDROID__
+  UNUSED(env_var);
+  value_ = false;
+  char buff[PROPERTY_VALUE_MAX];
+  if (property_get(property, buff, "") > 0) {
+    if (strcmp(buff, "true") == 0) {
+      value_ = true;
+    }
+  }
+#else
+  UNUSED(property);
+  char* p = getenv(env_var);
+  value_ = (p != nullptr);
+#endif
 }
 
 }  // namespace art

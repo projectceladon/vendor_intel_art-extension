@@ -250,13 +250,42 @@ bool HGraph_X86::GetColdBlocks(std::set<HBasicBlock*>& blocks) const {
   return !blocks.empty();
 }
 
+static SetBoolValue should_dump("dex2oat.bb.dump", "BB_DUMP");
+
+static void DumpBlocks(const char* msg,
+                       HGraph* graph,
+                       ArenaVector<HBasicBlock*>& blocks) {
+  std::ostringstream s;
+  for (HBasicBlock* bb : blocks) {
+    if (bb == nullptr) {
+      continue;
+    }
+    s << "BB" << bb->GetBlockId() << ": ";
+    if (bb->HasBlockCount()) {
+      s << bb->GetBlockCount() << ' ';
+    } else {
+      s << "? ";
+    }
+  }
+
+  LOG(INFO) << msg << " for " << GetMethodName(graph) << ": " << s.str();
+}
+
 void HGraph_X86::UpdateBlockOrder() {
   // If we have BB counts, move the cold blocks to the end of the method.
   // For cold loop blocks, move them to after the loop.
   std::set<HBasicBlock*> cold_blocks;
   if (!GetColdBlocks(cold_blocks)) {
     // Nothing to do.
+    if (should_dump()) {
+      LOG(INFO) << "UpdateBlockOrder: No cold blocks for " << GetMethodName(this);
+    }
     return;
+  }
+
+  if (should_dump()) {
+    LOG(INFO) << "UpdateBlockOrder: Start " << GetMethodName(this) << ", OSR: " << IsCompilingOsr();
+    DumpBlocks("UpdateBlockOrder: Initial order", this, linear_order_);
   }
 
   // Remember the non-cold block for each block.  Use the loop information to
@@ -289,6 +318,10 @@ void HGraph_X86::UpdateBlockOrder() {
       HLoopInformation* loop_info = block->GetLoopInformation();
       if (loop_info == nullptr) {
         // Just add to the end of the method.
+        if (should_dump()) {
+          LOG(INFO) << "UpdateBlockOrder: Move cold block "
+                    << block->GetBlockId() << " to end of method";
+        }
         updated_block_order.push_back(block);
         continue;
       }
@@ -298,6 +331,10 @@ void HGraph_X86::UpdateBlockOrder() {
       if (it == last_block.end()) {
         // The whole loop must have been cold.
         // Just add to the end of the method.
+        if (should_dump()) {
+          LOG(INFO) << "UpdateBlockOrder: Move cold loop block "
+                    << block->GetBlockId() << " to end of method";
+        }
         updated_block_order.push_back(block);
         continue;
       }
@@ -305,6 +342,11 @@ void HGraph_X86::UpdateBlockOrder() {
       // Add it after the matching loop.
       size_t last_existing_index = it->second;
       DCHECK_LT(last_existing_index, updated_block_order.size());
+      if (should_dump()) {
+        LOG(INFO) << "UpdateBlockOrder: Move cold loop block "
+                  << block->GetBlockId() << " to end of loop with header "
+                  << loop_info->GetHeader()->GetBlockId();
+      }
       updated_block_order.insert(updated_block_order.begin() + last_existing_index + 1, block);
 
       // Bump all the indices at or after this index to account for the insertion.
@@ -314,6 +356,11 @@ void HGraph_X86::UpdateBlockOrder() {
         }
       }
     }
+  }
+
+  if (should_dump()) {
+    DumpBlocks("UpdateBlockOrder: Final order", this, updated_block_order);
+    LOG(INFO) << "UpdateBlockOrder: End " << GetMethodName(this);
   }
 
   // Now use the new order.

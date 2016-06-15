@@ -17,27 +17,79 @@
 #include "insert_profiling.h"
 
 #include "art_method.h"
+#include "class_linker.h"
 #include "driver/compiler_driver.h"
 #include "driver/compiler_options.h"
 #include "ext_utility.h"
 #include "ext_profiling.h"
 #include "gc_root-inl.h"
 #include "graph_x86.h"
+#include "jit/jit.h"
+#include "jit/jit_code_cache.h"
 #include "jit/profiling_info.h"
 #include "thread-inl.h"
 
 namespace art {
+
+static SetBoolValue should_dump("dex2oat.bb.dump", "BB_DUMP");
+static SetBoolValue jit_bbs("dex2oat.bb.jit", "BB_JIT");
+
+class ScopedProfilingInfoInlineUse {
+ public:
+  explicit ScopedProfilingInfoInlineUse(ArtMethod* method, Thread* self)
+      : method_(method),
+        self_(self),
+        // Fetch the profiling info ahead of using it. If it's null when fetching,
+        // we should not call JitCodeCache::DoneInlining.
+        profiling_info_(
+            Runtime::Current()->GetJit()->GetCodeCache()->NotifyCompilerUse(method, self)) {
+  }
+
+  ~ScopedProfilingInfoInlineUse() {
+    if (profiling_info_ != nullptr) {
+      size_t pointer_size = Runtime::Current()->GetClassLinker()->GetImagePointerSize();
+      DCHECK_EQ(profiling_info_, method_->GetProfilingInfo(pointer_size));
+      Runtime::Current()->GetJit()->GetCodeCache()->DoneCompilerUse(method_, self_);
+    }
+  }
+
+  ProfilingInfo* GetProfilingInfo() const { return profiling_info_; }
+
+ private:
+  ArtMethod* const method_;
+  Thread* const self_;
+  ProfilingInfo* const profiling_info_;
+};
+
 
 void HInsertProfiling::Run() {
   // Is there anything to do?
   CompilerOptions::ProfilingCounts profiling_counts =
       driver_->GetCompilerOptions().GetProfilingCounts();
   bool use_profiles = driver_->GetCompilerOptions().UseExactProfiles();
-  if (profiling_counts == CompilerOptions::kProfilingNone && !use_profiles) {
+  bool use_jit = Runtime::Current()->UseJitCompilation();
+  if (profiling_counts == CompilerOptions::kProfilingNone && !use_profiles &&
+      !use_jit) {
     return;  // nothing to do.
   }
 
-  PRINT_PASS_OSTREAM_MESSAGE(this, "Start " << GetMethodName(graph_));
+  PRINT_PASS_OSTREAM_MESSAGE(this, "Start " << GetMethodName(graph_)
+                                            << ", OSR: " << std::boolalpha
+                                            << graph_->IsCompilingOsr()
+                                            << std::noboolalpha);
+  if (use_jit) {
+    ArtMethod* method = graph_->GetArtMethod();
+    if (method) {
+      ScopedProfilingInfoInlineUse spiis(method, Thread::Current());
+      ProfilingInfo* info = spiis.GetProfilingInfo();
+      if (info != nullptr) {
+        InsertProfilingInformationFromProfile(info);
+        DumpBBCountsIfNeeded();
+      }
+    }
+    return;
+  }
+
   if (use_profiles) {
     std::vector<std::unique_ptr<ExactProfiler>>* eps = driver_->GetExactProfilers();
     if (eps != nullptr) {
@@ -51,6 +103,7 @@ void HInsertProfiling::Run() {
           ReaderMutexLock mu(Thread::Current(), *Locks::mutator_lock_);
           InsertProfilingInformationFromProfile(ep);
         }
+        DumpBBCountsIfNeeded();
       } else {
         LOG(WARNING) << "Couldn't find correct profile for " << GetMethodName(graph_);;
       }
@@ -265,7 +318,9 @@ void HInsertProfiling::InsertProfilingInformationFromProfile(ExactProfiler* ep)
     // Enter the block count information for each block.
     for (uint32_t i = 0; i < method_info->num_blocks; i++) {
       HBasicBlock* block = graph_->GetBlocks()[i];
-      block->SetBlockCount(method_info->counts[i]);
+      if (block != nullptr) {
+        block->SetBlockCount(method_info->counts[i]);
+       }
     }
     HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
     graph->SetProfileCountKind(
@@ -334,6 +389,105 @@ void HInsertProfiling::InsertProfilingInformationFromProfile(ExactProfiler* ep)
       }
     }
   }
+}
+
+void HInsertProfiling::InsertProfilingInformationFromProfile(ProfilingInfo* info) {
+  if (!jit_bbs()) {
+    PRINT_PASS_OSTREAM_MESSAGE(this, "Ignoring BB counts for " << GetMethodName(graph_));
+    return;
+  }
+
+  // Have we looped enough to have meaningful data?
+  size_t threshold = Runtime::Current()->GetJit()->HotMethodThreshold();
+  if (threshold < jit::Jit::kDefaultCompileThreshold) {
+    if (should_dump()) {
+      LOG(INFO) << GetPassName() << ": Hot method threshold too low ("
+                << threshold << ") for " << GetMethodName(graph_);
+    }
+    return;
+  }
+
+  uint32_t num_bb_counts = info->GetNumBBs();
+  ProfilingInfo::BBCounts* counts = info->GetBBCounts();
+  const ArenaVector<HBasicBlock*>& blocks = graph_->GetBlocks();
+
+  ResetLastIndex();
+  for (HBasicBlock* bb : blocks) {
+    if (bb != nullptr) {
+      SetBBFromDexPC(bb, counts, num_bb_counts);
+    }
+  }
+
+  // Fix up block 0 if needed, since it is set to kNoDexPc.
+  if (!blocks[0]->HasBlockCount() && blocks[1]->HasBlockCount()) {
+    blocks[0]->SetBlockCount(blocks[1]->GetBlockCount());
+  }
+}
+
+int32_t HInsertProfiling::FindCountIndex(HBasicBlock* bb,
+                                     ProfilingInfo::BBCounts* counts,
+                                     uint32_t num_bb_counts) {
+  DCHECK(bb != nullptr);
+  uint32_t dex_pc = bb->GetDexPc();
+
+  if (dex_pc == kNoDexPc) {
+    // Definitely won't match.
+    return -1;
+  }
+
+  // Can we restart looking from the last location?
+  if (dex_pc < counts[last_bb_index_].dex_pc_) {
+    last_bb_index_ = 0;
+  }
+
+  for (uint32_t i = last_bb_index_; i < num_bb_counts; i++) {
+    if (dex_pc == counts[i].dex_pc_) {
+      last_bb_index_ = i;
+      return i;
+    }
+  }
+
+  // Not found.
+  return -1;
+}
+
+void HInsertProfiling::SetBBFromDexPC(HBasicBlock* bb,
+                                      ProfilingInfo::BBCounts* counts,
+                                      uint32_t num_bb_counts) {
+  DCHECK(bb != nullptr);
+  int32_t index = FindCountIndex(bb, counts, num_bb_counts);
+  if (index >= 0) {
+    bb->SetBlockCount(counts[index].count_);
+  }
+}
+
+void HInsertProfiling::DumpBBCountsIfNeeded() {
+  if (!should_dump()) {
+    return;
+  }
+
+  bool saw_count = false;
+  std::ostringstream s;
+  for (HBasicBlock* bb : graph_->GetBlocks()) {
+    if (bb == nullptr) {
+      continue;
+    }
+    s << "BB" << bb->GetBlockId() << "(0x" << std::hex << bb->GetDexPc()
+      << std::dec << "): ";
+    if (bb->HasBlockCount()) {
+      s << bb->GetBlockCount() << ' ';
+    } else {
+      s << "? ";
+    }
+    saw_count = true;
+  }
+
+  if (!saw_count) {
+    return;
+  }
+
+  LOG(INFO) << GetPassName() << ": BB Counts for " << GetMethodName(graph_)
+                                    << ": " << s.str();
 }
 
 }

@@ -273,5 +273,26 @@ class HAllUseIterator {
    */
   BlockHotness GetBlockHotness(HBasicBlock* block);
 
+  /*
+   * @brief Simple interface to interact at runtime on host/target.
+   */
+  class SetBoolValue {
+   public:
+    /*
+     * @brief Set a boolean based on a property or environment variable.
+     * @param property Boolean property on target ('true'/anything else)
+     * @param env_var Boolean environment variable on host (set or not set).
+     */
+    SetBoolValue(const char* property, const char* env_var);
+
+    // Return 'true' if the property/environment variable was set.
+    bool operator()() const {
+      return value_;
+    }
+
+   private:
+    bool value_;
+  };
+
 }  // namespace art
 #endif  // COMPILER_OPTIMIZING_EXTENSIONS_INFRASTRUCTURE_EXT_UTILITIES_H

@@ -273,7 +273,9 @@ void ProfilingInfo::LogInformation() {
 
   BBCounts* counts = GetBBCounts();
   for (uint32_t i = 0; i < number_of_bb_counts_; i++) {
-    VLOG(jit) << "\t\t" << i << ": " << counts[i].dex_pc_ << " , " << counts[i].count_;
+    VLOG(jit) << "\t\t" << i << ": 0x"
+              << std::hex << counts[i].dex_pc_ << std::dec
+              << ", " << counts[i].count_;
   }
 
   if (number_of_inline_caches_ > 0) {
@@ -281,10 +283,12 @@ void ProfilingInfo::LogInformation() {
     for (uint32_t i = 0; i < number_of_inline_caches_; i++) {
       const InlineCache& class_info = cache_[i];
 
-      VLOG(jit) << "\t\t" << i << " from dex : " << class_info.dex_pc_;
-      VLOG(jit) << "\t\t\tMonomorphic: actual: " << class_info.IsActualMonomorphic() << " ; basic: " << class_info.IsMonomorphic();
-      VLOG(jit) << "\t\t\tPolymorphic: actual: " << class_info.IsActualPolymorphic() << " ; basic: " << class_info.IsPolymorphic();
-      VLOG(jit) << "\t\t\tMegamorphic: " << class_info.IsMegamorphic();
+      VLOG(jit) << "\t\t" << i << " from dex : 0x" << std::hex << class_info.dex_pc_;
+      VLOG(jit) << "\t\t\tMonomorphic: actual: " << std::boolalpha
+                << class_info.IsActualMonomorphic() << " ; basic: " << class_info.IsMonomorphic();
+      VLOG(jit) << "\t\t\tPolymorphic: actual: " << std::boolalpha
+                << class_info.IsActualPolymorphic() << " ; basic: " << class_info.IsPolymorphic();
+      VLOG(jit) << "\t\t\tMegamorphic: " << std::boolalpha << class_info.IsMegamorphic();
       VLOG(jit) << "\t\t\tCounts for each class info: ";
 
       for (int j = 0; j < InlineCache::kIndividualCacheSize; j++) {

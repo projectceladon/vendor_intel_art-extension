@@ -28,7 +28,7 @@
 #include "reference_type_propagation.h"
 
 // For debugging purposes.
-#ifdef HAVE_ANDROID_OS
+#ifdef __ANDROID__
 #include "cutils/properties.h"
 #endif
 
@@ -235,7 +235,7 @@ bool HFormBottomLoops::ShouldTransformLoop(HLoopInformation_X86* loop,
     static int max = -1;
     static int count = 0;
     if (max == -1) {
-#ifdef HAVE_ANDROID_OS
+#ifdef __ANDROID__
       char buff[PROPERTY_VALUE_MAX];
       if (property_get("dex2oat.bottom.max", buff, "1000000") > 0) {
         max = atoi(buff);
