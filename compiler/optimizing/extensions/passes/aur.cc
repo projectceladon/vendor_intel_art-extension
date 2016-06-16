@@ -210,9 +210,13 @@ void HAggressiveUseRemoverPass::Run() {
   // The aggressive use removal makes it so method is no longer debuggable. Thus if debuggability
   // is needed, we cannot run this pass.
   // The boot image also needs to be treated as debuggable for this purpose.
-  if (is_boot_image_ || graph_->IsDebuggable()) {
-    const char* reject_message = is_boot_image_ ? "Rejecting because we are compiling boot image."
-        : "Rejecting because the graph is marked as being debuggable.";
+  // We also cannot do AUR in OSR mode, because it can invalidate stack maps,
+  // and this leads to OSR jumps into wrong places.
+  if (is_boot_image_ || graph_->IsDebuggable() || graph_->IsCompilingOsr()) {
+    const char* reject_message =
+      is_boot_image_ ? "Rejecting because we are compiling boot image." :
+      graph_->IsDebuggable() ? "Rejecting because the graph is marked as being debuggable." :
+      "Rejecting because of compilation in OSR mode.";
     PRINT_PASS_OSTREAM_MESSAGE(this, "End " << GetMethodName(graph_) << ". " << reject_message);
     return;
   }
