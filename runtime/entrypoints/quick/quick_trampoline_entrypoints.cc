@@ -977,10 +977,12 @@ extern "C" const void* artQuickResolutionTrampoline(
         is_range = true;
         break;
       case Instruction::INVOKE_VIRTUAL:
+      case Instruction::INVOKE_VIRTUAL_QUICK:
         invoke_type = kVirtual;
         is_range = false;
         break;
       case Instruction::INVOKE_VIRTUAL_RANGE:
+      case Instruction::INVOKE_VIRTUAL_RANGE_QUICK:
         invoke_type = kVirtual;
         is_range = true;
         break;
