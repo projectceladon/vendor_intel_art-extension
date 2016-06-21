@@ -214,13 +214,6 @@ ART_TEST_KNOWN_BROKEN += $(call all-run-test-names,$(TARGET_TYPES),$(RUN_TYPES),
 TEST_ART_BROKEN_ALL_TARGET_TESTS := \
   577-profile-foreign-dex \
 
-# Some of these tests currently don't pass on SILVER because of CAR-3883
-TEST_ART_BROKEN_ALL_TARGET_TESTS += \
-  444-checker-nce \
-  450-checker-types \
-  525-checker-arrays-and-fields \
-  559-checker-rtp-ifnotnull \
-
 ART_TEST_KNOWN_BROKEN += $(call all-run-test-names,$(TARGET_TYPES),$(RUN_TYPES),$(PREBUILD_TYPES), \
     $(COMPILER_TYPES), $(RELOCATE_TYPES),$(TRACE_TYPES),$(GC_TYPES),$(JNI_TYPES), \
     $(IMAGE_TYPES),$(PICTEST_TYPES),$(DEBUGGABLE_TYPES), $(TEST_ART_BROKEN_ALL_TARGET_TESTS), \
