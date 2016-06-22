@@ -156,10 +156,10 @@ MterpCommonTakenBranch:
     je      1f
     leaq    OFF_FP_SHADOWFRAME(rFP), OUT_ARG0
     call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
-    movq    rSELF, %rax
+1:  movq    rSELF, %rax
     testl   $$(THREAD_SUSPEND_REQUEST | THREAD_CHECKPOINT_REQUEST), THREAD_FLAGS_OFFSET(%rax)
     REFRESH_IBASE
-1:  FETCH_INST
+    FETCH_INST
     jnz     .L_suspend_request_pending
     GOTO_NEXT
 
