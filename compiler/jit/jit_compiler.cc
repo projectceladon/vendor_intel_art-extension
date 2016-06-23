@@ -208,6 +208,25 @@ JitCompiler::~JitCompiler() {
   }
 }
 
+static std::string getClassSourceFileName(const char* class_descriptor) {
+  static const std::string UNDEFINED("INTERNAL");
+
+  const char* pos_l = strchr(class_descriptor, 'L');
+  if (pos_l == nullptr) {
+    return UNDEFINED;
+  }
+
+  const char* pos_end = strchr(pos_l, '$');
+  if (pos_end == nullptr) {
+    pos_end = strchr(pos_l, ';');
+    if (pos_end == nullptr) {
+      return UNDEFINED;
+    }
+  }
+
+  return std::string(pos_l + 1, pos_end - pos_l - 1) + ".java";
+}
+
 bool JitCompiler::CompileMethod(Thread* self, ArtMethod* method, bool osr) {
   DCHECK(!method->IsProxyMethod());
   TimingLogger logger("JIT compiler timing logger", true, VLOG_IS_ON(jit));
@@ -227,14 +246,30 @@ bool JitCompiler::CompileMethod(Thread* self, ArtMethod* method, bool osr) {
   {
     TimingLogger::ScopedTiming t2("Compiling", &logger);
     JitCodeCache* const code_cache = runtime->GetJit()->GetCodeCache();
-    success = compiler_driver_->GetCompiler()->JitCompile(self, code_cache, method, osr);
-    if (success) {
-      const void* ptr = method->GetEntryPointFromQuickCompiledCode();
-      size_t code_size = code_cache->GetMemorySizeOfCodePointer(ptr);
+    const OatQuickMethodHeader* method_header = compiler_driver_->GetCompiler()->JitCompile(self, code_cache, method, osr);
+    if (method_header != nullptr) {
+      success = true;
+      const void* ptr = method_header->GetEntryPoint();
+      size_t code_size = method_header->GetCodeSize();
       std::string method_name = PrettyMethod(method);
+
 #ifdef VTUNE_ART
-      SendMethodToVTune(method_name.c_str(), ptr, code_size);
+      const void* code_info_ptr = method_header->IsOptimized() ?
+                                  method_header->GetOptimizedCodeInfoPtr() : nullptr;
+      const char* class_descriptor = method->GetDeclaringClassDescriptor();
+      std::string class_name = PrettyDescriptor(class_descriptor);
+      // TODO File name should be read from the dex debug stream of the code item.
+      std::string file_name = getClassSourceFileName(class_descriptor);
+      SendMethodToVTune(method_name.c_str(),
+                        ptr,
+                        code_size,
+                        class_name.c_str(),
+                        file_name.c_str(),
+                        code_info_ptr,
+                        method->GetDexFile(),
+                        method->GetCodeItem());
 #endif
+
       if (perf_file_ != nullptr) {
         std::ostringstream stream;
         stream << std::hex

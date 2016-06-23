@@ -29,6 +29,7 @@ void SendMethodToVTune(const char* method_name,
                        size_t code_size,
                        const char* class_file_name = nullptr,
                        const char* source_file_name = nullptr,
+                       const void* optimized_code_info_ptr = nullptr,
                        const DexFile* dex_file = nullptr,
                        const DexFile::CodeItem* code_item = nullptr);
 

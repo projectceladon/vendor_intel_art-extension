@@ -326,9 +326,9 @@ class OptimizingCompiler FINAL : public Compiler {
     }
   }
 
-  bool JitCompile(Thread* self, jit::JitCodeCache* code_cache, ArtMethod* method, bool osr)
-      OVERRIDE
-      SHARED_REQUIRES(Locks::mutator_lock_);
+  OatQuickMethodHeader* JitCompile(Thread* self, jit::JitCodeCache* code_cache, ArtMethod* method, bool osr)
+                        OVERRIDE
+                        SHARED_REQUIRES(Locks::mutator_lock_);
 
  private:
   // Create a 'CompiledMethod' for an optimized graph.
@@ -967,10 +967,10 @@ bool IsCompilingWithCoreImage() {
   return false;
 }
 
-bool OptimizingCompiler::JitCompile(Thread* self,
-                                    jit::JitCodeCache* code_cache,
-                                    ArtMethod* method,
-                                    bool osr) {
+OatQuickMethodHeader* OptimizingCompiler::JitCompile(Thread* self,
+                                                     jit::JitCodeCache* code_cache,
+                                                     ArtMethod* method,
+                                                     bool osr) {
   StackHandleScope<2> hs(self);
   Handle<mirror::ClassLoader> class_loader(hs.NewHandle(
       method->GetDeclaringClass()->GetClassLoader()));
@@ -1005,7 +1005,7 @@ bool OptimizingCompiler::JitCompile(Thread* self,
                    method,
                    osr));
     if (codegen.get() == nullptr) {
-      return false;
+      return nullptr;
     }
 
     if (kArenaAllocatorCountAllocations) {
@@ -1019,11 +1019,12 @@ bool OptimizingCompiler::JitCompile(Thread* self,
   size_t stack_map_size = codegen->ComputeStackMapsSize();
   uint8_t* stack_map_data = code_cache->ReserveData(self, stack_map_size, method);
   if (stack_map_data == nullptr) {
-    return false;
+    return nullptr;
   }
   MaybeRecordStat(MethodCompilationStat::kCompiled);
   codegen->BuildStackMaps(MemoryRegion(stack_map_data, stack_map_size), *code_item);
-  const void* code = code_cache->CommitCode(
+  OatQuickMethodHeader* method_header = reinterpret_cast<OatQuickMethodHeader*>(
+    code_cache->CommitCode(
       self,
       method,
       stack_map_data,
@@ -1032,16 +1033,15 @@ bool OptimizingCompiler::JitCompile(Thread* self,
       codegen->GetFpuSpillMask(),
       code_allocator.GetMemory().data(),
       code_allocator.GetSize(),
-      osr);
+      osr));
 
-  if (code == nullptr) {
+  if (method_header == nullptr) {
     code_cache->ClearData(self, stack_map_data);
-    return false;
+    return nullptr;
   }
 
   const CompilerOptions& compiler_options = GetCompilerDriver()->GetCompilerOptions();
   if (compiler_options.GetGenerateDebugInfo()) {
-    const auto* method_header = reinterpret_cast<const OatQuickMethodHeader*>(code);
     const uintptr_t code_address = reinterpret_cast<uintptr_t>(method_header->GetCode());
     debug::MethodDebugInfo info = debug::MethodDebugInfo();
     info.trampoline_name = nullptr;
@@ -1069,7 +1069,7 @@ bool OptimizingCompiler::JitCompile(Thread* self,
 
   Runtime::Current()->GetJit()->AddMemoryUsage(method, arena.BytesUsed());
 
-  return true;
+  return method_header;
 }
 
 }  // namespace art

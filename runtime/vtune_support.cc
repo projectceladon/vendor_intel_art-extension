@@ -61,71 +61,40 @@ struct SortLineNumberInfoByLine {
   }
 };
 
-// Reads debug information from dex file to get BC to Java line mapping
-static void getLineInfoForJava(const uint8_t *dbgstream,
-                               LineInfoTable& table,
-                               LineInfoTable& pc2dex) {
-  SortLineNumberInfoByLine::sort(pc2dex);
-
-  int adjopcode;
-  uint32_t address = 0;
-  uint32_t line = DecodeUnsignedLeb128(&dbgstream);
-
-  // skip parameters
-  for(uint32_t param_count = DecodeUnsignedLeb128(&dbgstream); param_count != 0; --param_count) {
-    DecodeUnsignedLeb128(&dbgstream);
+struct LineInfoReader {
+  LineInfoReader(LineInfoTable* pc2dex, LineInfoTable* pc2java, std::string* source_file_name)
+    : pc2dex_(pc2dex), pc2java_(pc2java), source_file_name_(source_file_name) {
+    DCHECK((pc2dex == nullptr) == (pc2java == nullptr));
+    DCHECK((pc2dex != nullptr) || (source_file_name != nullptr));
   }
+  LineInfoTable* pc2dex_;
+  LineInfoTable* pc2java_;
+  std::string* source_file_name_;
 
-  for(bool is_end = false; is_end == false; ) {
-    uint8_t opcode = *dbgstream++;
-    switch (opcode) {
-    case DexFile::DBG_END_SEQUENCE:
-      is_end = true;
-      break;
-
-    case DexFile::DBG_ADVANCE_PC:
-      address += DecodeUnsignedLeb128(&dbgstream);
-      break;
-
-    case DexFile::DBG_ADVANCE_LINE:
-      line += DecodeSignedLeb128(&dbgstream);
-      break;
-
-    case DexFile::DBG_START_LOCAL:
-    case DexFile::DBG_START_LOCAL_EXTENDED:
-      DecodeUnsignedLeb128(&dbgstream);
-      DecodeUnsignedLeb128(&dbgstream);
-      DecodeUnsignedLeb128(&dbgstream);
-
-      if (opcode == DexFile::DBG_START_LOCAL_EXTENDED) {
-        DecodeUnsignedLeb128(&dbgstream);
+  static bool readEntry(void* context, const DexFile::PositionInfo& entry) {
+    LineInfoReader* self = static_cast<LineInfoReader*>(context);
+    if (self->source_file_name_ != nullptr &&
+        entry.source_file_ != nullptr &&
+        self->source_file_name_->length() == 0) {
+      self->source_file_name_[0] = entry.source_file_;
+      if (self->pc2java_ == nullptr) {
+        return true;  // We just needed the source file name.
       }
-      break;
-
-    case DexFile::DBG_END_LOCAL:
-    case DexFile::DBG_RESTART_LOCAL:
-      DecodeUnsignedLeb128(&dbgstream);
-      break;
-
-    case DexFile::DBG_SET_PROLOGUE_END:
-    case DexFile::DBG_SET_EPILOGUE_BEGIN:
-    case DexFile::DBG_SET_FILE:
-      break;
-
-    default:
-      adjopcode = opcode - DexFile::DBG_FIRST_SPECIAL;
-      address += adjopcode / DexFile::DBG_LINE_RANGE;
-      line += DexFile::DBG_LINE_BASE + (adjopcode % DexFile::DBG_LINE_RANGE);
-
-      unsigned offset;
-      offset = SortLineNumberInfoByLine::find(pc2dex, address);
-      if (offset != SortLineNumberInfoByLine::NOT_FOUND) {
-        table.push_back({offset, line});
-      }
-      break;
     }
+
+    if (self->pc2java_ != nullptr) {
+      unsigned offset = SortLineNumberInfoByLine::find(self->pc2dex_[0], entry.address_);
+      if (offset != SortLineNumberInfoByLine::NOT_FOUND) {
+        self->pc2java_->push_back({offset, entry.line_});
+      }
+    }
+
+    return false;
   }
-}
+ private:
+  DISALLOW_COPY_AND_ASSIGN(LineInfoReader);
+};
+
 
 // convert dex offsets to dex disassembly line numbers in pc2dex
 static void getLineInfoForDex(const DexFile::CodeItem* code_item, LineInfoTable& pc2dex) {
@@ -159,6 +128,7 @@ void SendMethodToVTune(const char* method_name,
                        size_t code_size,
                        const char* class_file_name,
                        const char* source_file_name,
+                       const void* optimized_code_info_ptr,
                        const DexFile* dex_file,
                        const DexFile::CodeItem* code_item) {
   if (code == nullptr) {
@@ -181,52 +151,61 @@ void SendMethodToVTune(const char* method_name,
   jit_method.method_load_address = const_cast<void*>(code);
   jit_method.method_size = code_size;
 
-  // dump positions
-  // TODO: Get the table from StackMaps
-  MappingTable table(nullptr);
-
-  // prepare pc2src to point to either pc2java or pc2dex
-  LineInfoTable *pc2src = nullptr;
-  LineInfoTable pc2dex;
-  LineInfoTable pc2java;
-
-  if (dex_file != nullptr && code_item != nullptr &&
-      (ART_VTUNE_JIT_API_SRC == nullptr || strcmp(ART_VTUNE_JIT_API_SRC, "none") != 0) &&
-      table.TotalSize() != 0 && table.PcToDexSize() != 0) {
-    for (MappingTable::PcToDexIterator cur = table.PcToDexBegin(),
-                                       end = table.PcToDexEnd(); cur != end; ++cur) {
-      pc2dex.push_back({cur.NativePcOffset(), cur.DexPc()});
-    }
-
-    if (ART_VTUNE_JIT_API_SRC != nullptr && strcmp(ART_VTUNE_JIT_API_SRC, "dex") == 0) {
-      pc2src = &pc2dex;
-      getLineInfoForDex(code_item, pc2dex);
-      // TODO: set dexdump file name for this method
-    } else { // default is pc -> java
-      pc2src = &pc2java;
-      const uint8_t* dbgstream = dex_file->GetDebugInfoStream(code_item);
-      getLineInfoForJava(dbgstream, pc2java, pc2dex);
-    }
-  }
-
-  if (pc2src == nullptr || pc2src->size() == 0) {
-    jit_method.line_number_size = 0;
-    jit_method.line_number_table = nullptr;
+  int is_notified;
+  if (optimized_code_info_ptr == nullptr) {
+    is_notified = iJIT_NotifyEvent(iJVM_EVENT_TYPE_METHOD_LOAD_FINISHED, (void*)&jit_method);
   } else {
-    // shift offsets
-    SortLineNumberInfoByOffset::sort(*pc2src);
-    for (unsigned i = 1; i < pc2src->size(); ++i) {
-      (*pc2src)[i - 1].Offset = (*pc2src)[i].Offset;
-    }
-    (*pc2src)[pc2src->size() - 1].Offset = code_size;
+    // Prepare pc2src to point to either pc2java or pc2dex.
+    CodeInfo code_info(optimized_code_info_ptr);
+    LineInfoTable* pc2src = nullptr;
+    LineInfoTable pc2dex;
+    LineInfoTable pc2java;
 
-    jit_method.line_number_size = pc2src->size();
-    jit_method.line_number_table = pc2src->size() == 0 ? nullptr : &((*pc2src)[0]);
+    // Read pc->dex mapping from StackMaps.
+    CodeInfoEncoding encoding = code_info.ExtractEncoding();
+    uint32_t number_of_stack_maps = code_info.GetNumberOfStackMaps(encoding);
+    std::string source_name;
+
+    if (dex_file != nullptr && code_item != nullptr && number_of_stack_maps > 0 &&
+        (ART_VTUNE_JIT_API_SRC == nullptr || strcmp(ART_VTUNE_JIT_API_SRC, "none") != 0)) {
+      for (uint32_t i = 0; i < number_of_stack_maps; ++i) {
+        StackMap stack_map = code_info.GetStackMapAt(i, encoding);
+        pc2dex.push_back({stack_map.GetNativePcOffset(encoding.stack_map_encoding),
+                          stack_map.GetDexPc(encoding.stack_map_encoding)});
+      }
+
+      if (ART_VTUNE_JIT_API_SRC != nullptr && strcmp(ART_VTUNE_JIT_API_SRC, "dex") == 0) {
+        pc2src = &pc2dex;
+        getLineInfoForDex(code_item, pc2dex);
+        // TODO: set dexdump file name for this method
+      } else { // default is pc -> java
+        pc2src = &pc2java;
+        LineInfoReader line_info_reader(&pc2dex, &pc2java, &source_name);
+        dex_file->DecodeDebugPositionInfo(code_item,
+                                          LineInfoReader::readEntry,
+                                          &line_info_reader);
+        if (source_name.length() > 0) {
+          jit_method.source_file_name = const_cast<char*>(source_name.c_str());
+        }
+      }
+    }
+
+    if (pc2src != nullptr && pc2src->size() > 0) {
+      // shift offsets
+      SortLineNumberInfoByOffset::sort(*pc2src);
+      for (unsigned i = 1; i < pc2src->size(); ++i) {
+        (*pc2src)[i - 1].Offset = (*pc2src)[i].Offset;
+      }
+      (*pc2src)[pc2src->size() - 1].Offset = code_size;
+
+      jit_method.line_number_size = pc2src->size();
+      jit_method.line_number_table = pc2src->size() == 0 ? nullptr : &((*pc2src)[0]);
+    }
+    is_notified = iJIT_NotifyEvent(iJVM_EVENT_TYPE_METHOD_LOAD_FINISHED, (void*)&jit_method);
   }
 
-  int is_notified = iJIT_NotifyEvent(iJVM_EVENT_TYPE_METHOD_LOAD_FINISHED, (void*)&jit_method);
   if (is_notified) {
-    VLOG(jni) << "JIT API: method '" << jit_method.method_name
+    VLOG(jit) << "JIT API: method '" << jit_method.method_name
               << "' is written successfully: id=" << jit_method.method_id
               << ", address=" << jit_method.method_load_address
               << ", size=" << jit_method.method_size;

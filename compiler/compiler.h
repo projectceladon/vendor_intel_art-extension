@@ -29,6 +29,7 @@ namespace jit {
 class ArtMethod;
 class CompilerDriver;
 class CompiledMethod;
+class OatQuickMethodHeader;
 class OatWriter;
 
 class Compiler {
@@ -59,12 +60,12 @@ class Compiler {
                                      uint32_t method_idx,
                                      const DexFile& dex_file) const = 0;
 
-  virtual bool JitCompile(Thread* self ATTRIBUTE_UNUSED,
-                          jit::JitCodeCache* code_cache ATTRIBUTE_UNUSED,
-                          ArtMethod* method ATTRIBUTE_UNUSED,
-                          bool osr ATTRIBUTE_UNUSED)
+  virtual OatQuickMethodHeader* JitCompile(Thread* self ATTRIBUTE_UNUSED,
+                                           jit::JitCodeCache* code_cache ATTRIBUTE_UNUSED,
+                                           ArtMethod* method ATTRIBUTE_UNUSED,
+                                           bool osr ATTRIBUTE_UNUSED)
       SHARED_REQUIRES(Locks::mutator_lock_) {
-    return false;
+    return nullptr;
   }
 
   virtual uintptr_t GetEntryPointOf(ArtMethod* method) const
