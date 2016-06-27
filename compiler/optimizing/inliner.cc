@@ -77,15 +77,21 @@ void HInliner::Run() {
   }
   const ArenaVector<HBasicBlock*>& blocks = graph_->GetReversePostOrder();
   DCHECK(!blocks.empty());
-  HBasicBlock* next_block = blocks[0];
+  // We want to ignore all new created blocks and already considered.
+  const size_t max_block_id = graph_->GetBlocks().size();
+  ArenaBitVector visited_blocks(graph_->GetArena(), graph_->GetBlocks().size(), false, kArenaAllocMisc);
   for (size_t i = 0; i < blocks.size(); ++i) {
-    // Because we are changing the graph when inlining, we need to remember the next block.
+    HBasicBlock* block = blocks[i];
+    const size_t block_id = block->GetBlockId();
+
+    // Because we are changing the graph when inlining, we should skip the new blocks.
+    // Also we want to skip already processed blocks.
     // This avoids doing the inlining work again on the inlined blocks.
-    if (blocks[i] != next_block) {
+    if (block_id >= max_block_id || visited_blocks.IsBitSet(block_id)) {
       continue;
     }
-    HBasicBlock* block = next_block;
-    next_block = (i == blocks.size() - 1) ? nullptr : blocks[i + 1];
+    visited_blocks.SetBit(block_id);
+
     for (HInstruction* instruction = block->GetFirstInstruction(); instruction != nullptr;) {
       HInstruction* next = instruction->GetNext();
       HInvoke* call = instruction->AsInvoke();
@@ -104,10 +110,16 @@ void HInliner::Run() {
             dex_file->GetMethodName(dex_file->GetMethodId(call->GetDexMethodIndex()));
         bool must_not_inline = strstr(callee_name, "$noinline$") != nullptr;
         if (!must_not_inline) {
-          if (!TryInline(call) && kIsDebugBuild && IsCompilingWithCoreImage()) {
+          bool res = TryInline(call);
+          if (!res && kIsDebugBuild && IsCompilingWithCoreImage()) {
             bool should_inline = strstr(callee_name, "$inline$") != nullptr;
             CHECK(!should_inline) << "Could not inline "
                                   << PrettyMethod(call->GetDexMethodIndex(), *dex_file);
+          }
+          if (res) {
+            // Due to inlining throwers require the full post order re-building so we must
+            // start from the beggining. However we will skip already processed blocks.
+            i = 0;
           }
         }
       }
@@ -321,10 +333,6 @@ bool HInliner::TryInline(HInvoke* invoke_instruction) {
   if (Runtime::Current()->UseJitCompilation()) {
     // Under JIT, we should always know the caller.
     DCHECK(caller != nullptr);
-    if (invoke_instruction->IsFromInlinedInvoke()) {
-      // This is from a different method.  It should have been handled already.
-      return false;
-    }
     ScopedProfilingInfoInlineUse spiis(caller, soa.Self());
     ProfilingInfo* profiling_info = spiis.GetProfilingInfo();
     if (profiling_info != nullptr) {
