@@ -73,7 +73,7 @@ class AggressiveEnvUseRemover : public HGraphVisitor {
   void VisitBasicBlock(HBasicBlock* block) OVERRIDE {
     HBackwardInstructionIterator it(block->GetInstructions());
     DCHECK(it.Current()->IsControlFlow());
-    for (it.Advance(); !it.Done(); it.Advance()) {
+    for (; !it.Done(); it.Advance()) {
       HInstruction* insn = it.Current();
       // We need to check this because we could remove some
       // of the instructions while visiting others.
