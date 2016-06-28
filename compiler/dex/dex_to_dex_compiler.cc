@@ -182,9 +182,6 @@ void DexCompiler::Compile() {
       case Instruction::IPUT_OBJECT:
         CompileInstanceFieldAccess(inst, dex_pc, Instruction::IPUT_OBJECT_QUICK, true);
         break;
-      /*  FIXME: we temporary disabled generation of these instructions
-          to workaround OAM-34012 and unblock the upcoming release.
-          Investigation to be continued.
       case Instruction::INVOKE_VIRTUAL:
         CompileInvokeVirtual(inst, dex_pc, Instruction::INVOKE_VIRTUAL_QUICK, false);
         break;
@@ -192,7 +189,6 @@ void DexCompiler::Compile() {
       case Instruction::INVOKE_VIRTUAL_RANGE:
         CompileInvokeVirtual(inst, dex_pc, Instruction::INVOKE_VIRTUAL_RANGE_QUICK, true);
         break;
-      */
       default:
         // Nothing to do.
         break;

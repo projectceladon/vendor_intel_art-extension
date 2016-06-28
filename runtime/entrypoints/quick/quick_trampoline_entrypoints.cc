@@ -941,6 +941,7 @@ extern "C" const void* artQuickResolutionTrampoline(
   MethodReference called_method(nullptr, 0);
   const bool called_method_known_on_entry = !called->IsRuntimeMethod();
   ArtMethod* caller = nullptr;
+  bool is_quick_form = false;
   if (!called_method_known_on_entry) {
     caller = QuickArgumentVisitor::GetCallingMethod(sp);
     uint32_t dex_pc = QuickArgumentVisitor::GetCallingDexPc(sp);
@@ -976,13 +977,17 @@ extern "C" const void* artQuickResolutionTrampoline(
         invoke_type = kSuper;
         is_range = true;
         break;
-      case Instruction::INVOKE_VIRTUAL:
       case Instruction::INVOKE_VIRTUAL_QUICK:
+        is_quick_form = true;
+        FALLTHROUGH_INTENDED;
+      case Instruction::INVOKE_VIRTUAL:
         invoke_type = kVirtual;
         is_range = false;
         break;
-      case Instruction::INVOKE_VIRTUAL_RANGE:
       case Instruction::INVOKE_VIRTUAL_RANGE_QUICK:
+        is_quick_form = true;
+        FALLTHROUGH_INTENDED;
+      case Instruction::INVOKE_VIRTUAL_RANGE:
         invoke_type = kVirtual;
         is_range = true;
         break;
@@ -999,6 +1004,23 @@ extern "C" const void* artQuickResolutionTrampoline(
         UNREACHABLE();
     }
     called_method.dex_method_index = (is_range) ? instr->VRegB_3rc() : instr->VRegB_35c();
+    if (is_quick_form) {
+      std::string temp;
+      CHECK(receiver != nullptr) << invoke_type;
+      mirror::Class* klass = receiver->GetClass();
+      CHECK(klass->ShouldHaveEmbeddedVTable());
+      called = klass->GetEmbeddedVTableEntry(
+          called_method.dex_method_index, sizeof(void*));
+      CHECK(called != nullptr) << "No virtual method found in vtable referred by index "
+                               << called_method.dex_method_index << " in class "
+                               << klass->GetDescriptor(&temp)
+                               << ", invoke at dex pc 0x" << std::hex << dex_pc
+                               << " (file " << caller->GetDexFile()->GetLocation()
+                               << ") left unresolved in class "
+                               << caller->GetDeclaringClass()->GetDescriptor(&temp);
+      called_method.dex_file = called->GetDexFile();
+      called_method.dex_method_index = called->GetDexMethodIndex();
+    }
   } else {
     invoke_type = kStatic;
     called_method.dex_file = called->GetDexFile();
@@ -1013,7 +1035,7 @@ extern "C" const void* artQuickResolutionTrampoline(
   self->EndAssertNoThreadSuspension(old_cause);
   const bool virtual_or_interface = invoke_type == kVirtual || invoke_type == kInterface;
   // Resolve method filling in dex cache.
-  if (!called_method_known_on_entry) {
+  if (!is_quick_form && !called_method_known_on_entry) {
     StackHandleScope<1> hs(self);
     mirror::Object* dummy = nullptr;
     HandleWrapper<mirror::Object> h_receiver(
@@ -1027,7 +1049,7 @@ extern "C" const void* artQuickResolutionTrampoline(
     // Incompatible class change should have been handled in resolve method.
     CHECK(!called->CheckIncompatibleClassChange(invoke_type))
         << PrettyMethod(called) << " " << invoke_type;
-    if (virtual_or_interface || invoke_type == kSuper) {
+    if (!is_quick_form && (virtual_or_interface || invoke_type == kSuper)) {
       // Refine called method based on receiver for kVirtual/kInterface, and
       // caller for kSuper.
       ArtMethod* orig_called = called;
