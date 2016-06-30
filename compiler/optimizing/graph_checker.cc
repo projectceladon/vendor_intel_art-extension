@@ -462,7 +462,8 @@ void GraphChecker::VisitInstruction(HInstruction* instruction) {
   }
   */
 
-  if (instruction->CanThrowIntoCatchBlock()) {
+  // TODO: it is better to specify that HDeoptimize cannot throw.
+  if (instruction->CanThrowIntoCatchBlock() && !instruction->IsDeoptimize()) {
     // Find the top-level environment. This corresponds to the environment of
     // the catch block since we do not inline methods with try/catch.
     HEnvironment* environment = instruction->GetEnvironment();
