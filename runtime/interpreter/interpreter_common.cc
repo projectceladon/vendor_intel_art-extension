@@ -756,11 +756,16 @@ static inline bool DoCallCommon(ArtMethod* called_method,
       jit::Jit* const jit = Runtime::Current()->GetJit();
       if (jit != nullptr) {
         if (jit->GetCodeCache()->ContainsMethod(called_method) == false) {
-          VLOG(jit) << "Blocking mode enabled, compiling method " <<
-            PrettyMethod(called_method).c_str();
+          VLOG(jit) << "Blocking mode enabled, compiling method "
+                    << PrettyMethod(called_method);
 
-          Runtime::Current()->GetJit()->CompileMethod(
-              called_method->GetInterfaceMethodIfProxy(sizeof(void*)), self, /* osr */ false);
+          ArtMethod* method = called_method->GetInterfaceMethodIfProxy(sizeof(void*));
+          if (!method->IsNative() && !method->IsAbstract()) {
+            Runtime::Current()->GetJit()->CompileMethod(method, self, /* osr */ false);
+          } else {
+            VLOG(jit) << "Cannot compile native/abstract method "
+                      << PrettyMethod(method);
+          }
         }
       }
     }
