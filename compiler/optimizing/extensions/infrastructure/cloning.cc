@@ -316,7 +316,8 @@ void HInstructionCloner::VisitArrayGet(HArrayGet* instr) {
     HInstruction* array, *index;
     GetInputsForBinary(instr, &array, &index);
     HArrayGet* clone = new (arena_) HArrayGet(array, index, instr->GetType(),
-                                              instr->GetDexPc(), instr->IsUnsigned());
+                                              instr->GetDexPc(), instr->IsUnsigned(),
+                                              instr->GetSideEffects());
     CopyReferenceType(instr, clone);
     CommitClone(instr, clone);
   }
@@ -337,7 +338,7 @@ void HInstructionCloner::VisitArraySet(HArraySet* instr) {
     HInstruction* array, *index, *value;
     GetInputsForTernary(instr, &array, &index, &value);
     HArraySet* clone = new (arena_) HArraySet(array, index, value,
-        instr->GetComponentType(), instr->GetDexPc());
+        instr->GetComponentType(), instr->GetDexPc(), instr->GetSideEffects());
 
     if (instr->GetUseNonTemporalMove()) {
       clone->SetUseNonTemporalMove();
@@ -347,6 +348,9 @@ void HInstructionCloner::VisitArraySet(HArraySet* instr) {
     }
     if (!instr->NeedsTypeCheck()) {
       clone->ClearNeedsTypeCheck();
+    }
+    if (!instr->GetValueCanBeNull()) {
+      clone->ClearValueCanBeNull();
     }
 
     CloneEnvironment(instr, clone);
@@ -415,6 +419,9 @@ void HInstructionCloner::VisitCheckCast(HCheckCast* instr) {
     DCHECK(constant->IsLoadClass());
     HCheckCast* clone = new (arena_) HCheckCast(object, constant->AsLoadClass(),
         instr->GetTypeCheckKind(), instr->GetDexPc());
+    if (!instr->MustDoNullCheck()) {
+      clone->ClearMustDoNullCheck();
+    }
     CloneEnvironment(instr, clone);
     CommitClone(instr, clone);
   }
@@ -600,6 +607,9 @@ void HInstructionCloner::VisitInstanceFieldSet(HInstanceFieldSet* instr) {
                                        fi.GetDexFile(),
                                        fi.GetDexCache(),
                                        instr->GetDexPc());
+    if (!instr->GetValueCanBeNull()) {
+      clone->ClearValueCanBeNull();
+    }
     CommitClone(instr, clone);
   }
 }
@@ -611,6 +621,9 @@ void HInstructionCloner::VisitInstanceOf(HInstanceOf* instr) {
     DCHECK(constant->IsLoadClass());
     HInstanceOf* clone = new (arena_) HInstanceOf(object, constant->AsLoadClass(),
         instr->GetTypeCheckKind(), instr->GetDexPc());
+    if (!instr->MustDoNullCheck()) {
+      clone->ClearMustDoNullCheck();
+    }
     CloneEnvironment(instr, clone);
     CommitClone(instr, clone);
   }
@@ -956,6 +969,11 @@ void HInstructionCloner::VisitPhi(HPhi* phi) {
       }
     }
 
+    clone->SetCanBeNull(phi->CanBeNull());
+    if (phi->IsDead()) {
+      clone->SetDead();
+    }
+
     CopyReferenceType(phi, clone);
     CommitClone(phi, clone);
   }
@@ -1071,6 +1089,9 @@ void HInstructionCloner::VisitStaticFieldSet(HStaticFieldSet* instr) {
                                      fi.GetDexFile(),
                                      fi.GetDexCache(),
                                      instr->GetDexPc());
+    if (!instr->GetValueCanBeNull()) {
+      clone->ClearValueCanBeNull();
+    }
     CommitClone(instr, clone);
   }
 }
