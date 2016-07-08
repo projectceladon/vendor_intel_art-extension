@@ -419,7 +419,6 @@ void GraphChecker::VisitInstruction(HInstruction* instruction) {
     }
   }
 
-  /* FIXME: This check was disabled because it triggers after Loop SuspendCheck removal"
   if (instruction->NeedsEnvironment() && !instruction->HasEnvironment()) {
     AddError(StringPrintf("Instruction %s:%d in block %d requires an environment "
                           "but does not have one.",
@@ -427,7 +426,6 @@ void GraphChecker::VisitInstruction(HInstruction* instruction) {
                           instruction->GetId(),
                           current_block_->GetBlockId()));
   }
-  */
 
   // Ensure an instruction having an environment is dominated by the
   // instructions contained in the environment.
@@ -449,8 +447,6 @@ void GraphChecker::VisitInstruction(HInstruction* instruction) {
   }
 
   // Ensure that reference type instructions have reference type info.
-  /* FIXME: This check was disabled because it triggers after form_bottom_loops.
-     It will be fixed in CAR-3375.
   if (instruction->GetType() == Primitive::kPrimNot) {
     ScopedObjectAccess soa(Thread::Current());
     if (!instruction->GetReferenceTypeInfo().IsValid()) {
@@ -460,7 +456,6 @@ void GraphChecker::VisitInstruction(HInstruction* instruction) {
                             instruction->GetId()));
     }
   }
-  */
 
   // TODO: it is better to specify that HDeoptimize cannot throw.
   if (instruction->CanThrowIntoCatchBlock() && !instruction->IsDeoptimize()) {
@@ -572,7 +567,17 @@ void GraphChecker::HandleLoop(HBasicBlock* loop_header) {
         loop_information->GetPreHeader()->GetSuccessors().size()));
   }
 
-  /* FIXME: These checks were disabled because they trigger after Loop SuspendCheck removal"
+  /*
+   * Let's leave these two checks blocked because we have a phase
+   * 'remove_loop_suspend_checks' which may eliminate SuspendCheck
+   * instructions. It either doesn't make sense to check
+   * 'suppress_suspend_check_' flag in 'LoopInformation_X86' which
+   * indicates removal SuspendCheck by 'remove_loop_suspend_checks'.
+   * Because, if we completely rebuild 'LoopInformation' after
+   * 'dead_code_elimination' or 'loadhoist_storesink' that follow
+   * 'remove_loop_suspend_checks', then flag 'suppress_suspend_check_'
+   * is cleared.
+
   if (loop_information->GetSuspendCheck() == nullptr) {
     AddError(StringPrintf(
         "Loop with header %d does not have a suspend check.",
