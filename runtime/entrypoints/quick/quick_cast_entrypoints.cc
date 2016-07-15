@@ -16,11 +16,13 @@
 
 #include "mirror/class-inl.h"
 #include "mirror/object-inl.h"
+#include "entrypoints/entrypoint_utils.h"
 
 namespace art {
 
 // Assignable test for code, won't throw.  Null and equality tests already performed
-extern "C" uint32_t artIsAssignableFromCode(mirror::Class* klass, mirror::Class* ref_class)
+extern "C" HOT_SECTION(assignable)
+    uint32_t artIsAssignableFromCode(mirror::Class* klass, mirror::Class* ref_class)
     SHARED_REQUIRES(Locks::mutator_lock_) {
   DCHECK(klass != nullptr);
   DCHECK(ref_class != nullptr);

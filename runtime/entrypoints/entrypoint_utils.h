@@ -43,6 +43,13 @@ class OatQuickMethodHeader;
 class ScopedObjectAccessAlreadyRunnable;
 class Thread;
 
+// Put Quick entry methods into .text.hot to reduce iTLB misses
+#if defined(ART_ENABLE_CODEGEN_x86) || defined(ART_ENABLE_CODEGEN_x86_64)
+#define HOT_SECTION(name) __attribute__((section(".text.hot." STRINGIFY(name))))
+#else
+#define HOT_SECTION(name)
+#endif
+
 template <const bool kAccessCheck>
 ALWAYS_INLINE inline mirror::Class* CheckObjectAlloc(uint32_t type_idx,
                                                      ArtMethod* method,

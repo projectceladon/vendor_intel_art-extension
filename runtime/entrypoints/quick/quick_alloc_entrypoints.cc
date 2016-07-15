@@ -28,7 +28,7 @@ namespace art {
 static constexpr bool kUseTlabFastPath = true;
 
 #define GENERATE_ENTRYPOINTS_FOR_ALLOCATOR_INST(suffix, suffix2, instrumented_bool, allocator_type) \
-extern "C" mirror::Object* artAllocObjectFromCode ##suffix##suffix2( \
+extern "C" HOT_SECTION(suffix) mirror::Object* artAllocObjectFromCode ##suffix##suffix2( \
     uint32_t type_idx, ArtMethod* method, Thread* self) \
     SHARED_REQUIRES(Locks::mutator_lock_) { \
   ScopedQuickEntrypointChecks sqec(self); \
@@ -55,7 +55,7 @@ extern "C" mirror::Object* artAllocObjectFromCode ##suffix##suffix2( \
   } \
   return AllocObjectFromCode<false, instrumented_bool>(type_idx, method, self, allocator_type); \
 } \
-extern "C" mirror::Object* artAllocObjectFromCodeResolved##suffix##suffix2( \
+extern "C" HOT_SECTION(suffix) mirror::Object* artAllocObjectFromCodeResolved##suffix##suffix2( \
     mirror::Class* klass, ArtMethod* method ATTRIBUTE_UNUSED, Thread* self) \
     SHARED_REQUIRES(Locks::mutator_lock_) { \
   ScopedQuickEntrypointChecks sqec(self); \
@@ -81,7 +81,7 @@ extern "C" mirror::Object* artAllocObjectFromCodeResolved##suffix##suffix2( \
   } \
   return AllocObjectFromCodeResolved<instrumented_bool>(klass, self, allocator_type); \
 } \
-extern "C" mirror::Object* artAllocObjectFromCodeInitialized##suffix##suffix2( \
+extern "C" HOT_SECTION(suffix) mirror::Object* artAllocObjectFromCodeInitialized##suffix##suffix2( \
     mirror::Class* klass, ArtMethod* method ATTRIBUTE_UNUSED, Thread* self) \
     SHARED_REQUIRES(Locks::mutator_lock_) { \
   ScopedQuickEntrypointChecks sqec(self); \
@@ -118,7 +118,7 @@ extern "C" mirror::Array* artAllocArrayFromCode##suffix##suffix2( \
   return AllocArrayFromCode<false, instrumented_bool>(type_idx, component_count, method, self, \
                                                       allocator_type); \
 } \
-extern "C" mirror::Array* artAllocArrayFromCodeResolved##suffix##suffix2( \
+extern "C" HOT_SECTION(suffix) mirror::Array* artAllocArrayFromCodeResolved##suffix##suffix2( \
     mirror::Class* klass, int32_t component_count, ArtMethod* method, Thread* self) \
     SHARED_REQUIRES(Locks::mutator_lock_) { \
   ScopedQuickEntrypointChecks sqec(self); \
@@ -152,7 +152,7 @@ extern "C" mirror::Array* artCheckAndAllocArrayFromCodeWithAccessCheck##suffix##
     return CheckAndAllocArrayFromCodeInstrumented(type_idx, component_count, method, self, true, allocator_type); \
   } \
 } \
-extern "C" mirror::String* artAllocStringFromBytesFromCode##suffix##suffix2( \
+extern "C" HOT_SECTION(suffix) mirror::String* artAllocStringFromBytesFromCode##suffix##suffix2( \
     mirror::ByteArray* byte_array, int32_t high, int32_t offset, int32_t byte_count, \
     Thread* self) \
     SHARED_REQUIRES(Locks::mutator_lock_) { \
@@ -162,7 +162,7 @@ extern "C" mirror::String* artAllocStringFromBytesFromCode##suffix##suffix2( \
   return mirror::String::AllocFromByteArray<instrumented_bool>(self, byte_count, handle_array, \
                                                                offset, high, allocator_type); \
 } \
-extern "C" mirror::String* artAllocStringFromCharsFromCode##suffix##suffix2( \
+extern "C" HOT_SECTION(suffix) mirror::String* artAllocStringFromCharsFromCode##suffix##suffix2( \
     int32_t offset, int32_t char_count, mirror::CharArray* char_array, Thread* self) \
     SHARED_REQUIRES(Locks::mutator_lock_) { \
   StackHandleScope<1> hs(self); \
@@ -170,7 +170,7 @@ extern "C" mirror::String* artAllocStringFromCharsFromCode##suffix##suffix2( \
   return mirror::String::AllocFromCharArray<instrumented_bool>(self, char_count, handle_array, \
                                                                offset, allocator_type); \
 } \
-extern "C" mirror::String* artAllocStringFromStringFromCode##suffix##suffix2( \
+extern "C" HOT_SECTION(suffix) mirror::String* artAllocStringFromStringFromCode##suffix##suffix2( \
     mirror::String* string, Thread* self) \
     SHARED_REQUIRES(Locks::mutator_lock_) { \
   StackHandleScope<1> hs(self); \

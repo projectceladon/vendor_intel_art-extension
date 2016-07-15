@@ -823,7 +823,7 @@ END_MACRO
 GENERATE_ALLOC_ENTRYPOINTS_FOR_EACH_ALLOCATOR
 
 // A hand-written override for GENERATE_ALLOC_ENTRYPOINTS_ALLOC_OBJECT(_rosalloc, RosAlloc).
-DEFINE_FUNCTION art_quick_alloc_object_rosalloc
+DEFINE_HOT_FUNCTION art_quick_alloc_object_rosalloc RosAlloc
     // Fast path rosalloc allocation.
     // eax: uint32_t type_idx/return value, ecx: ArtMethod*
     // ebx, edx: free
@@ -918,7 +918,7 @@ DEFINE_FUNCTION art_quick_alloc_object_rosalloc
     CFI_ADJUST_CFA_OFFSET(-16)
     RESTORE_REFS_ONLY_CALLEE_SAVE_FRAME          // resotre frame up to return address
     RETURN_IF_RESULT_IS_NON_ZERO_OR_DELIVER      // return or deliver exception
-END_FUNCTION art_quick_alloc_object_rosalloc
+END_HOT_FUNCTION art_quick_alloc_object_rosalloc
 
 // The common fast path code for art_quick_alloc_object_tlab and art_quick_alloc_object_region_tlab.
 //
@@ -971,7 +971,7 @@ MACRO1(ALLOC_OBJECT_TLAB_SLOW_PATH, cxx_name)
 END_MACRO
 
 // A hand-written override for GENERATE_ALLOC_ENTRYPOINTS_ALLOC_OBJECT(_tlab, TLAB).
-DEFINE_FUNCTION art_quick_alloc_object_tlab
+DEFINE_HOT_FUNCTION art_quick_alloc_object_tlab TLAB
     // Fast path tlab allocation.
     // EAX: uint32_t type_idx/return value, ECX: ArtMethod*.
     // EBX, EDX: free.
@@ -990,7 +990,7 @@ DEFINE_FUNCTION art_quick_alloc_object_tlab
 END_FUNCTION art_quick_alloc_object_tlab
 
 // A hand-written override for GENERATE_ALLOC_ENTRYPOINTS_ALLOC_OBJECT(_region_tlab, RegionTLAB).
-DEFINE_FUNCTION art_quick_alloc_object_region_tlab
+DEFINE_HOT_FUNCTION art_quick_alloc_object_region_tlab RegionTLAB
     // Fast path region tlab allocation.
     // EAX: uint32_t type_idx/return value, ECX: ArtMethod*.
     // EBX, EDX: free.
@@ -1171,7 +1171,7 @@ DEFINE_FUNCTION art_quick_unlock_object_no_inline
     RETURN_IF_EAX_ZERO
 END_FUNCTION art_quick_unlock_object_no_inline
 
-DEFINE_FUNCTION art_quick_is_assignable
+DEFINE_HOT_FUNCTION art_quick_is_assignable assignable
     PUSH eax                              // alignment padding
     PUSH ecx                              // pass arg2 - obj->klass
     PUSH eax                              // pass arg1 - checked class
@@ -1179,9 +1179,9 @@ DEFINE_FUNCTION art_quick_is_assignable
     addl LITERAL(12), %esp                // pop arguments
     CFI_ADJUST_CFA_OFFSET(-12)
     ret
-END_FUNCTION art_quick_is_assignable
+END_HOT_FUNCTION art_quick_is_assignable
 
-DEFINE_FUNCTION art_quick_check_cast
+DEFINE_HOT_FUNCTION art_quick_check_cast assignable
     PUSH eax                              // alignment padding
     PUSH ecx                              // pass arg2 - obj->klass
     PUSH eax                              // pass arg1 - checked class
@@ -1207,7 +1207,7 @@ DEFINE_FUNCTION art_quick_check_cast
     PUSH eax                              // pass arg1
     call SYMBOL(artThrowClassCastException) // (Class* a, Class* b, Thread*)
     UNREACHABLE
-END_FUNCTION art_quick_check_cast
+END_HOT_FUNCTION art_quick_check_cast
 
 // Restore reg's value if reg is not the same as exclude_reg, otherwise just adjust stack.
 MACRO2(POP_REG_NE, reg, exclude_reg)
@@ -1276,7 +1276,7 @@ DEFINE_FUNCTION art_quick_aput_obj_with_bound_check
     jmp SYMBOL(art_quick_throw_array_bounds)
 END_FUNCTION art_quick_aput_obj_with_bound_check
 
-DEFINE_FUNCTION art_quick_aput_obj
+DEFINE_HOT_FUNCTION art_quick_aput_obj assignable
     test %edx, %edx              // store of null
     jz .Ldo_aput_null
     READ_BARRIER eax, MIRROR_OBJECT_CLASS_OFFSET, ebx, true
@@ -1359,7 +1359,7 @@ DEFINE_FUNCTION art_quick_aput_obj
     PUSH eax                      // pass arg1 - array
     call SYMBOL(artThrowArrayStoreException) // (array, value, Thread*)
     UNREACHABLE
-END_FUNCTION art_quick_aput_obj
+END_HOT_FUNCTION art_quick_aput_obj
 
 DEFINE_FUNCTION art_quick_memcpy
     SETUP_GOT_NOSAVE ebx          // clobbers EBX

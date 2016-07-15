@@ -68,9 +68,13 @@
 #if defined(__APPLE__)
     #define STARTFCNSECTION(name)
     #define ENDFCNSECTION
+    #define STARTHOTFCN(name)
+    #define ENDHOTFCN
 #else
     #define STARTFCNSECTION(name) .pushsection .text.##name,"ax",@progbits
     #define ENDFCNSECTION .popsection
+    #define STARTHOTFCN(name) .pushsection .text.hot.##name,"ax",@progbits
+    #define ENDHOTFCN .popsection
 #endif
 
     // CFI support.
@@ -132,6 +136,16 @@ MACRO1(END_FUNCTION, c_name)
     CFI_ENDPROC
     SIZE(SYMBOL(\c_name))
     ENDFCNSECTION
+END_MACRO
+
+MACRO2(DEFINE_HOT_FUNCTION, c_name, section)
+    STARTHOTFCN(\section)
+    DEFINE_FUNCTION VAR(c_name)
+END_MACRO
+
+MACRO1(END_HOT_FUNCTION, c_name)
+    END_FUNCTION VAR(c_name)
+    ENDHOTFCN
 END_MACRO
 
 MACRO1(PUSH, reg)

@@ -811,7 +811,7 @@ END_MACRO
 GENERATE_ALLOC_ENTRYPOINTS_FOR_EACH_ALLOCATOR
 
 // A hand-written override for GENERATE_ALLOC_ENTRYPOINTS_ALLOC_OBJECT(_rosalloc, RosAlloc).
-DEFINE_FUNCTION art_quick_alloc_object_rosalloc
+DEFINE_HOT_FUNCTION art_quick_alloc_object_rosalloc RosAlloc
     // Fast path rosalloc allocation.
     // RDI: type_idx, RSI: ArtMethod*, RAX: return value
     // RDX, RCX, R8, R9: free.
@@ -892,10 +892,10 @@ DEFINE_FUNCTION art_quick_alloc_object_rosalloc
     call SYMBOL(artAllocObjectFromCodeRosAlloc)               // cxx_name(arg0, arg1, Thread*)
     RESTORE_REFS_ONLY_CALLEE_SAVE_FRAME                       // restore frame up to return address
     RETURN_IF_RESULT_IS_NON_ZERO_OR_DELIVER                   // return or deliver exception
-END_FUNCTION art_quick_alloc_object_rosalloc
+END_HOT_FUNCTION art_quick_alloc_object_rosalloc
 
 // A handle-written override for GENERATE_ALLOC_ENTRYPOINTS_ALLOC_OBJECT(_tlab, TLAB).
-DEFINE_FUNCTION art_quick_alloc_object_tlab
+DEFINE_HOT_FUNCTION art_quick_alloc_object_tlab TLAB
     // Fast path tlab allocation.
     // RDI: uint32_t type_idx, RSI: ArtMethod*
     // RDX, RCX, R8, R9: free. RAX: return val.
@@ -1053,7 +1053,7 @@ DEFINE_FUNCTION art_quick_unlock_object_no_inline
     RETURN_IF_EAX_ZERO
 END_FUNCTION art_quick_unlock_object_no_inline
 
-DEFINE_FUNCTION art_quick_check_cast
+DEFINE_HOT_FUNCTION art_quick_check_cast assignable
     PUSH rdi                          // Save args for exc
     PUSH rsi
     subq LITERAL(8), %rsp             // Alignment padding.
@@ -1079,7 +1079,7 @@ DEFINE_FUNCTION art_quick_check_cast
     mov %gs:THREAD_SELF_OFFSET, %rdx  // pass Thread::Current()
     call SYMBOL(artThrowClassCastException) // (Class* a, Class* b, Thread*)
     UNREACHABLE
-END_FUNCTION art_quick_check_cast
+END_HOT_FUNCTION art_quick_check_cast
 
 
 // Restore reg's value if reg is not the same as exclude_reg, otherwise just adjust stack.
@@ -1176,7 +1176,7 @@ DEFINE_FUNCTION art_quick_aput_obj_with_bound_check
 END_FUNCTION art_quick_aput_obj_with_bound_check
 
 
-DEFINE_FUNCTION art_quick_aput_obj
+DEFINE_HOT_FUNCTION art_quick_aput_obj assignable
     testl %edx, %edx                // store of null
 //  test %rdx, %rdx
     jz .Ldo_aput_null
@@ -1260,7 +1260,7 @@ DEFINE_FUNCTION art_quick_aput_obj
                                             // Pass arg 1 = array.
     call SYMBOL(artThrowArrayStoreException) // (array, value, Thread*)
     UNREACHABLE
-END_FUNCTION art_quick_aput_obj
+END_HOT_FUNCTION art_quick_aput_obj
 
 // TODO: This is quite silly on X86_64 now.
 DEFINE_FUNCTION art_quick_memcpy
@@ -1731,7 +1731,7 @@ END_FUNCTION art_quick_string_compareto
 
 UNIMPLEMENTED art_quick_memcmp16
 
-DEFINE_FUNCTION art_quick_assignable_from_code
+DEFINE_HOT_FUNCTION art_quick_assignable_from_code assignable
     SETUP_FP_CALLEE_SAVE_FRAME
     subq LITERAL(8), %rsp                      // Alignment padding.
     CFI_ADJUST_CFA_OFFSET(8)
@@ -1740,7 +1740,7 @@ DEFINE_FUNCTION art_quick_assignable_from_code
     CFI_ADJUST_CFA_OFFSET(-8)
     RESTORE_FP_CALLEE_SAVE_FRAME
     ret
-END_FUNCTION art_quick_assignable_from_code
+END_HOT_FUNCTION art_quick_assignable_from_code
 
 
 // Return from a nested signal:
