@@ -70,6 +70,9 @@ size_t BinaryAnalyzer::AnalyzeInstruction(const uint8_t* instr,
   }
   disassembler_->Seek(instr);
   const cs_insn* insn = disassembler_->Next();
+  if (insn == nullptr) {
+    return -1;
+  }
   const cs_x86& insn_x86 = insn->detail->x86;
   switch(insn->id) {
   case X86_PREFIX_REP:

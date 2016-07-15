@@ -146,6 +146,9 @@ class MachineBlock {
       AddPredBBlock(pred_bb);
       pred_bb->AddSuccBBlock(this);
     }
+    id_ = -1;
+    start_addr_ = nullptr;
+    end_addr_ = nullptr;
   }
 
   ~MachineBlock();
