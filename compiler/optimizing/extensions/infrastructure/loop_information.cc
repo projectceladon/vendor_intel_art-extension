@@ -541,6 +541,15 @@ bool HLoopInformation_X86::FillFloatingPointBound(HConstant* entry_value, bool i
   int64_t num_iterations = (mantissa_end - mantissa_start) / mantissa_inc;
   if ((mantissa_end - mantissa_start) % mantissa_inc != 0) {
     num_iterations++;
+  } else {
+    // FP loops do not always have strict exit conditions.
+    // So we need to consider case when the condition is not
+    // strict and the variable becomes equal to upper bound.
+    DCHECK_EQ(mantissa_start + mantissa_inc * num_iterations, mantissa_end);
+    if (bound_info_.comparison_condition_ == kCondLE
+        || bound_info_.comparison_condition_ == kCondGE) {
+      num_iterations++;
+    }
   }
 
   bound_info_.biv_start_value_ = start_value;
