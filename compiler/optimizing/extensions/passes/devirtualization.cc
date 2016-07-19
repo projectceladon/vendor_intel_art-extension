@@ -101,16 +101,15 @@ bool HDevirtualization::HasPrediction(HInstruction* instr, bool update) {
       return true;
     } else {
       // We do not have a precise type based on analysis - well what about from profile?
-      std::vector<TypeHandle> possible_targets = FindTypesFromProfile(invoke, graph_->GetArtMethod());
+      std::vector<TypeHandle> possible_targets;
 
       // When compiling non-image, we can check CHA results.
-      if (possible_targets.empty() && Runtime::Current()->UseCHA()) {
+      if (Runtime::Current()->UseCHA()) {
         // Check if CHA hasn't been called before.
         if (no_prediction_from_cha_.find(instr) == no_prediction_from_cha_.end()) {
           possible_targets = FindTypesFromCHA(resolved_method);
-          if (possible_targets.empty()) {
-            no_prediction_from_cha_.insert(instr);
-          } else {
+          // For now we work only with one target.
+          if (possible_targets.size() == 1u) {
             cha_prediction_.Put(invoke, possible_targets[0]);
             if (Runtime::Current()->UseDeoptForCHA()) {
               if (update) {
@@ -123,9 +122,16 @@ bool HDevirtualization::HasPrediction(HInstruction* instr, bool update) {
               }
               return true;
             }
+          } else {
+            no_prediction_from_cha_.insert(instr);
           }
         }
       }
+
+      if (possible_targets.size() != 1u) {
+        possible_targets = FindTypesFromProfile(invoke, graph_->GetArtMethod());
+      }
+
       if (possible_targets.size() != 0u) {
         // Seems that we have potential targets - record this if needed.
         if (update) {
@@ -551,6 +557,9 @@ SpeculationRecoveryApproach HDevirtualization::GetRecoveryMethod(HInstruction* i
   }
 
   if (Runtime::Current()->UseCHA()) {
+    if (Runtime::Current()->UseDeoptForCHA()) {
+      return kRecoveryNotNeeded;
+    }
     // For CHA, we prefer code versioning, because the type guard is not perfect.
     // We want to avoid the cost of deopt, when the type guard fails.
     return kRecoveryCodeVersioning;

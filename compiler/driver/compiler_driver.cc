@@ -1805,7 +1805,8 @@ static void DecodeCHAValue(size_t value,
 static bool EncodeCHAValue(size_t& value,
                            CompilerDriver::CHAType ret_value,
                            size_t index) {
-  if (index <= static_cast<size_t>(-1) >> 2 && static_cast<size_t>(ret_value) <= 3) {
+  if (index <= (std::numeric_limits<size_t>::max() >> 2)
+      && static_cast<size_t>(ret_value) <= 3) {
     value = static_cast<size_t>(ret_value) | (index << 2);
     return true;
   }
@@ -1840,7 +1841,7 @@ CompilerDriver::CHAType CompilerDriver::CheckCHA(std::string& match_class,
   std::vector<size_t> match_class_index;
   mirror::Class* methods_class = resolved_method->GetDeclaringClass();
   std::string temp;
-  int num_of_match = 0;
+  uint32_t num_of_match = 0;
   std::string parent(methods_class->GetDescriptor(&temp));
   // Search all children.
   bool result = class_linker->SearchChildren(match_class_index, parent, num_of_match,

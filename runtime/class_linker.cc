@@ -526,7 +526,7 @@ void ClassLinker::AddCHA(mirror::Class* parent, mirror::Class* child) {
 
 bool ClassLinker::SearchChildren(std::vector<size_t>& match_class_index,
                                  std::string parent,
-                                 int32_t& num_of_match,
+                                 uint32_t& num_of_match,
                                  ArtMethod* resolved_method,
                                  Handle<mirror::ClassLoader> class_loader) {
   Thread* self = Thread::Current();
@@ -572,9 +572,9 @@ bool ClassLinker::SearchChildren(std::vector<size_t>& match_class_index,
       }
       for (auto& method : klass->GetVirtualMethods(pointer_size)) {
         ArtMethod* const np_method = method.GetInterfaceMethodIfProxy(pointer_size);
-        if (!np_method->IsAbstract() &&
-            strcmp(resolved_method_name, np_method->GetName()) == 0 &&
-            resolved_method_signature == np_method->GetSignature()) {
+        if (!np_method->IsAbstract()
+            && strcmp(resolved_method_name, np_method->GetName()) == 0
+            && resolved_method_signature == np_method->GetSignature()) {
           // Find a match.
           num_of_match++;
           match_class_index.push_back(child_index);

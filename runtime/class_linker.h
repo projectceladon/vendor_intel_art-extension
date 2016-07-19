@@ -144,7 +144,7 @@ class ClassLinker {
 
   bool SearchChildren(std::vector<size_t>& match_class_index,
                       std::string parent,
-                      int32_t& num_of_match,
+                      uint32_t& num_of_match,
                       ArtMethod* resolved_method,
                       Handle<mirror::ClassLoader> class_loader)
       SHARED_REQUIRES(Locks::mutator_lock_)
@@ -186,8 +186,8 @@ class ClassLinker {
       SHARED_REQUIRES(Locks::mutator_lock_)
       REQUIRES(!cha_lock_) {
     ReaderMutexLock mu(Thread::Current(), cha_lock_);
-    if (index < cha_child_classes_.size() &&
-        child_index < cha_child_classes_[index].size()) {
+    if (index < cha_child_classes_.size()
+        && child_index < cha_child_classes_[index].size()) {
       return cha_child_classes_[index][child_index];
     }
     return 0;
