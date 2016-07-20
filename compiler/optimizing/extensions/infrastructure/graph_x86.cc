@@ -136,6 +136,7 @@ void HGraph_X86::SplitCriticalEdgeAndUpdateLoopInformation(HBasicBlock* from, HB
 void HGraph_X86::RebuildDomination() {
   ClearDominanceInformation();
   ComputeDominanceInformation();
+  ComputeTryBlockInformation();
 }
 
 void HGraph_X86::MovePhi(HPhi* phi, HBasicBlock* to_block) {
