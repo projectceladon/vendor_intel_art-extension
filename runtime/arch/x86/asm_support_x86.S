@@ -68,6 +68,14 @@
     #define SIZE(name) .size name, .-name
 #endif
 
+#if defined(__APPLE__)
+    #define STARTFCNSECTION(name)
+    #define ENDFCNSECTION
+#else
+    #define STARTFCNSECTION(name) .pushsection .text.##name,"ax",@progbits
+    #define ENDFCNSECTION .popsection
+#endif
+
     // CFI support.
 #if !defined(__APPLE__)
     #define CFI_STARTPROC .cfi_startproc
@@ -115,6 +123,7 @@ MACRO0(ALIGN_FUNCTION_ENTRY)
 END_MACRO
 
 MACRO1(DEFINE_FUNCTION, c_name)
+    STARTFCNSECTION(\c_name)
     FUNCTION_TYPE(SYMBOL(\c_name))
     ASM_HIDDEN CALLVAR(c_name)
     .globl CALLVAR(c_name)
@@ -128,6 +137,7 @@ END_MACRO
 MACRO1(END_FUNCTION, c_name)
     CFI_ENDPROC
     SIZE(SYMBOL(\c_name))
+    ENDFCNSECTION
 END_MACRO
 
 MACRO1(PUSH, reg)
