@@ -87,7 +87,6 @@ bool HConstantCalculationSinking::HasNoDependenciesWithinLoop(HInstruction* cand
  * @param accumulator_list the calculation of the accumulators to be considered by the pass.
  */
 void HConstantCalculationSinking::FillAccumulator(HLoopInformation_X86* loop_info,
-         HInductionVariable* choosen_iv,
          std::vector<AccumulatorAssociation>& accumulator_list) const {
   // Determine if it is a linear function.
   // Check it has no dependencies.
@@ -98,11 +97,6 @@ void HConstantCalculationSinking::FillAccumulator(HLoopInformation_X86* loop_inf
     AccumulatorAssociation accum_assoc;
 
     HPhi* phi = it.Current()->AsPhi();
-
-    // Skip PHI relates to the loop BIV.
-    if (phi->GetId() == choosen_iv->GetSsaId()) {
-      continue;
-    }
 
     size_t input_count = phi->InputCount();
     // For now accept only PHI nodes that have two uses and one define.
@@ -836,7 +830,7 @@ HInductionVariable* HConstantCalculationSinking::GetBasicInductionVariable(
         HLoopInformation_X86* loop_info) const {
   HLoopBoundInformation bound_info = loop_info->GetBoundInformation();
 
-  return bound_info.loop_biv_;
+  return bound_info.GetLoopBIV();
 }
 
 static void UpdateAllUsersOutsideLoop(HLoopInformation_X86* loop_info,
@@ -975,7 +969,7 @@ void HConstantCalculationSinking::HandleLoop(HLoopInformation_X86* loop_info) co
   }
 
   // Step 2: Find the accumulators that are eligible.
-  FillAccumulator(loop_info, choosen_iv, accumulator_list);
+  FillAccumulator(loop_info, accumulator_list);
 
   // Step 3: Do constant calculation on our accumulator.
   DoConstantCalculation(accumulator_list, loop_info, to_sink);

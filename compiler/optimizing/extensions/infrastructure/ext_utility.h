@@ -49,6 +49,12 @@ class HInstruction;
       } \
     } while (false)
 
+  // PRINT_OSTREAM_MESSAGE(os, prefix, x << yy << zz);
+  #define PRINT_OSTREAM_MESSAGE(os, prefix, ...) \
+    do { \
+      os << prefix << ": " << __VA_ARGS__ << std::endl; \
+    } while (false)
+
 class HAllUseIterator {
  public:
   explicit HAllUseIterator(HInstruction* insn) :

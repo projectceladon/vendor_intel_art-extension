@@ -56,9 +56,9 @@ namespace art {
     HLoopInformation_X86* inner_loop = inner_iter.Current();
     const HLoopBoundInformation& bound_info = inner_loop->GetBoundInformation();
 
-    ASSERT_EQ(bound_info.biv_start_value_, lower);
-    ASSERT_EQ(bound_info.biv_end_value_, upper);
-    ASSERT_EQ(bound_info.loop_biv_->GetIncrement(), inc);
+    ASSERT_EQ(bound_info.GetIntegralBIVStartValue(), lower);
+    ASSERT_EQ(bound_info.GetIntegralBIVEndValue(), upper);
+    ASSERT_EQ(bound_info.GetLoopBIV()->GetIncrement(), inc);
 
     ArenaVector<HInductionVariable*>& list = inner_loop->GetInductionVariables();
     ASSERT_EQ(static_cast<int>(list.size()), nbr_ivs);
@@ -83,9 +83,9 @@ namespace art {
     HLoopInformation_X86* inner_loop = inner_iter.Current();
     const HLoopBoundInformation& bound_info = inner_loop->GetBoundInformation();
 
-    ASSERT_EQ(bound_info.biv_start_value_, lower);
-    ASSERT_EQ(bound_info.biv_end_value_, upper);
-    ASSERT_LT(fabs(bound_info.loop_biv_->GetFPIncrement() - inc), 0.001);
+    ASSERT_EQ(bound_info.GetIntegralBIVStartValue(), lower);
+    ASSERT_EQ(bound_info.GetIntegralBIVEndValue(), upper);
+    ASSERT_LT(fabs(bound_info.GetLoopBIV()->GetFPIncrement() - inc), 0.001);
 
     ArenaVector<HInductionVariable*>& list = inner_loop->GetInductionVariables();
     ASSERT_EQ(static_cast<int>(list.size()), nbr_ivs);

@@ -324,6 +324,9 @@ void HFormBottomLoops::RewriteLoop(HLoopInformation_X86* loop,
   // Here H denotes former Header,
   //      B denotes former Back Edge,
   //      C denotes Clone of Header.
+  if (IsVerbose()) {
+    loop->Dump(LOG(INFO));
+  }
 }
 
 

@@ -61,7 +61,7 @@ class HConstantCalculationSinking : public HOptimization_X86 {
   bool HasNoDependenciesWithinLoop(HInstruction* candidate, HLoopInformation_X86* loop_info,
           HInstruction* phi) const;
 
-  void FillAccumulator(HLoopInformation_X86* loop_info, HInductionVariable* choosen_iv,
+  void FillAccumulator(HLoopInformation_X86* loop_info,
           std::vector<AccumulatorAssociation>& accumulator_list) const;
 
   bool FindOrigin(AccumulatorAssociation& accum_assoc, bool& seen_base_twice) const;

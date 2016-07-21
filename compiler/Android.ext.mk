@@ -24,10 +24,12 @@ ifeq ($(findstring graph_x86,$(LIBART_COMPILER_SRC_FILES)),)
   VENDOR_EXTENSIONS_FOLDER := optimizing/extensions
 
   COMPILER_EXTENSION_SRC_FILES := \
+    $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/bound_information.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/cloning.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/ext_alias.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/ext_utility.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/graph_x86.cc \
+    $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/induction_variable.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/loop_information.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/loop_unrolling.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/infrastructure/pass_framework.cc \

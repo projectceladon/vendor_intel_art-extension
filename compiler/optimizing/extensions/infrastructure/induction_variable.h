@@ -23,8 +23,10 @@
 #ifndef ART_COMPILER_OPTIMIZING_EXTENSIONS_INFRASTRUCTURE_INDUCTION_VARIABLE_H_
 #define ART_COMPILER_OPTIMIZING_EXTENSIONS_INFRASTRUCTURE_INDUCTION_VARIABLE_H_
 
-#include "nodes.h"
+#include <iosfwd>
+
 #include "constant_x86.h"
+#include "nodes.h"
 
 namespace art {
 /*
@@ -33,36 +35,20 @@ namespace art {
  */
 class HInductionVariable {
  public:
-  int ssa_reg_;                   /**< @brief The ssa register defined by expression for IV. */
-  HConstant_X86 loop_increment_;  /**< @brief Loop increment. Only relevant for basic IV to keep the loop increment/decrement. */
-  HInstruction* linear_insn_;     /**< @brief HInstruction associated with the linear operation. */
-  HPhi* phi_insn_;                /**< @brief HPhi associated with the phi node. May be null but never for Basic IV. */
-
   /**
    * @brief Constructor for a Basic IV.
-   * @param ssa_sreg The ssa reg that is the define of linear operation.
    * @param increment The increment/decrement.
    * @param is_wide is the IV wide?
    * @param is_fp is the IV FP?
    * @param linear_insn The linear operation (cannot be null).
    * @param phi_insn The phi for this BIV (cannot be null).
    */
-  HInductionVariable(int ssa_sreg, HConstant* increment, bool is_wide, bool is_fp,
+  HInductionVariable(HConstant* increment, bool is_wide, bool is_fp,
                      HInstruction* linear_insn, HPhi* phi_insn) :
-    ssa_reg_(ssa_sreg),
     loop_increment_(increment, is_wide, is_fp),
     linear_insn_(linear_insn), phi_insn_(phi_insn) {
       DCHECK(linear_insn_ != nullptr);
       DCHECK(phi_insn_ != nullptr);
-  }
-
-  /**
-   * @brief Used to obtain the ssa register.
-   * @details For basic IVs, it provides same ssa register as GetBasicSsaReg.
-   * @return Returns the ssa register that is define of linear operation.
-   */
-  int GetSsaId() const {
-    return ssa_reg_;
   }
 
   /**
@@ -197,21 +183,19 @@ class HInductionVariable {
     return IsBasic() && IsIncrementOne();
   }
 
-  void Dump() const {
-    if (IsFP()) {
-      LOG(INFO) << "IV: ssa_reg: " << ssa_reg_ <<
-        " wide: " << IsWide() << ", FP: " << IsFP() << ", loop increment: " << GetFPIncrement();
-    } else {
-      LOG(INFO) << "IV: ssa_reg: " << ssa_reg_ <<
-        " wide: " << IsWide() << ", FP: " << IsFP() << ", loop increment: " << GetIncrement();
-    }
-  }
+  void Dump(std::ostream& os) const;
 
   static void* operator new(size_t size ATTRIBUTE_UNUSED, ArenaAllocator* arena) {
     return arena->Alloc(sizeof(HInductionVariable), kArenaAllocMisc);
   }
 
-  static void operator delete(void* p ATTRIBUTE_UNUSED) {}  // Nop.
+ private:
+  // Loop increment. Only relevant for basic IV to keep the loop increment/decrement.
+  HConstant_X86 loop_increment_;
+  // HInstruction associated with the linear operation.
+  HInstruction* linear_insn_;
+  // HPhi associated with the phi node. May be null but never for Basic IV.
+  HPhi* phi_insn_;
 };
 }  // namespace art
 #endif  // ART_COMPILER_OPTIMIZING_EXTENSIONS_INFRASTRUCTURE_INDUCTION_VARIABLE_H_

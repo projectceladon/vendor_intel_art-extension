@@ -22,6 +22,8 @@
 #ifndef ART_OPT_INFRASTRUCTURE_LOOP_INFORMATION_INSIDE_H_
 #define ART_OPT_INFRASTRUCTURE_LOOP_INFORMATION_INSIDE_H_
 
+#include "bound_information.h"
+
 /*
  * This is done without namespace in order to be included
  * both in loop_information.h and nodes.h.
@@ -150,7 +152,7 @@ class HLoopInformation_X86 : public HLoopInformation {
     * @return the basic induction variable.
     */
   HInductionVariable* GetBasicIV() const {
-    return bound_info_.loop_biv_;
+    return bound_info_.GetLoopBIV();
   }
 
   /**
@@ -270,7 +272,7 @@ class HLoopInformation_X86 : public HLoopInformation {
    * @return whether we know the number of iterations.
    */
   bool HasKnownNumIterations() const {
-    return (bound_info_.num_iterations_ != -1);
+    return (bound_info_.GetNumIterations() != -1);
   }
 
   /**
@@ -519,6 +521,13 @@ class HLoopInformation_X86 : public HLoopInformation {
    */
   uint64_t AverageLoopIterationCount(bool& valid) const;
 
+  /**
+    * @brief Dumps the details about this loop info.
+    */
+  void Dump(std::ostream& os);
+
+  static const char* kLoopDumpPrefix;
+
  protected:
   /**
    * @brief Find the constant entry SSA associated to the Phi instruction.
@@ -550,7 +559,7 @@ class HLoopInformation_X86 : public HLoopInformation {
   HLoopInformation_X86* inner_;
 
   /** @brief The bound information. */
-  HLoopBoundInformation bound_info_;
+  HLoopBoundInformation bound_info_ = HLoopBoundInformation();
 
   /** @brief Pointer to the split HTestSuspend, if present. */
   HTestSuspend* test_suspend_;

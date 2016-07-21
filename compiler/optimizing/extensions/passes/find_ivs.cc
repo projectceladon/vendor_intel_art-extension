@@ -270,16 +270,13 @@ void HFindInductionVariables::DetectAndInitializeBasicIV(HLoopInformation_X86* i
             ArenaAllocator* arena = graph_->GetArena();
             ArenaVector<HInductionVariable*>& iv_list = info->GetInductionVariables();
 
-            int ssa_reg = phi->GetId();
-
-            HInductionVariable* iv_info = new (arena) HInductionVariable(ssa_reg, right->AsConstant(), is_wide, is_fp, candidate, phi);
+            HInductionVariable* iv_info = new (arena) HInductionVariable(right->AsConstant(),
+                                                                         is_wide, is_fp,
+                                                                         candidate, phi);
             DCHECK(iv_info != nullptr);
 
             iv_list.push_back(iv_info);
             MaybeRecordStat(MethodCompilationStat::kIntelBIVFound);
-            if (IsVerbose()) {
-              iv_info->Dump();
-            }
           }
         }
       }
@@ -297,6 +294,9 @@ void HFindInductionVariables::Run() {
     FindInductionVariablesHelper(current);
     // And also calculate the loop bounds.
     current->ComputeBoundInformation();
+    if (IsVerbose()) {
+      current->Dump(LOG(INFO));
+    }
   }
   PRINT_PASS_OSTREAM_MESSAGE(this, "Find IVs: End " << GetMethodName(graph));
 }

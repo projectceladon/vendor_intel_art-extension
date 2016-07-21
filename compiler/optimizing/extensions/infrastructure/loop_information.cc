@@ -30,6 +30,8 @@
 
 namespace art {
 
+const char* HLoopInformation_X86::kLoopDumpPrefix = "dump_loop";
+
 /**
  * @details Add takes a new LoopInformation and determines if info is nested_ with
  *   this instance or not.
@@ -221,7 +223,7 @@ bool HLoopInformation_X86::ComputeBoundInformation() {
     return false;
   }
 
-  bound_info_.loop_biv_ = iv_info;
+  bound_info_.SetLoopBIV(iv_info);
 
   // We have the IV, the other must be a constant.
   HInstruction* cst = is_iv_second_use ? first_element : second_element;
@@ -231,8 +233,7 @@ bool HLoopInformation_X86::ComputeBoundInformation() {
     return false;
   }
 
-  bound_info_.constant_bound_ = constant;
-  bound_info_.is_bound_constant_ = true;
+  bound_info_.SetConstantBound(constant);
 
   // If the IV is the second use, flip the opcode so we treat it as if it is first.
   if (is_iv_second_use) {
@@ -245,25 +246,25 @@ bool HLoopInformation_X86::ComputeBoundInformation() {
   }
 
   // Now we are at point where we know we have form: BIV cond INV.
-  if (bound_info_.loop_biv_->IsIncrementPositive()) {
+  if (bound_info_.GetLoopBIV()->IsIncrementPositive()) {
     // This is a simple count up loop.
-    bound_info_.is_simple_count_up_ = true;
-    bound_info_.comparison_condition_ = comparison_condition;
-  } else if (bound_info_.loop_biv_->IsIncrementNegative()) {
+    bound_info_.SetSimpleCountUp();
+    bound_info_.SetComparisonCondition(comparison_condition);
+  } else if (bound_info_.GetLoopBIV()->IsIncrementNegative()) {
     // This is a simple count down loop.
-    bound_info_.is_simple_count_down_ = true;
-    bound_info_.comparison_condition_ = comparison_condition;
+    bound_info_.SetSimpleCountDown();
+    bound_info_.SetComparisonCondition(comparison_condition);
   }
 
   // If this is a simple count up loop and we know the upper bound, see if we can determine
   // the number of iterations.
-  HPhi* phi = bound_info_.loop_biv_->GetPhiInsn();
+  HPhi* phi = bound_info_.GetLoopBIV()->GetPhiInsn();
   HConstant* entry_value = FindBIVEntrySSA(phi);
 
   // Did we find a constant?
   if (entry_value != nullptr) {
     if (!is_fp) {
-      int64_t increment = bound_info_.loop_biv_->GetIncrement();
+      int64_t increment = bound_info_.GetLoopBIV()->GetIncrement();
       DCHECK_NE(increment, 0);
 
       int64_t start_value = 0, end_value = 0;
@@ -273,7 +274,7 @@ bool HLoopInformation_X86::ComputeBoundInformation() {
         return false;
       }
 
-      if (!GetIntConstantValue(bound_info_.constant_bound_, end_value)) {
+      if (!GetIntConstantValue(bound_info_.GetConstantBound(), end_value)) {
         return false;
       }
 
@@ -286,7 +287,7 @@ bool HLoopInformation_X86::ComputeBoundInformation() {
         std::numeric_limits<int32_t>::max();
 
       // Normalize conditions to get rid of 'equal' conditions.
-      if (bound_info_.comparison_condition_ == kCondLE) {
+      if (bound_info_.GetComparisonCondition() == kCondLE) {
         if (end_value == max_value) {
           // i <= MAX_VALUE is an infinite loop.
           return false;
@@ -295,8 +296,8 @@ bool HLoopInformation_X86::ComputeBoundInformation() {
           // i <= 14 is equivalent to i < 15.
           end_value += 1;
         }
-        bound_info_.comparison_condition_ = kCondLT;
-      } else if (bound_info_.comparison_condition_ == kCondGE) {
+        bound_info_.SetComparisonCondition(kCondLT);
+      } else if (bound_info_.GetComparisonCondition() == kCondGE) {
         if (end_value == min_value) {
           // i >= MIN_VALUE is an infinite loop.
           return false;
@@ -305,12 +306,12 @@ bool HLoopInformation_X86::ComputeBoundInformation() {
           // i >= 14 is equivalent to i > 13.
           end_value -= 1;
         }
-        bound_info_.comparison_condition_ = kCondGT;
+        bound_info_.SetComparisonCondition(kCondGT);
       }
 
-      if (bound_info_.is_simple_count_up_) {
+      if (bound_info_.IsSimpleCountUp()) {
         // Verify condition.
-        if (bound_info_.comparison_condition_ != kCondLT) {
+        if (bound_info_.GetComparisonCondition() != kCondLT) {
           return false;
         }
 
@@ -327,9 +328,9 @@ bool HLoopInformation_X86::ComputeBoundInformation() {
         if ((max_value - increment + 1) < end_value) {
           return false;
         }
-      } else if (bound_info_.is_simple_count_down_) {
+      } else if (bound_info_.IsSimpleCountDown()) {
         // The same logic is for count down loops.
-        if (bound_info_.comparison_condition_ != kCondGT) {
+        if (bound_info_.GetComparisonCondition() != kCondGT) {
           return false;
         }
 
@@ -353,9 +354,9 @@ bool HLoopInformation_X86::ComputeBoundInformation() {
       }
 
       // Fill the structure.
-      bound_info_.biv_start_value_ = start_value;
-      bound_info_.biv_end_value_ = end_value;
-      bound_info_.num_iterations_ = num_iterations;
+      bound_info_.SetIntegralBIVStartValue(start_value);
+      bound_info_.SetIntegralBIVEndValue(end_value);
+      bound_info_.SetNumIterations(num_iterations);
     } else {
       // Floating point is handled here.
       return FillFloatingPointBound(entry_value, is_wide);
@@ -373,7 +374,7 @@ int64_t HLoopInformation_X86::GetNumIterations(HBasicBlock* bb) const {
   DCHECK(bb != nullptr);
   DCHECK(ExecutedPerIteration(bb));
 
-  int64_t number_of_biv_increments = bound_info_.num_iterations_;
+  int64_t number_of_biv_increments = bound_info_.GetNumIterations();
 
   if (number_of_biv_increments == -1) {
     // The number of iterations for this loop is unknown.
@@ -381,11 +382,11 @@ int64_t HLoopInformation_X86::GetNumIterations(HBasicBlock* bb) const {
   }
 
   HInductionVariable* iv = GetBasicIV();
-  if (iv == nullptr || iv->linear_insn_ == nullptr) {
+  if (iv == nullptr || iv->GetLinearInsn() == nullptr) {
     return -1;
   }
 
-  HBasicBlock* biv_increment_bb = iv->linear_insn_->GetBlock();
+  HBasicBlock* biv_increment_bb = iv->GetLinearInsn()->GetBlock();
   DCHECK(biv_increment_bb != nullptr);
   HBasicBlock* exit_block = GetExitBlock();
 
@@ -427,7 +428,7 @@ int64_t HLoopInformation_X86::GetNumIterations(HBasicBlock* bb) const {
 }
 
 bool HLoopInformation_X86::FillFloatingPointBound(HConstant* entry_value, bool is_double) {
-  double increment = bound_info_.loop_biv_->GetFPIncrement();
+  double increment = bound_info_.GetLoopBIV()->GetFPIncrement();
   DCHECK(increment != 0.0);
 
   // Get the start and end values with error checking.
@@ -437,7 +438,7 @@ bool HLoopInformation_X86::FillFloatingPointBound(HConstant* entry_value, bool i
     return false;
   }
 
-  if (!GetFPConstantValue(bound_info_.constant_bound_, end_value)) {
+  if (!GetFPConstantValue(bound_info_.GetConstantBound(), end_value)) {
     return false;
   }
 
@@ -546,17 +547,17 @@ bool HLoopInformation_X86::FillFloatingPointBound(HConstant* entry_value, bool i
     // So we need to consider case when the condition is not
     // strict and the variable becomes equal to upper bound.
     DCHECK_EQ(mantissa_start + mantissa_inc * num_iterations, mantissa_end);
-    if (bound_info_.comparison_condition_ == kCondLE
-        || bound_info_.comparison_condition_ == kCondGE) {
+    if (bound_info_.GetComparisonCondition() == kCondLE
+        || bound_info_.GetComparisonCondition() == kCondGE) {
       num_iterations++;
     }
   }
 
-  bound_info_.biv_start_value_ = start_value;
-  bound_info_.biv_end_value_ = end_value;
+  bound_info_.SetFPBIVStartValue(start_value);
+  bound_info_.SetFPBIVEndValue(end_value);
 
   // Check for overflows and compute the number of iterations for this loop.
-  bound_info_.num_iterations_ = num_iterations;
+  bound_info_.SetNumIterations(num_iterations);
   return true;
 }
 
@@ -1412,6 +1413,26 @@ uint64_t HLoopInformation_X86::AverageLoopIterationCount(bool& valid) const {
 
   // We never entered the loop at all.
   return 0;
+}
+
+void HLoopInformation_X86::Dump(std::ostream& os) {
+  const char* prefix = HLoopInformation_X86::kLoopDumpPrefix;
+  const char* separator = "====";
+  PRINT_OSTREAM_MESSAGE(os, prefix, separator
+    << " Begin loop #" << GetHeader()->GetBlockId() << " " << separator);
+  HLoopInformation::Dump(os);
+  PRINT_OSTREAM_MESSAGE(os, prefix, "Depth = " << GetDepth());
+  if (GetDepth() > 0) {
+    DCHECK(GetParent() != nullptr);
+    PRINT_OSTREAM_MESSAGE(os, prefix,
+      "\tParent loop #" << GetParent()->GetHeader()->GetBlockId());
+  }
+  PRINT_OSTREAM_MESSAGE(os, prefix, "The loop is " << (IsBottomTested() ? "" : "not ")
+    << "bottom tested");
+  PRINT_OSTREAM_MESSAGE(os, prefix, "Bound information:");
+  bound_info_.Dump(os);
+  PRINT_OSTREAM_MESSAGE(os, prefix, separator
+    << " End loop #" << GetHeader()->GetBlockId() << " " << separator);
 }
 
 }  // namespace art

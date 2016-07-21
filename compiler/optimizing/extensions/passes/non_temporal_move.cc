@@ -95,13 +95,13 @@ bool HNonTemporalMove::Gate(HLoopInformation_X86* loop_info, ArraySets& array_se
 
   // The loop must be a simple count up loop.
   const HLoopBoundInformation& bound_info = loop_info->GetBoundInformation();
-  if (!bound_info.is_simple_count_up_) {
+  if (!bound_info.IsSimpleCountUp()) {
     PRINT_PASS_OSTREAM_MESSAGE(this, "Loop is not a simple count up loop");
     return false;
   }
 
   // The IV increment must be 1.
-  HInductionVariable* iv = bound_info.loop_biv_;
+  HInductionVariable* iv = bound_info.GetLoopBIV();
   DCHECK(iv != nullptr);
   if (!iv->IsBasicAndIncrementOf1()) {
     PRINT_PASS_OSTREAM_MESSAGE(this, "Not a basic IV with increment 1");
