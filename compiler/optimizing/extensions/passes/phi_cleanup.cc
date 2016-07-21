@@ -51,6 +51,10 @@ void HPhiCleanup::CleanUpPhis() {
   // Replace Phi(x, x, ... , x) with x.
   for (HPostOrderIterator it(*graph_); !it.Done(); it.Advance()) {
     HBasicBlock* block = it.Current();
+    // Inputs of a CatchPhi don't dominate the catch block and DCHECK below fails.
+    if (block->IsCatchBlock()) {
+      continue;
+    }
     for (HInstructionIterator phi_it(block->GetPhis());
                               !phi_it.Done(); phi_it.Advance()) {
       HPhi* phi = phi_it.Current()->AsPhi();
@@ -62,7 +66,7 @@ void HPhiCleanup::CleanUpPhis() {
         block->RemovePhi(phi);
         MaybeRecordStat(MethodCompilationStat::kIntelPhiNodeEliminated);
       } else if (RemoveClique(phi, seen_insns)) {
-         PRINT_PASS_OSTREAM_MESSAGE(this, "Clique removed successfully");
+        PRINT_PASS_OSTREAM_MESSAGE(this, "Clique removed successfully");
       }
     }
   }
