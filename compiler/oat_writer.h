@@ -214,6 +214,9 @@ class OatWriter {
     return compiler_driver_;
   }
 
+  // Set of important hot methods to be co-located.
+  typedef std::set<MethodReference, MethodReferenceComparator> MethodRefSet;
+
  private:
   class DexFileSource;
   class OatClass;
@@ -232,10 +235,18 @@ class OatWriter {
   class InitImageMethodVisitor;
   class WriteCodeMethodVisitor;
   class WriteMapMethodVisitor;
+  class HotMethodInserterVisitor;
+
 
   // Visit all the methods in all the compiled dex files in their definition order
   // with a given DexMethodVisitor.
   bool VisitDexMethods(DexMethodVisitor* visitor);
+
+  // Visit all the methods in all the compiled dex files in their definition order
+  // with a given OatDexMethodVisitor.
+  // Do this twice, allowing two passes through the data.  Notify the visitor
+  // which pass this is.
+  bool VisitDexMethodsTwice(OatDexMethodVisitor* visitor);
 
   size_t InitOatHeader(InstructionSet instruction_set,
                        const InstructionSetFeatures* instruction_set_features,
@@ -272,6 +283,8 @@ class OatWriter {
                              const std::vector<std::unique_ptr<const DexFile>>& opened_dex_files);
   bool WriteCodeAlignment(OutputStream* out, uint32_t aligned_code_delta);
   void SetMultiOatRelativePatcherAdjustment();
+
+  void AddHotBootMethods();
 
   enum class WriteState {
     kAddingDexFileSources,
@@ -314,6 +327,9 @@ class OatWriter {
 
   // Offset of the oat data from the start of the mmapped region of the elf file.
   size_t oat_data_offset_;
+
+  // Hot methods to be processed first.
+  MethodRefSet hot_methods_;
 
   // data to write
   std::unique_ptr<OatHeader> oat_header_;

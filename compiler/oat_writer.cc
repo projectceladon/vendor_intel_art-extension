@@ -484,6 +484,10 @@ void OatWriter::PrepareLayout(const CompilerDriver* compiler,
   InstructionSet instruction_set = compiler_driver_->GetInstructionSet();
   CHECK_EQ(instruction_set, oat_header_->GetInstructionSet());
 
+  if (compiling_boot_image_) {
+    AddHotBootMethods();
+  }
+
   uint32_t offset = size_;
   {
     TimingLogger::ScopedTiming split("InitOatClasses", timings_);
@@ -576,7 +580,9 @@ class OatWriter::OatDexMethodVisitor : public DexMethodVisitor {
   OatDexMethodVisitor(OatWriter* writer, size_t offset)
     : DexMethodVisitor(writer, offset),
       oat_class_index_(0u),
-      method_offsets_index_(0u) {
+      method_offsets_index_(0u),
+      hot_methods_(nullptr),
+      initial_pass_(false) {
   }
 
   bool StartClass(const DexFile* dex_file, size_t class_def_index) {
@@ -591,9 +597,53 @@ class OatWriter::OatDexMethodVisitor : public DexMethodVisitor {
     return DexMethodVisitor::EndClass();
   }
 
+  void SetInitialPass(bool val) {
+    initial_pass_ = val;
+  }
+
+  bool IsInitialPass() const {
+    return initial_pass_;
+  }
+
+  bool IsFinalPass() const {
+    return !initial_pass_;
+  }
+
+  virtual void Reset() {
+    oat_class_index_ = 0;
+    method_offsets_index_ = 0;
+  }
+
+  void SetHotMethods(MethodRefSet* hot_methods) {
+    hot_methods_ = hot_methods;
+  }
+
+  bool IsHot(const MethodReference& method) {
+    if (hot_methods_ == nullptr) {
+      // Only process in the final pass.
+      return false;
+    }
+    return hot_methods_->find(method) != hot_methods_->end();
+  }
+
+  bool ShouldProcess(const MethodReference& method) {
+    if (hot_methods_ == nullptr) {
+      return IsFinalPass();
+    }
+
+    // Process hot methods in the initial pass, and cold ones in the final pass.
+    bool is_hot = IsHot(method);
+    if (IsInitialPass()) {
+      return is_hot;
+    }
+    return !is_hot;
+  }
+
  protected:
   size_t oat_class_index_;
   size_t method_offsets_index_;
+  MethodRefSet* hot_methods_;
+  bool initial_pass_;
 };
 
 class OatWriter::InitOatClassesMethodVisitor : public DexMethodVisitor {
@@ -669,7 +719,7 @@ class OatWriter::InitCodeMethodVisitor : public OatDexMethodVisitor {
 
   bool EndClass() {
     OatDexMethodVisitor::EndClass();
-    if (oat_class_index_ == writer_->oat_classes_.size()) {
+    if (IsFinalPass() && oat_class_index_ == writer_->oat_classes_.size()) {
       offset_ = writer_->relative_patcher_->ReserveSpaceEnd(offset_);
     }
     return true;
@@ -681,6 +731,12 @@ class OatWriter::InitCodeMethodVisitor : public OatDexMethodVisitor {
     CompiledMethod* compiled_method = oat_class->GetCompiledMethod(class_def_method_index);
 
     if (compiled_method != nullptr) {
+      MethodReference method_ref(dex_file_, it.GetMemberIndex());
+      if (!ShouldProcess(method_ref)) {
+        ++method_offsets_index_;
+        return true;
+      }
+
       // Derived from CompiledMethod.
       uint32_t quick_code_offset = 0;
 
@@ -690,7 +746,6 @@ class OatWriter::InitCodeMethodVisitor : public OatDexMethodVisitor {
 
       // Deduplicate code arrays if we are not producing debuggable code.
       bool deduped = true;
-      MethodReference method_ref(dex_file_, it.GetMemberIndex());
       if (debuggable_) {
         quick_code_offset = writer_->relative_patcher_->GetOffset(method_ref);
         if (quick_code_offset != 0u) {
@@ -836,12 +891,18 @@ class OatWriter::InitMapMethodVisitor : public OatDexMethodVisitor {
     : OatDexMethodVisitor(writer, offset) {
   }
 
-  bool VisitMethod(size_t class_def_method_index, const ClassDataItemIterator& it ATTRIBUTE_UNUSED)
+  bool VisitMethod(size_t class_def_method_index, const ClassDataItemIterator& it)
       SHARED_REQUIRES(Locks::mutator_lock_) {
     OatClass* oat_class = &writer_->oat_classes_[oat_class_index_];
     CompiledMethod* compiled_method = oat_class->GetCompiledMethod(class_def_method_index);
 
     if (compiled_method != nullptr) {
+      MethodReference method_ref(dex_file_, it.GetMemberIndex());
+      if (!ShouldProcess(method_ref)) {
+        ++method_offsets_index_;
+        return true;
+      }
+
       DCHECK_LT(method_offsets_index_, oat_class->method_offsets_.size());
       DCHECK_EQ(oat_class->method_headers_[method_offsets_index_].vmap_table_offset_, 0u);
 
@@ -896,6 +957,10 @@ class OatWriter::InitImageMethodVisitor : public OatDexMethodVisitor {
       DCHECK_LT(method_offsets_index_, oat_class->method_offsets_.size());
       offsets = oat_class->method_offsets_[method_offsets_index_];
       ++method_offsets_index_;
+      MethodReference method_ref(dex_file_, it.GetMemberIndex());
+      if (!ShouldProcess(method_ref)) {
+        return true;
+      }
     }
 
     ClassLinker* linker = Runtime::Current()->GetClassLinker();
@@ -977,7 +1042,7 @@ class OatWriter::WriteCodeMethodVisitor : public OatDexMethodVisitor {
 
   bool EndClass() SHARED_REQUIRES(Locks::mutator_lock_) {
     bool result = OatDexMethodVisitor::EndClass();
-    if (oat_class_index_ == writer_->oat_classes_.size()) {
+    if (IsFinalPass() && oat_class_index_ == writer_->oat_classes_.size()) {
       DCHECK(result);  // OatDexMethodVisitor::EndClass() never fails.
       offset_ = writer_->relative_patcher_->WriteThunks(out_, offset_);
       if (UNLIKELY(offset_ == 0u)) {
@@ -996,6 +1061,12 @@ class OatWriter::WriteCodeMethodVisitor : public OatDexMethodVisitor {
     // No thread suspension since dex_cache_ that may get invalidated if that occurs.
     ScopedAssertNoThreadSuspension tsc(Thread::Current(), __FUNCTION__);
     if (compiled_method != nullptr) {  // ie. not an abstract method
+      MethodReference method_ref(dex_file_, it.GetMemberIndex());
+      if (!ShouldProcess(method_ref)) {
+        ++method_offsets_index_;
+        return true;
+      }
+
       size_t file_offset = file_offset_;
       OutputStream* out = out_;
 
@@ -1288,6 +1359,12 @@ class OatWriter::WriteMapMethodVisitor : public OatDexMethodVisitor {
     const CompiledMethod* compiled_method = oat_class->GetCompiledMethod(class_def_method_index);
 
     if (compiled_method != nullptr) {  // ie. not an abstract method
+      MethodReference method_ref(dex_file_, it.GetMemberIndex());
+      if (!ShouldProcess(method_ref)) {
+        ++method_offsets_index_;
+        return true;
+      }
+
       size_t file_offset = file_offset_;
       OutputStream* out = out_;
 
@@ -1375,6 +1452,24 @@ bool OatWriter::VisitDexMethods(DexMethodVisitor* visitor) {
   return true;
 }
 
+bool OatWriter::VisitDexMethodsTwice(OatDexMethodVisitor* visitor) {
+  if (hot_methods_.empty()) {
+    // Nothing to work with. Just visit everything once.
+    return VisitDexMethods(visitor);
+  }
+
+  visitor->SetInitialPass(true);
+  visitor->SetHotMethods(&hot_methods_);
+  bool result = VisitDexMethods(visitor);
+  if (result) {
+    // First pass worked. Let's try the second pass.
+    visitor->SetInitialPass(false);
+    visitor->Reset();
+    result = VisitDexMethods(visitor);
+  }
+  return result;
+}
+
 size_t OatWriter::InitOatHeader(InstructionSet instruction_set,
                                 const InstructionSetFeatures* instruction_set_features,
                                 uint32_t num_dex_files,
@@ -1422,7 +1517,7 @@ size_t OatWriter::InitOatClasses(size_t offset) {
 
 size_t OatWriter::InitOatMaps(size_t offset) {
   InitMapMethodVisitor visitor(this, offset);
-  bool success = VisitDexMethods(&visitor);
+  bool success = VisitDexMethodsTwice(&visitor);
   DCHECK(success);
   offset = visitor.GetOffset();
 
@@ -1470,7 +1565,7 @@ size_t OatWriter::InitOatCodeDexFiles(size_t offset) {
   #define VISIT(VisitorType)                          \
     do {                                              \
       VisitorType visitor(this, offset);              \
-      bool success = VisitDexMethods(&visitor);       \
+      bool success = VisitDexMethodsTwice(&visitor);  \
       DCHECK(success);                                \
       offset = visitor.GetOffset();                   \
     } while (false)
@@ -1703,7 +1798,7 @@ bool OatWriter::WriteClasses(OutputStream* out) {
 size_t OatWriter::WriteMaps(OutputStream* out, const size_t file_offset, size_t relative_offset) {
   size_t vmap_tables_offset = relative_offset;
   WriteMapMethodVisitor visitor(this, out, file_offset, relative_offset);
-  if (UNLIKELY(!VisitDexMethods(&visitor))) {
+  if (UNLIKELY(!VisitDexMethodsTwice(&visitor))) {
     return 0;
   }
   relative_offset = visitor.GetOffset();
@@ -1747,7 +1842,7 @@ size_t OatWriter::WriteCodeDexFiles(OutputStream* out,
   #define VISIT(VisitorType)                                              \
     do {                                                                  \
       VisitorType visitor(this, out, file_offset, relative_offset);       \
-      if (UNLIKELY(!VisitDexMethods(&visitor))) {                         \
+      if (UNLIKELY(!VisitDexMethodsTwice(&visitor))) {                         \
         return 0;                                                         \
       }                                                                   \
       relative_offset = visitor.GetOffset();                              \
@@ -2470,6 +2565,105 @@ bool OatWriter::OatClass::Write(OatWriter* oat_writer,
   }
   oat_writer->size_oat_class_method_offsets_ += GetMethodOffsetsRawSize();
   return true;
+}
+
+class OatWriter::HotMethodInserterVisitor : public DexMethodVisitor {
+ public:
+  HotMethodInserterVisitor(OatWriter* writer,
+                           std::set<std::string>& sigs,
+                           MethodRefSet& hot_methods)
+    : DexMethodVisitor(writer, 0),
+      sigs_(sigs),
+      hot_methods_(hot_methods) {
+  }
+
+  bool VisitMethod(size_t class_def_method_index ATTRIBUTE_UNUSED,
+                   const ClassDataItemIterator& it) {
+    // Fill in the compiled_methods_ array for methods that have a
+    // CompiledMethod. We track the number of non-null entries in
+    // num_non_null_compiled_methods_ since we only want to allocate
+    // OatMethodOffsets for the compiled methods.
+    uint32_t method_idx = it.GetMemberIndex();
+    if (sigs_.find(PrettyMethod(method_idx, *dex_file_)) != sigs_.end()) {
+      // This is a match for a hot method.
+      MethodReference method_ref(dex_file_, method_idx);
+      hot_methods_.insert(method_ref);
+    }
+    return true;
+  }
+
+ private:
+  const std::set<std::string>& sigs_;
+  MethodRefSet& hot_methods_;
+};
+
+
+void OatWriter::AddHotBootMethods() {
+  // Known hot methods.
+  static const char* known_signatures[] = {
+    // From boot.oat.
+    "int java.lang.String.length()",
+    "int java.lang.String.hashCode()",
+    "void java.lang.Object.<init>()",
+    "java.lang.Object java.util.ArrayList.get(int)",
+    "void java.lang.AbstractStringBuilder.ensureCapacityInternal(int)",
+    "boolean java.lang.String.equals(java.lang.Object)",
+    "int java.util.ArrayList.size()",
+    "java.lang.Object java.lang.ref.Reference.get()",
+    "void java.lang.String.getChars(int, int, char[], int)",
+    "int java.lang.ThreadLocal.-get0(java.lang.ThreadLocal)",
+    "java.lang.ThreadLocal$ThreadLocalMap java.lang.ThreadLocal.getMap(java.lang.Thread)",
+    "java.lang.AbstractStringBuilder java.lang.AbstractStringBuilder.append(java.lang.String)",
+    "java.lang.StringBuilder java.lang.StringBuilder.append(java.lang.String)",
+    "void java.lang.System.arraycopy(java.lang.Object, int, java.lang.Object, int, int)",
+    "java.lang.Object java.lang.ThreadLocal.get()",
+    "java.lang.ThreadLocal$ThreadLocalMap$Entry java.lang.ThreadLocal$ThreadLocalMap.-wrap0(java.lang.ThreadLocal$ThreadLocalMap, java.lang.ThreadLocal)",
+    "java.lang.ThreadLocal$ThreadLocalMap$Entry java.lang.ThreadLocal$ThreadLocalMap.getEntry(java.lang.ThreadLocal)",
+    "char java.lang.String.charAt(int)",
+    "boolean java.lang.Character.isHighSurrogate(char)",
+
+    // From boot-core-libart.oat.
+    "int android.icu.impl.Trie2_16.get(int)",
+    "boolean java.util.concurrent.SynchronousQueue$TransferStack.shouldSpin(java.util.concurrent.SynchronousQueue$TransferStack$SNode)",
+    "boolean android.icu.impl.Trie2$Trie2Iterator.hasNext()",
+    "int android.icu.impl.Trie2$1.map(int)",
+    "int java.lang.CaseMapper.upperIndex(int)",
+    "java.lang.String java.lang.StringFactory.newStringFromChars(char[], int, int)",
+    "char android.icu.impl.LocaleIDParser.next()",
+    "boolean android.icu.impl.LocaleIDParser.isTerminatorOrIDSeparator(char)",
+    "boolean android.icu.impl.LocaleIDParser.isTerminator(char)",
+    "long java.util.concurrent.atomic.AtomicLong.get()",
+    "boolean java.util.concurrent.atomic.AtomicLong.compareAndSet(long, long)",
+
+    // from boot-framework.oat.
+    "void android.util.Base64OutputStream.internalWrite(byte[], int, int, boolean)",
+    "android.util.SparseArray android.util.SparseArray.clone()",
+    "void android.util.SparseArray.clear()",
+    "void android.util.ArrayMap.erase()",
+    "void android.util.ArrayMap.freeArrays(int[], java.lang.Object[], int)",
+    "void android.util.ArrayMap.ensureCapacity(int)",
+    "void com.android.internal.util.FastPrintWriter.appendLocked(char)",
+    "void android.util.SparseArray.remove(int)",
+    "int android.os.Parcel.nativeDataAvail(long)",
+    "void android.os.Parcel.recycle()",
+    "java.lang.Appendable com.android.internal.util.FastPrintWriter.append(java.lang.CharSequence, int, int)",
+    "boolean android.util.ArrayMap.retainAll(java.util.Collection)",
+    "java.io.FileDescriptor android.os.Parcel.dupFileDescriptor(java.io.FileDescriptor)",
+    "boolean android.os.Parcel.pushAllowFds(boolean)",
+    "int android.util.ArrayMap.indexOf(java.lang.Object, int)",
+    "java.io.PrintWriter com.android.internal.util.FastPrintWriter.append(java.lang.CharSequence, int, int)",
+    "int android.os.Parcel.nativeDataSize(long)",
+    "void android.os.Parcel.writeCharSequence(java.lang.CharSequence)",
+    "boolean android.util.ArraySet.equals(java.lang.Object)"
+  };
+
+  std::set<std::string> hot_sigs;
+  for (size_t i = 0, u = arraysize(known_signatures); i < u; i++) {
+    hot_sigs.insert(known_signatures[i]);
+  }
+  HotMethodInserterVisitor visitor(this, hot_sigs, hot_methods_);
+  bool success = VisitDexMethods(&visitor);
+  CHECK(success);
 }
 
 }  // namespace art

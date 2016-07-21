@@ -98,8 +98,6 @@ class ElfDebugInfoWriter {
   std::vector<uint8_t> debug_loc_;
   std::vector<uint8_t> debug_ranges_;
 
-  std::unordered_set<const char*> defined_dex_classes_;  // For CHECKs only.
-
   template<typename ElfTypes2>
   friend class ElfCompilationUnitWriter;
 };
@@ -158,9 +156,6 @@ class ElfCompilationUnitWriter {
         size_t class_offset = StartClassTag(dex_class_desc);
         info_.UpdateUint32(type_attrib_offset, class_offset);
         info_.WriteFlagPresent(DW_AT_declaration);
-        // Check that each class is defined only once.
-        bool unique = owner_->defined_dex_classes_.insert(dex_class_desc).second;
-        CHECK(unique) << "Redefinition of " << dex_class_desc;
         last_dex_class_desc = dex_class_desc;
       }
 
