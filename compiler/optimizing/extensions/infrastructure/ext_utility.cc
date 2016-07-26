@@ -359,8 +359,9 @@ namespace art {
     for (HBasicBlock* back_block : loop->GetBackEdges()) {
       LOG(INFO) << "BackEdge " << back_block->GetBlockId();
     }
-    if (loop->GetExitBlock() != nullptr) {
-      LOG(INFO) << "Exit " << loop->GetExitBlock()->GetBlockId();
+    HBasicBlock* exit_block = loop->GetExitBlock();
+    if (exit_block != nullptr) {
+      LOG(INFO) << "Exit " << exit_block->GetBlockId();
     }
 
     DumpBasicBlock("Pre-header", loop->GetPreHeader());
@@ -369,7 +370,7 @@ namespace art {
       DumpBasicBlock("In-loop", bb_it.Current());
     }
 
-    DumpBasicBlock("Exit", loop->GetExitBlock());
+    DumpBasicBlock("Exit", exit_block);
   }
 
 BlockHotness GetBlockHotness(HBasicBlock* block) {

@@ -402,8 +402,10 @@ class TLEVisitor : public HGraphVisitor {
 
     SWITCH_FOR_JAVA_TYPES(instr, left->GetType(),
       SetError(instr),
-      values_.Overwrite(instr, Value(left_value.i / right_value.i)),
-      values_.Overwrite(instr, Value(left_value.l / right_value.l)),
+      values_.Overwrite(instr, right_value.i == 0 ? SetError(instr) :
+                               Value(left_value.i / right_value.i)),
+      values_.Overwrite(instr, right_value.l == 0 ? SetError(instr) :
+                               Value(left_value.l / right_value.l)),
       values_.Overwrite(instr, Value(left_value.f / right_value.f)),
       values_.Overwrite(instr, Value(left_value.d / right_value.d)));
   }
@@ -437,12 +439,18 @@ class TLEVisitor : public HGraphVisitor {
 
     SWITCH_FOR_JAVA_TYPES(instr, left->GetType(),
       SetError(instr),
-      values_.Overwrite(instr, Value(right_value.i == -1 ? 0 : left_value.i % right_value.i)),
-      values_.Overwrite(instr, Value(right_value.l == -1 ? 0 : left_value.l % right_value.l)),
+      values_.Overwrite(instr, right_value.i == 0 ? SetError(instr) :
+                               Value(right_value.i == -1 ? 0 :
+                                     left_value.i % right_value.i)),
+      values_.Overwrite(instr, right_value.l == 0 ? SetError(instr) :
+                               Value(right_value.l == -1 ? 0 :
+                                     left_value.l % right_value.l)),
       values_.Overwrite(instr,
-        Value(FpRem(left_value.f, right_value.f, [] (float x, float y) -> float { return std::fmodf(x, y); }))),
+        Value(FpRem(left_value.f, right_value.f, [] (float x, float y) ->
+              float { return std::fmodf(x, y); }))),
       values_.Overwrite(instr,
-        Value(FpRem(left_value.d, right_value.d, [] (double x, double y) -> double { return std::fmod(x, y); }))));
+       Value(FpRem(left_value.d, right_value.d, [] (double x, double y) ->
+             double { return std::fmod(x, y); }))));
   }
 
   int32_t ComputeShiftCount(HBinaryOperation* shift_instr) {
@@ -623,9 +631,10 @@ class TLEVisitor : public HGraphVisitor {
 #undef SWITCH_FOR_CAST_TYPES
 #undef SWITCH_FOR_JAVA_TYPES
 
-  void SetError(HInstruction* instr) {
+  Value SetError(HInstruction* instr) {
     is_error_ = true;
     PRINT_PASS_OSTREAM_MESSAGE(opt_, "TLE could not handle " << instr);
+    return Value(0);
   }
 
   ArenaSafeMap<HInstruction*, Value> GetConstants() const {

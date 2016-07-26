@@ -1022,7 +1022,9 @@ void MarkSweep::PausePhase() {
       space::RosAllocSpace* ros = heap_->GetRosAllocSpace();
       accounting::RememberedSet* rem_set = heap_->FindRememberedSetFromSpace(ros);
       // TODO: No need to change to dirty - 1 to avoid CAS.
-      rem_set->ClearCards();
+      if (rem_set != nullptr) {
+        rem_set->ClearCards();
+      }
     }
     UpdateReferences();
     // Revoke buffers before measuring how many objects were moved since the TLABs needs

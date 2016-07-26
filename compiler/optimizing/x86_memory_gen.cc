@@ -189,6 +189,10 @@ class MemoryOperandVisitor : public HGraphVisitor {
         }
 
         HArrayGet* get = rhs->AsArrayGet();
+        if (get == nullptr) { // Paranoid.
+          return false;
+        }
+
         Primitive::Type type = get->GetType();
         uint32_t data_offset = GetArrayOffset(type);
         HInstruction* new_insn = nullptr;
