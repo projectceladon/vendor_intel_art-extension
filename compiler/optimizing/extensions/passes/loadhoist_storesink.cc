@@ -184,33 +184,36 @@ bool LoadHoistStoreSink::DoLoadHoistStoreSink(HLoopInformation_X86* loop,
     get->MoveBefore(pre_header->GetLastInstruction());
 
     // Then, we need to update the loop users of the load.
-    // We create a new phi node and we update the users accordingly.
-    HPhi* phi = new (arena) HPhi(arena, graph_->GetNextInstructionId(),
-                                 2u, HPhi::ToPhiType(get->GetType()));
+    // But if we set the same value as we get, then skip it.
+    if (get != GetValueToSet(set)) {
+      // We create a new phi node and we update the users accordingly.
+      HPhi* phi = new (arena) HPhi(arena, graph_->GetNextInstructionId(),
+                                   2u, HPhi::ToPhiType(get->GetType()));
 
-    // We need to attach a basic block to the phi temporarily because AddUseAt uses the arena
-    // from the instruction's basic block in "ReplaceWith".
-    phi->SetBlock(loop_header);
+      // We need to attach a basic block to the phi temporarily because AddUseAt uses the arena
+      // from the instruction's basic block in "ReplaceWith".
+      phi->SetBlock(loop_header);
 
-    // Replace the users of the get by those of the phi node.
-    get->ReplaceWith(phi);
+      // Replace the users of the get by those of the phi node.
+      get->ReplaceWith(phi);
 
-    // Set the new phi its inputs.
-    phi->SetRawInputAt(0, get);  // First input of the phi is the get.
-    HInstruction* value_to_set = GetValueToSet(set);
+      // Set the new phi its inputs.
+      phi->SetRawInputAt(0, get);  // First input of the phi is the get.
+      HInstruction* value_to_set = GetValueToSet(set);
 
-    phi->SetRawInputAt(1, value_to_set);  // Second input is the input defined in the loop.
+      phi->SetRawInputAt(1, value_to_set);  // Second input is the input defined in the loop.
 
-    // We need to detach the phi temporarily from the basic block because "HBasicBlock::AddPhi"
-    // requires the phi to be detached from a basic block.
-    phi->SetBlock(nullptr);
+      // We need to detach the phi temporarily from the basic block because "HBasicBlock::AddPhi"
+      // requires the phi to be detached from a basic block.
+      phi->SetBlock(nullptr);
 
-    // Finally, add the phi node to the loop pre-header.
-    loop_header->AddPhi(phi);
+      // Finally, add the phi node to the loop pre-header.
+      loop_header->AddPhi(phi);
 
-    if (has_suspend) {
-      suspend_block_created |= CopySetInSuspendBlock(set, loop,
-                                                     phi, graph_->GetArena());
+      if (has_suspend) {
+        suspend_block_created |= CopySetInSuspendBlock(set, loop,
+                                                       phi, graph_->GetArena());
+      }
     }
 
     // Then, we can move the store instruction to the new exit block.
