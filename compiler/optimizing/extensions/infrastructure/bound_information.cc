@@ -57,6 +57,12 @@ void HLoopBoundInformation::Dump(std::ostream& os) {
       case kCondGT:
         cond = ">";
         break;
+      case kCondEQ:
+        cond = "==";
+        break;
+      case kCondNE:
+        cond = "!=";
+        break;
       default:
         DCHECK(false) << "Unexpected condition " << GetComparisonCondition();
         cond = "???";
