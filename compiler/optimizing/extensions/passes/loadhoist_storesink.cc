@@ -190,6 +190,11 @@ bool LoadHoistStoreSink::DoLoadHoistStoreSink(HLoopInformation_X86* loop,
       HPhi* phi = new (arena) HPhi(arena, graph_->GetNextInstructionId(),
                                    2u, HPhi::ToPhiType(get->GetType()));
 
+      // Set reference type if any.
+      if (get->GetType() == Primitive::kPrimNot) {
+        phi->SetReferenceTypeInfo(get->GetReferenceTypeInfo());
+      }
+
       // We need to attach a basic block to the phi temporarily because AddUseAt uses the arena
       // from the instruction's basic block in "ReplaceWith".
       phi->SetBlock(loop_header);
