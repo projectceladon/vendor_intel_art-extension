@@ -686,10 +686,15 @@ ExactProfileFile* ExactProfiler::GetProfileFile(const OatFile& oat_file,
   if (flock(fd, LOCK_SH) < 0) {
     close(fd);
     LOG(FATAL) << "Unable to flock profile file for reading: " << prof_name
-                 << ": " << strerror(errno);
+               << ": " << strerror(errno);
     UNREACHABLE();
   }
-  ::fstat(fd, &file_info);
+  if (::fstat(fd, &file_info) != 0) {
+    close(fd);
+    LOG(FATAL) << "Unable to get fstat: " << prof_name
+               << ": " << strerror(errno);
+    UNREACHABLE();
+  }
   char* buffer = new char[file_info.st_size];
   if (buffer == nullptr) {
     LOG(FATAL) << "Unable to allocate memory for profile file: " << prof_name;

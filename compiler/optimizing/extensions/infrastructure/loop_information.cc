@@ -145,7 +145,8 @@ bool HLoopInformation_X86::ComputeBoundInformation() {
 
   // Check that we exit by IF instruction.
   HInstruction* branch = exit_block->GetPredecessors()[0]->GetLastInstruction();
-  if (!branch->IsIf()) {
+  HIf* branch_if = branch->AsIf();
+  if (branch_if == nullptr) {
     return false;
   }
 
@@ -241,7 +242,7 @@ bool HLoopInformation_X86::ComputeBoundInformation() {
   }
 
   // If the taken block is the exit block, negate the condition so that we deal with.
-  if (branch->AsIf()->IfTrueSuccessor() == exit_block) {
+  if (branch_if->IfTrueSuccessor() == exit_block) {
     comparison_condition = NegateCondition(comparison_condition);
   }
 

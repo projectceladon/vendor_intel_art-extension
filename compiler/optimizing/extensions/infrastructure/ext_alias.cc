@@ -296,6 +296,10 @@ AliasCheck::AliasKind AliasCheck::Array_index_alias(HInstruction* x, HInstructio
 }
 
 AliasCheck::AliasKind AliasCheck::Array_alias(HInstruction* x, HInstruction* y) {
+  // x and y must be arrays get/set.
+  CHECK(x->IsArrayGet() || x->IsArraySet()) << x->GetKind();
+  CHECK(y->IsArrayGet() || y->IsArraySet()) << y->GetKind();
+
   if (x == y) {
     return kMustAlias;
   }

@@ -275,7 +275,11 @@ void HFormBottomLoops::RewriteLoop(HLoopInformation_X86* loop,
   // one due to our pre-checks.
   DCHECK(loop_header->GetLastInstruction() != nullptr);
   HIf* if_insn = loop_header->GetLastInstruction()->AsIf();
-  DCHECK(if_insn != nullptr);
+  if (if_insn == nullptr) {
+    // Impossible due to we checked it in ShouldTransformLoop
+    // But to make KW be happy...
+    return;
+  }
   bool first_successor_is_exit = if_insn->IfTrueSuccessor() == exit_block;
 
   HBasicBlock* first_block = first_successor_is_exit
