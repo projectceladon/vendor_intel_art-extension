@@ -28,7 +28,7 @@
 namespace art {
 
 /**
- * @brief Implements optimizations specific to each instruction.
+ * @brief Builds and fills loop information for all existing loops.
  */
 class HLoopFormation : public HOptimization_X86 {
  public:
