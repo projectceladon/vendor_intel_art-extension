@@ -43,6 +43,7 @@
 #endif
 #include "optimization.h"
 #include "optimizing_compiler_stats.h"
+#include "osr_graph_rebuilder.h"
 #include "pass_framework.h"
 #include "peeling.h"
 #include "phi_cleanup.h"
@@ -96,8 +97,9 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   // If this restriction is removed, it may go right after the
   // sharpening after inlining.
   { "pure_invokes_analysis", "loop_peeling", kPassInsertBefore },
-  { "loop_formation_before_peeling", "pure_invokes_analysis", kPassInsertBefore },
   { "value_propagation_through_heap", "pure_invokes_analysis", kPassInsertBefore },
+  { "osr_graph_rebuilder", "value_propagation_through_heap", kPassInsertBefore },
+  { "loop_formation_before_peeling", "osr_graph_rebuilder", kPassInsertBefore },
   { "form_bottom_loops", "load_store_elimination", kPassInsertAfter },
   { "loop_formation_before_bottom_loops", "form_bottom_loops", kPassInsertBefore },
   { "GVN_after_form_bottom_loops", "form_bottom_loops", kPassInsertAfter },
@@ -397,6 +399,7 @@ void RunOptimizationsX86(HGraph* graph,
                                                                    driver,
                                                                    stats);
   HAbiTransitionHelper* abi_helper = new (arena) HAbiTransitionHelper(graph, driver, stats);
+  HOsrGraphRebuilder* osr_graph_rebuilder = new (arena) HOsrGraphRebuilder(graph, stats);
 
 
   HOptimization_X86* opt_array[] = {
@@ -405,12 +408,13 @@ void RunOptimizationsX86(HGraph* graph,
     sharpening2,
     peeling,
     pure_invokes_analysis,
+    value_propagation_through_heap,
+    osr_graph_rebuilder,
     formation_before_peeling,
     form_bottom_loops,
     formation_before_bottom_loops,
     gvn_after_fbl,
     phi_cleanup,
-    value_propagation_through_heap,
     constant_folding,
     loop_formation,
     find_ivs,

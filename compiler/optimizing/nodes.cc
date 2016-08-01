@@ -491,7 +491,7 @@ void HGraph::InsertConstant(HConstant* constant) {
   HInstruction* insert_before = nullptr;
 
   HInstruction* gota = entry_block_->GetLastInstruction();
-  if (gota != nullptr && gota->IsGoto()) {
+  if (gota != nullptr && gota->IsControlFlow()) {
     HInstruction* suspend_check = gota->GetPrevious();
     if (suspend_check != nullptr && suspend_check->IsSuspendCheck()) {
       insert_before = suspend_check;

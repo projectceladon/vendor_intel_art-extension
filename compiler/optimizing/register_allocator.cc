@@ -303,6 +303,10 @@ void RegisterAllocator::ProcessInstruction(HInstruction* instruction) {
 
   if (locations->WillCall()) {
     BlockRegisters(position, position + 1, /* caller_save_only */ true);
+  } else if (instruction->IsOsrEntryPoint()) {
+    // Block registers for OSR entry point to ensure that their
+    // values are on stack.
+    BlockRegisters(position, position + 1);
   }
 
   for (size_t i = 0; i < instruction->InputCount(); ++i) {

@@ -506,6 +506,69 @@ class HX86ProfileInvoke : public HExpression<2> {
   DISALLOW_COPY_AND_ASSIGN(HX86ProfileInvoke);
 };
 
+// Fictive switch between normal and OSR entries.
+class HOsrFork : public HTemplateInstruction<0> {
+ public:
+  explicit HOsrFork(uint32_t dex_pc = kNoDexPc)
+    : HTemplateInstruction(SideEffects::None(), dex_pc) {}
+
+  bool IsControlFlow() const OVERRIDE { return true; }
+
+  HBasicBlock* GetNormalPath() const {
+    return GetBlock()->GetSuccessors()[0];
+  }
+
+  HBasicBlock* GetOsrPath() const {
+    return GetBlock()->GetSuccessors()[1];
+  }
+
+  DECLARE_INSTRUCTION(OsrFork);
+
+ private:
+  DISALLOW_COPY_AND_ASSIGN(HOsrFork);
+};
+
+// Fictive jump from OSR mode.
+class HOsrJump : public HTemplateInstruction<0> {
+ public:
+  explicit HOsrJump(uint32_t dex_pc = kNoDexPc)
+    : HTemplateInstruction(SideEffects::None(), dex_pc) {}
+
+  bool IsControlFlow() const OVERRIDE { return true; }
+
+  DECLARE_INSTRUCTION(OsrJump);
+
+ private:
+  DISALLOW_COPY_AND_ASSIGN(HOsrJump);
+};
+
+class HOsrFictiveValue : public HExpression<0> {
+ public:
+  HOsrFictiveValue(Primitive::Type parameter_type)
+      : HExpression(parameter_type, SideEffects::None(), kNoDexPc) { }
+
+  bool CanBeMoved() const OVERRIDE { return false; }
+
+  DECLARE_INSTRUCTION(OsrFictiveValue);
+
+ private:
+
+  DISALLOW_COPY_AND_ASSIGN(HOsrFictiveValue);
+};
+
+class HOsrEntryPoint : public HTemplateInstruction<0> {
+ public:
+  explicit HOsrEntryPoint(uint32_t dex_pc = kNoDexPc)
+      : HTemplateInstruction(SideEffects::CanTriggerGC(), dex_pc) {}
+
+  bool CanBeMoved() const OVERRIDE { return false; }
+
+  DECLARE_INSTRUCTION(OsrEntryPoint);
+
+ private:
+  DISALLOW_COPY_AND_ASSIGN(HOsrEntryPoint);
+};
+
 }  // namespace art
 
 #endif  // ART_COMPILER_OPTIMIZING_NODES_X86_H_

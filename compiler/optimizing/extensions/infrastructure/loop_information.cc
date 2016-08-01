@@ -1462,4 +1462,14 @@ bool HLoopInformation_X86::CheckForCatchBlockUsage(HInstruction* insn) const {
   return false;
 }
 
+bool HLoopInformation_X86::IsIrreducibleSlowCheck() {
+  HBasicBlock* header = GetHeader();
+  for (auto bb_it : GetBackEdges()) {
+    if (!header->Dominates(bb_it)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace art

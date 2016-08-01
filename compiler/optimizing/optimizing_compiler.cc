@@ -448,7 +448,7 @@ static void MaybeRunInliner(HGraph* graph,
                             CompilerDriver* driver,
                             OptimizingCompilerStats* stats,
                             const DexCompilationUnit& dex_compilation_unit,
-                            PassObserver* pass_observer,
+                            PassObserver* pass_observer ATTRIBUTE_UNUSED,
                             StackHandleScopeCollection* handles,
                             ArenaVector<HOptimization*>& opt_list) {
   const CompilerOptions& compiler_options = driver->GetCompilerOptions();
@@ -471,14 +471,8 @@ static void MaybeRunInliner(HGraph* graph,
       /* depth */ 0);
   HOptimization* optimizations[] = { inliner };
 
-  // FIXME: We don't invoke SILVER for methods with irreducible
-  // loops because of a crash in full loop unrolling phase.
-  if (graph->HasIrreducibleLoops()) {
-    RunOptimizations(optimizations, arraysize(optimizations), pass_observer);
-  } else {
-    for (size_t i = 0; i < arraysize(optimizations); ++i) {
-      opt_list.push_back(optimizations[i]);
-    }
+  for (size_t i = 0; i < arraysize(optimizations); ++i) {
+    opt_list.push_back(optimizations[i]);
   }
 }
 
@@ -619,14 +613,8 @@ static void RunOptimizations(HGraph* graph,
     dce1,
   };
 
-  // FIXME: We don't invoke SILVER for methods with irreducible
-  // loops because of a crash in full loop unrolling phase.
-  if (graph->HasIrreducibleLoops()) {
-    RunOptimizations(optimizations1, arraysize(optimizations1), pass_observer);
-  } else {
-    for (size_t i = 0; i < arraysize(optimizations1); ++i) {
-      opt_list.push_back(optimizations1[i]);
-    }
+  for (size_t i = 0; i < arraysize(optimizations1); ++i) {
+    opt_list.push_back(optimizations1[i]);
   }
 
   MaybeRunInliner(graph, codegen, driver, stats, dex_compilation_unit, pass_observer, handles, opt_list);
@@ -651,23 +639,17 @@ static void RunOptimizations(HGraph* graph,
     simplify3,
   };
 
-  // FIXME: We don't invoke SILVER for methods with irreducible
-  // loops because of a crash in full loop unrolling phase.
-  if (graph->HasIrreducibleLoops()) {
-    RunOptimizations(optimizations2, arraysize(optimizations2), pass_observer);
-  } else {
-    for (size_t i = 0; i < arraysize(optimizations2); ++i) {
-      opt_list.push_back(optimizations2[i]);
-    }
-    RunOptimizationsX86(graph,
-                        codegen,
-                        driver,
-                        stats,
-                        opt_list,
-                        dex_compilation_unit,
-                        pass_observer,
-                        handles);
+  for (size_t i = 0; i < arraysize(optimizations2); ++i) {
+    opt_list.push_back(optimizations2[i]);
   }
+  RunOptimizationsX86(graph,
+                      codegen,
+                      driver,
+                      stats,
+                      opt_list,
+                      dex_compilation_unit,
+                      pass_observer,
+                      handles);
 
   RunArchOptimizations(driver->GetInstructionSet(), graph, codegen, stats, pass_observer);
   AllocateRegisters(graph, codegen, pass_observer);

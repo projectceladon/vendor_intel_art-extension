@@ -173,6 +173,7 @@ void HDeadCodeElimination::RemoveDeadInstructions() {
           // If we added an explicit barrier then we should keep it.
           && !inst->IsMemoryBarrier()
           && !inst->IsParameterValue()
+          && !inst->IsOsrEntryPoint()
 #if defined(ART_ENABLE_CODEGEN_x86) || defined(ART_ENABLE_CODEGEN_x86_64)
           && !inst->IsX86IncrementExecutionCount()
 #endif

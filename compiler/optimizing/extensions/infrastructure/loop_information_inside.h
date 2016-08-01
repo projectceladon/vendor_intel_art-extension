@@ -534,6 +534,13 @@ class HLoopInformation_X86 : public HLoopInformation {
     */
   void Dump(std::ostream& os);
 
+  /**
+   * @brief Slow check on irreducibility of the loop.
+   * @return true, if there is an edge into a block
+   *         other than the loop header in the CFG.
+   */
+  bool IsIrreducibleSlowCheck();
+
   static const char* kLoopDumpPrefix;
 
  protected:

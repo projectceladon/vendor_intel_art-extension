@@ -181,6 +181,14 @@ bool HValuePropagationThroughHeap::Gate(HLoopInformation_X86* loop) const {
 }
 
 void HValuePropagationThroughHeap::Run() {
+  if (graph_->IsCompilingOsr()) {
+    // VPTH makes too optimistic assumptions in OSR mode and
+    // may create a use of external not-phi in loop, what is
+    // prohibited in OSR mode. So disable this.
+    PRINT_PASS_OSTREAM_MESSAGE(this, "Skip " << GetMethodName(graph_)
+                                             << " because of compilation in OSR mode");
+    return;
+  }
   PRINT_PASS_OSTREAM_MESSAGE(this, "Try to optimize : " << GetMethodName(graph_));
   HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
   HLoopInformation_X86* loop_info = graph->GetLoopInformation();

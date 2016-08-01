@@ -632,7 +632,7 @@ static void CheckCovers(uint32_t dex_pc,
   CodeInfoEncoding encoding = code_info.ExtractEncoding();
   for (size_t i = 0; i < loop_headers.size(); ++i) {
     if (loop_headers[i]->GetDexPc() == dex_pc) {
-      if (graph.IsCompilingOsr()) {
+      if (graph.IsCompilingOsr() && loop_headers[i]->HasOsrEntryPoint()) {
         DCHECK(code_info.GetOsrStackMapForDexPc(dex_pc, encoding).IsValid());
       }
       ++(*covered)[i];
@@ -651,7 +651,7 @@ static void CheckLoopEntriesCanBeUsedForOsr(const HGraph& graph,
   }
   if (!graph.IsCompilingOsr()) {
     // Don't check correctness if OSR is not used. We could remove
-    // suspend checks in SILVER pass named 'remove_suspend_checks'.
+    // suspend checks later in pass named 'remove_suspend_checks'.
     return;
   }
   ArenaVector<HSuspendCheck*> loop_headers(graph.GetArena()->Adapter(kArenaAllocMisc));
@@ -779,14 +779,20 @@ void CodeGenerator::RecordPcInfo(HInstruction* instruction,
   stack_map_stream_.EndStackMapEntry();
 
   HLoopInformation* info = instruction->GetBlock()->GetLoopInformation();
-  if (instruction->IsSuspendCheck() &&
-      (info != nullptr) &&
+  bool osr_allowed = instruction->IsOsrEntryPoint() ||
+                     (instruction->IsSuspendCheck() &&
+                      instruction->AsSuspendCheck()->HasOsrEntryPoint() &&
+                      info != nullptr);
+
+  if (osr_allowed &&
       graph_->IsCompilingOsr() &&
       (inlining_depth == 0)) {
-    DCHECK_EQ(info->GetSuspendCheck(), instruction);
+    if (instruction->IsSuspendCheck()) {
+      DCHECK_EQ(info->GetSuspendCheck(), instruction);
+      DCHECK(info->IsIrreducible());
+    }
     // We duplicate the stack map as a marker that this stack map can be an OSR entry.
     // Duplicating it avoids having the runtime recognize and skip an OSR stack map.
-    DCHECK(info->IsIrreducible());
     stack_map_stream_.BeginStackMapEntry(
         dex_pc, native_pc, register_mask, locations->GetStackMask(), outer_environment_size, 0);
     EmitEnvironment(instruction->GetEnvironment(), slow_path);

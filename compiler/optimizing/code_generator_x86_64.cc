@@ -1350,6 +1350,38 @@ void LocationsBuilderX86_64::VisitExit(HExit* exit) {
 void InstructionCodeGeneratorX86_64::VisitExit(HExit* exit ATTRIBUTE_UNUSED) {
 }
 
+void LocationsBuilderX86_64::VisitOsrFork(HOsrFork* osr_fork) {
+  osr_fork->SetLocations(nullptr);
+}
+
+void InstructionCodeGeneratorX86_64::VisitOsrFork(HOsrFork* osr_fork) {
+  HandleGoto(osr_fork, osr_fork->GetNormalPath());
+}
+
+void LocationsBuilderX86_64::VisitOsrJump(HOsrJump* osr_jump) {
+  osr_jump->SetLocations(nullptr);
+}
+
+void InstructionCodeGeneratorX86_64::VisitOsrJump(HOsrJump* osr_jump ATTRIBUTE_UNUSED) {
+}
+
+void LocationsBuilderX86_64::VisitOsrFictiveValue(HOsrFictiveValue* value) {
+  LocationSummary* locations =
+      new (GetGraph()->GetArena()) LocationSummary(value, LocationSummary::kNoCall);
+  locations->SetOut(Location::Any());
+}
+
+void InstructionCodeGeneratorX86_64::VisitOsrFictiveValue(HOsrFictiveValue* value ATTRIBUTE_UNUSED) {
+}
+
+void LocationsBuilderX86_64::VisitOsrEntryPoint(HOsrEntryPoint* osr_entry_point) {
+  new (GetGraph()->GetArena()) LocationSummary(osr_entry_point, LocationSummary::kCallOnSlowPath);
+}
+
+void InstructionCodeGeneratorX86_64::VisitOsrEntryPoint(HOsrEntryPoint* osr_entry_point) {
+  codegen_->RecordPcInfo(osr_entry_point, osr_entry_point->GetDexPc());
+}
+
 template<class LabelType>
 void InstructionCodeGeneratorX86_64::GenerateFPJumps(HCondition* cond,
                                                      LabelType* true_label,

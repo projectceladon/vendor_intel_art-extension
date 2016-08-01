@@ -47,6 +47,7 @@ ifeq ($(findstring graph_x86,$(LIBART_COMPILER_SRC_FILES)),)
     $(VENDOR_EXTENSIONS_FOLDER)/passes/loop_formation.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/loop_full_unrolling.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/non_temporal_move.cc \
+    $(VENDOR_EXTENSIONS_FOLDER)/passes/osr_graph_rebuilder.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/peeling.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/phi_cleanup.cc \
     $(VENDOR_EXTENSIONS_FOLDER)/passes/pure_invokes_analysis.cc \

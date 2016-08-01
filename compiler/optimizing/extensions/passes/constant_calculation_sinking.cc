@@ -934,8 +934,8 @@ bool HConstantCalculationSinking::IsLoopGoodForCCS(HLoopInformation_X86* loop_in
     return false;
   }
 
-  // CCS will affect debugging the VR values.
-  if (graph_->IsDebuggable()) {
+  // Not guaranteed that all iterations will be executed.
+  if (loop_info->IsIrreducible()) {
     return false;
   }
 
@@ -1000,6 +1000,13 @@ void HConstantCalculationSinking::HandleLoop(HLoopInformation_X86* loop_info) co
 void HConstantCalculationSinking::Run() {
   HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
   HLoopInformation_X86* loop_info = graph->GetLoopInformation();
+
+  // CCS will affect debugging the VR values.
+  if (graph_->IsDebuggable()) {
+    PRINT_PASS_OSTREAM_MESSAGE(this, "Skip debuggable method "
+                                     << GetMethodName(graph_));
+    return;
+  }
 
   PRINT_PASS_OSTREAM_MESSAGE(this, "Try to optimize loop in method " <<
                              GetMethodName(graph_));

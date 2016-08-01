@@ -670,6 +670,7 @@ class HLoopInformation : public ArenaObject<kArenaAllocLoopInfo> {
   }
 
   bool IsIrreducible() const { return irreducible_; }
+  void MakeReducible() { irreducible_ = false; }
   bool ContainsIrreducibleLoop() const { return contains_irreducible_loop_; }
 
   void Dump(std::ostream& os);
@@ -1352,7 +1353,11 @@ class HLoopInformationOutwardIterator : public ValueObject {
   M(X86ReturnExecutionCountTable, Instruction)                          \
   M(DevirtGuard, SpeculationGuard)                                      \
   M(Trap, Instruction)                                                  \
-  M(X86ProfileInvoke, Instruction)
+  M(X86ProfileInvoke, Instruction)                                      \
+  M(OsrFork, Instruction)                                               \
+  M(OsrJump, Instruction)                                               \
+  M(OsrFictiveValue, Instruction)                                       \
+  M(OsrEntryPoint, Instruction)
 #else
 #define FOR_EACH_CONCRETE_INSTRUCTION_X86_COMMON(M)
 #endif
@@ -2701,7 +2706,6 @@ class HIf : public HTemplateInstruction<1> {
  private:
   DISALLOW_COPY_AND_ASSIGN(HIf);
 };
-
 
 // Abstract instruction which marks the beginning and/or end of a try block and
 // links it to the respective exception handlers. Behaves the same as a Goto in
@@ -5447,12 +5451,17 @@ class HSuspendCheck : public HTemplateInstruction<0> {
   void SetSlowPath(SlowPathCode* slow_path) { slow_path_ = slow_path; }
   SlowPathCode* GetSlowPath() const { return slow_path_; }
 
+  bool HasOsrEntryPoint() const { return has_osr_entry_point_; }
+  void RemoveOsrEntryPoint() { has_osr_entry_point_ = false; }
+
   DECLARE_INSTRUCTION(SuspendCheck);
 
  private:
   // Only used for code generation, in order to share the same slow path between back edges
   // of a same loop.
   SlowPathCode* slow_path_;
+
+  bool has_osr_entry_point_ = true;
 
   DISALLOW_COPY_AND_ASSIGN(HSuspendCheck);
 };

@@ -34,12 +34,13 @@ void HLoopFullUnrolling::Run() {
   for (HOnlyInnerLoopIterator it(loop_start); !it.Done(); it.Advance()) {
     HLoopInformation_X86* loop = it.Current();
     HLoopUnrolling loop_unrolling(loop, this);
-    HBasicBlock* loop_header = loop->GetHeader();
-    uint64_t num_iterations = loop->GetNumIterations(loop_header);
 
     if (!Gate(&loop_unrolling)) {
       continue;
     }
+
+    HBasicBlock* loop_header = loop->GetHeader();
+    uint64_t num_iterations = loop->GetNumIterations(loop_header);
 
     if (!loop_unrolling.FullUnroll()) {
       continue;

@@ -30,6 +30,11 @@
 namespace art {
 
 void HRemoveUnusedLoops::Run() {
+  if (graph_->IsCompilingOsr()) {
+    PRINT_PASS_OSTREAM_MESSAGE(this, "Skip " << GetMethodName(graph_)
+                                      << " because of compilation in OSR mode");
+    return;
+  }
   PRINT_PASS_OSTREAM_MESSAGE(this, "start " << GetMethodName(graph_));
 
   HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
