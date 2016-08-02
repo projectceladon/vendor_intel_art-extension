@@ -521,6 +521,14 @@ class HLoopInformation_X86 : public HLoopInformation {
    */
   uint64_t AverageLoopIterationCount(bool& valid) const;
 
+  /*
+   * @brief Return true if there is a catch handler which needs a VR corresponding
+   * to value produced by the instruction.
+   * @param instruction to check.
+   * @return true is there is a usage of VR corresponding to insn in any catch block.
+   */
+  bool CheckForCatchBlockUsage(HInstruction* insn) const;
+
   /**
     * @brief Dumps the details about this loop info.
     */
