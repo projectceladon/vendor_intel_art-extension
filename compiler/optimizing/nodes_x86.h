@@ -156,7 +156,7 @@ class HInstructionRHSMemory : public HTemplateInstruction<3> {
  public:
   size_t InputCount() const OVERRIDE { return input_count_; }
 
-  DECLARE_INSTRUCTION(InstructionRHSMemory);
+  DECLARE_ABSTRACT_INSTRUCTION(InstructionRHSMemory);
 
   size_t GetOffset() const { return offset_; }
 
@@ -278,7 +278,7 @@ class HInstructionLHSMemory : public HTemplateInstruction<3> {
     SetRawInputAt(index, argument);
   }
 
-  DECLARE_INSTRUCTION(InstructionLHSMemory);
+  DECLARE_ABSTRACT_INSTRUCTION(InstructionLHSMemory);
 
   size_t GetOffset() const { return offset_; }
 
