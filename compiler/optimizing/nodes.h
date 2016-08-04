@@ -5263,6 +5263,14 @@ class HArrayGet : public HExpression<2> {
   void SetUnsigned(bool is_unsigned) { is_unsigned_ = is_unsigned; }
   bool IsUnsigned() const { return is_unsigned_; }
 
+  Primitive::Type GetArrayType() const {
+    return TypeField::Decode(this->GetPackedFields());
+  }
+
+  Primitive::Type GetType() const OVERRIDE {
+    return IsUnsigned() ? Primitive::kPrimInt : GetArrayType();
+  }
+
   DECLARE_INSTRUCTION(ArrayGet);
 
  private:

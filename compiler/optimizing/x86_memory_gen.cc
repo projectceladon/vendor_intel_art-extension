@@ -193,7 +193,7 @@ class MemoryOperandVisitor : public HGraphVisitor {
           return false;
         }
 
-        Primitive::Type type = get->GetType();
+        Primitive::Type type = get->GetArrayType();
         uint32_t data_offset = GetArrayOffset(type);
         HInstruction* new_insn = nullptr;
         HInstruction* base = nullptr;

@@ -558,7 +558,7 @@ class LSEVisitor : public HGraphVisitor {
       HArrayGet* array_get = load->AsArrayGet();
       if (array_get != nullptr && array_get->IsUnsigned()) {
         // Recreate zero-ext for the substitution.
-        Primitive::Type array_type = array_get->GetType();
+        Primitive::Type array_type = array_get->GetArrayType();
         DCHECK(array_type == Primitive::kPrimByte ||
                array_type == Primitive::kPrimChar ||
                array_type == Primitive::kPrimShort);

@@ -4629,7 +4629,7 @@ void InstructionCodeGeneratorX86_64::VisitArrayGet(HArrayGet* instruction) {
   Location index = locations->InAt(1);
   Location out_loc = locations->Out();
 
-  Primitive::Type type = instruction->GetType();
+  Primitive::Type type = instruction->GetArrayType();
   switch (type) {
     case Primitive::kPrimBoolean: {
       uint32_t data_offset = mirror::Array::DataOffset(sizeof(uint8_t)).Uint32Value();

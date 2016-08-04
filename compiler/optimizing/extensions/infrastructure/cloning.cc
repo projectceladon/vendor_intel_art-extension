@@ -315,7 +315,7 @@ void HInstructionCloner::VisitArrayGet(HArrayGet* instr) {
     DCHECK(!instr->HasEnvironment());
     HInstruction* array, *index;
     GetInputsForBinary(instr, &array, &index);
-    HArrayGet* clone = new (arena_) HArrayGet(array, index, instr->GetType(),
+    HArrayGet* clone = new (arena_) HArrayGet(array, index, instr->GetArrayType(),
                                               instr->GetDexPc(), instr->IsUnsigned(),
                                               instr->GetSideEffects());
     CopyReferenceType(instr, clone);
