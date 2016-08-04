@@ -384,7 +384,7 @@ bool HConstantCalculationSinking::EvaluateFloatOperation(
           }
           // For Mul and Div we should be careful in terms of sign.
           if (instruction_kind == HInstruction::kMul || instruction_kind == HInstruction::kDiv) {
-            if (operand_value < 0) {
+            if (signbit(operand_value)) {
               // Do not allow constant sinking for the accumulation case where value
               // computed from the previous iteration of outer loop is used when the operand
               // value is negative due to the terms of sign depends on the iteration numbers
@@ -444,7 +444,7 @@ bool HConstantCalculationSinking::EvaluateFloatOperation(
           }
           // For Mul and Div we should be careful in terms of sign.
           if (instruction_kind == HInstruction::kMul || instruction_kind == HInstruction::kDiv) {
-            if (operand_value < 0) {
+            if (signbit(operand_value)) {
               // Do not allow constant sinking for the accumulation case where value
               // computed from the previous iteration of outer loop is used when the operand
               // value is negative due to the terms of sign depends on the iteration numbers
