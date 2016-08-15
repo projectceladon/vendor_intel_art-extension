@@ -1632,8 +1632,7 @@ TEST_F(JniInternalTest, GetStringCritical_ReleaseStringCritical) {
 
   jboolean is_copy = JNI_TRUE;
   chars = env_->GetStringCritical(s, &is_copy);
-  EXPECT_EQ(JNI_TRUE, is_copy);
-  if (Runtime::Current()->GetHeap()->CurrentCollectorType() == kCollectorTypeGenCopying) {
+  if (Runtime::Current()->GetHeap()->CurrentCollectorType() == gc::kCollectorTypeGenCopying) {
     EXPECT_EQ(JNI_TRUE, is_copy);
   } else {
     EXPECT_EQ(JNI_FALSE, is_copy);
