@@ -541,6 +541,14 @@ class HLoopInformation_X86 : public HLoopInformation {
    */
   bool IsIrreducibleSlowCheck();
 
+  /**
+   * @brief Used to determine whether the loop is irreducible or contains irreducible loop
+   * @details Returns true if either the loop is irreducible or contains irreducible loop.
+   */
+  virtual bool ContainsIrreducibleLoop() const OVERRIDE {
+    return IsOrHasIrreducibleLoop();
+  }
+
   static const char* kLoopDumpPrefix;
 
  protected:

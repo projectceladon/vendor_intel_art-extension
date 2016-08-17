@@ -671,7 +671,7 @@ class HLoopInformation : public ArenaObject<kArenaAllocLoopInfo> {
 
   bool IsIrreducible() const { return irreducible_; }
   void MakeReducible() { irreducible_ = false; }
-  bool ContainsIrreducibleLoop() const { return contains_irreducible_loop_; }
+  virtual bool ContainsIrreducibleLoop() const { return contains_irreducible_loop_; }
 
   void Dump(std::ostream& os);
 
