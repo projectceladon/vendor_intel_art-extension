@@ -98,6 +98,14 @@ void LICM::Run() {
     }
 
     HLoopInformation* loop_info = block->GetLoopInformation();
+
+    if (loop_info->ContainsIrreducibleLoop()) {
+      // We cannot licm in an irreducible loop, or in a natural loop containing an
+      // irreducible loop.
+      continue;
+    }
+    DCHECK(!loop_info->IsIrreducible());
+
     SideEffects loop_effects = side_effects_.GetLoopEffects(block);
     HBasicBlock* pre_header = loop_info->GetPreHeader();
 
@@ -113,13 +121,6 @@ void LICM::Run() {
         visited->SetBit(inner->GetBlockId());
       }
 
-      if (loop_info->ContainsIrreducibleLoop()) {
-        // We cannot licm in an irreducible loop, or in a natural loop containing an
-        // irreducible loop.
-        continue;
-      }
-      DCHECK(!loop_info->IsIrreducible());
-
       // We can move an instruction that can throw only if it is the first
       // throwing instruction in the loop. Note that the first potentially
       // throwing instruction encountered that is not hoisted stops this
@@ -132,7 +133,8 @@ void LICM::Run() {
         if (instruction->CanBeMoved()
             && (!instruction->CanThrow() || !found_first_non_hoisted_throwing_instruction_in_loop)
             && !instruction->GetSideEffects().MayDependOn(loop_effects)
-            && InputsAreDefinedBeforeLoop(instruction)) {
+            && InputsAreDefinedBeforeLoop(instruction)
+            && (!graph_->IsCompilingOsr() || !instruction->GetSideEffects().DoesAnyRead())) {
           // We need to update the environment if the instruction has a loop header
           // phi in it.
           if (instruction->HasEnvironment()) {
