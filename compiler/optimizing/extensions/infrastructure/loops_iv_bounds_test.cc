@@ -83,8 +83,8 @@ namespace art {
     HLoopInformation_X86* inner_loop = inner_iter.Current();
     const HLoopBoundInformation& bound_info = inner_loop->GetBoundInformation();
 
-    ASSERT_EQ(bound_info.GetIntegralBIVStartValue(), lower);
-    ASSERT_EQ(bound_info.GetIntegralBIVEndValue(), upper);
+    ASSERT_FLOAT_EQ(bound_info.GetFPBIVStartValue(), lower);
+    ASSERT_FLOAT_EQ(bound_info.GetFPBIVEndValue(), upper);
     ASSERT_LT(fabs(bound_info.GetLoopBIV()->GetFPIncrement() - inc), 0.001);
 
     ArenaVector<HInductionVariable*>& list = inner_loop->GetInductionVariables();
