@@ -106,9 +106,6 @@ ART_TARGET_CFLAGS :=
 ART_HOST_ASFLAGS :=
 ART_TARGET_ASFLAGS :=
 
-ifneq (,$(findstring aosp_x86,$(TARGET_PRODUCT)))
-  LIBART_CFLAGS += -DENABLE_CONSERVATIVE_GC_FOR_EMULATOR
-endif
 # Clang build support.
 
 # Host.
