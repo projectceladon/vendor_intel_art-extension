@@ -95,6 +95,10 @@ inline size_t BumpPointerSpace::AllocationSizeNonvirtual(mirror::Object* obj, si
   return num_bytes;
 }
 
+inline void BumpPointerSpace::AccountAllocation(size_t num_objects) {
+  objects_allocated_.FetchAndAddSequentiallyConsistent(num_objects);
+}
+
 }  // namespace space
 }  // namespace gc
 }  // namespace art

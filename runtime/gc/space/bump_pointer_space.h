@@ -63,6 +63,9 @@ class BumpPointerSpace FINAL : public ContinuousMemMapAllocSpace {
     return AllocationSizeNonvirtual(obj, usable_size);
   }
 
+  // Account allocations, used by Parallel copying collector.
+  void AccountAllocation(size_t num_objects);
+
   // NOPS unless we support free lists.
   size_t Free(Thread*, mirror::Object*) OVERRIDE {
     return 0;

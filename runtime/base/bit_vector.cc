@@ -60,7 +60,9 @@ BitVector::BitVector(const BitVector& src,
 }
 
 BitVector::~BitVector() {
-  allocator_->Free(storage_);
+  if (allocator_ != nullptr) {
+    allocator_->Free(storage_);
+  }
 }
 
 bool BitVector::SameBitsSet(const BitVector *src) const {

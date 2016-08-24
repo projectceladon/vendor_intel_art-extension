@@ -117,6 +117,7 @@ static constexpr bool kUseTlab = false;
 // Reuse TLAB as PLAB since this is for STW GC.
 static constexpr bool kUsePlab = kUseTlab;
 static constexpr size_t kDefaultPLABSize = 64 * KB;
+static constexpr size_t kMaxGcParalelTaskSize = 1024;
 
 // Kinds of tracing clocks.
 enum class TraceClockSource {

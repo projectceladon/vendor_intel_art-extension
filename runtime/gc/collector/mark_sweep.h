@@ -333,11 +333,6 @@ class MarkSweep : public GarbageCollector {
   // Revoke all the thread-local buffers.
   void RevokeAllThreadLocalBuffers();
 
-  mirror::Object* TryInstallForwardingAddress(Thread* self, mirror::Object* obj,
-                                              space::ContinuousMemMapAllocSpace* dest_space,
-                                              size_t* bytes_allocated)
-      SHARED_REQUIRES(Locks::mutator_lock_);
-
   // Added for copying between two bump pointer spaces.
   void ForwardObjects()
       REQUIRES(Locks::heap_bitmap_lock_)
@@ -359,7 +354,17 @@ class MarkSweep : public GarbageCollector {
       SHARED_REQUIRES(Locks::heap_bitmap_lock_)
       REQUIRES(Locks::mutator_lock_);
 
-  void ForwardObjectParallel(Thread* self, mirror::Object* obj)
+  uint8_t* ForwardObjectParallelAllocBuffer(Thread* self,
+                                            size_t buffer_size,
+                                            size_t count)
+      SHARED_REQUIRES(Locks::heap_bitmap_lock_)
+      REQUIRES(Locks::mutator_lock_);
+
+  bool ForwardObjectParallelPromo(Thread* self, mirror::Object* obj, size_t& req_space_size)
+      SHARED_REQUIRES(Locks::heap_bitmap_lock_)
+      REQUIRES(Locks::mutator_lock_);
+
+  uint8_t* ForwardObjectParallelToBuffer(uint8_t* buffer, mirror::Object* obj)
       SHARED_REQUIRES(Locks::heap_bitmap_lock_)
       REQUIRES(Locks::mutator_lock_);
 
@@ -492,7 +497,6 @@ class MarkSweep : public GarbageCollector {
 
   friend class ForwardObjectsVisitor;
   friend class CountLiveObjectsVisitor;
-  friend class ForwardObjectsParallelVisitor;
   friend class ParallelForwardTask;
   friend class RecursiveUpdateReferenceTask;
   friend class MarkSweepUpdateObjectReferencesVisitor;
