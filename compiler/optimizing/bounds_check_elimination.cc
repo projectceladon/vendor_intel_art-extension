@@ -1755,6 +1755,15 @@ void BoundsCheckElimination::Run() {
   BCEVisitor visitor(graph_, side_effects_, induction_analysis_);
   for (HReversePostOrderIterator it(*graph_); !it.Done(); it.Advance()) {
     HBasicBlock* current = it.Current();
+    if (graph_->IsCompilingOsr()
+        && current->GetLoopInformation() != nullptr
+        && current->GetLoopInformation()->IsIrreducible()) {
+      // Hoisting from irreducible loops may be unsafe in OSR
+      // because it may hoist something through OSR entry point
+      // of an inner loop.
+      continue;
+    }
+
     if (visitor.IsAddedBlock(current)) {
       // Skip added blocks. Their effects are already taken care of.
       continue;
