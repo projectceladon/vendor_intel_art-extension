@@ -23,6 +23,7 @@
 #include "aur.h"
 #include "base/dumpable.h"
 #include "base/timing_logger.h"
+#include "bb_simplifier.h"
 #include "code_generator.h"
 #include "constant_calculation_sinking.h"
 #include "constant_folding_x86.h"
@@ -115,7 +116,8 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   { "remove_unused_loops", "loadhoist_storesink", kPassInsertAfter },
   { "loop_full_unrolling", "remove_unused_loops", kPassInsertAfter },
   { "load_store_elimination", "value_propagation_through_heap", kPassInsertBefore },
-  { "aur", "remove_unused_loops", kPassInsertBefore },
+  { "bb_simplifier", "remove_unused_loops", kPassInsertBefore },
+  { "aur", "bb_simplifier", kPassInsertBefore },
   { "phi_cleanup_after_aur", "aur", kPassInsertAfter },
   { "abi_transition_helper", "", kPassAppend },
 };
@@ -400,7 +402,7 @@ void RunOptimizationsX86(HGraph* graph,
                                                                    stats);
   HAbiTransitionHelper* abi_helper = new (arena) HAbiTransitionHelper(graph, driver, stats);
   HOsrGraphRebuilder* osr_graph_rebuilder = new (arena) HOsrGraphRebuilder(graph, stats);
-
+  HBBSimplifier* bb_simplifier = new (arena) HBBSimplifier(graph, stats);
 
   HOptimization_X86* opt_array[] = {
     devirtualization,
@@ -427,6 +429,7 @@ void RunOptimizationsX86(HGraph* graph,
     lhss,
     remove_unused_loops,
     loop_full_unrolling,
+    bb_simplifier,
     aur,
     phi_cleanup_after_aur,
     abi_helper,

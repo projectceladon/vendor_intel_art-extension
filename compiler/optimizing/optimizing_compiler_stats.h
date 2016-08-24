@@ -105,6 +105,8 @@ enum MethodCompilationStat {
   kIntelCHANotAnalyzed,
   kIntelCHAOneTarget,
   kIntelCHATwoOrMoreTargets,
+  kIntelBranchSimplified,
+  kIntelBranchConditionDeleted,
   kLastStat
 };
 
@@ -229,6 +231,8 @@ class OptimizingCompilerStats {
       case kIntelCHANotAnalyzed: return "kIntelCHANotAnalyzed";
       case kIntelCHAOneTarget: return "kIntelCHAOneTarget";
       case kIntelCHATwoOrMoreTargets: return "kIntelCHATwoOrMoreTargets";
+      case kIntelBranchSimplified: return "kIntelBranchSimplified";
+      case kIntelBranchConditionDeleted: return "kIntelBranchConditionDeleted";
       default: LOG(FATAL) << "invalid stat";
     }
     return "OptStat#" + name;
