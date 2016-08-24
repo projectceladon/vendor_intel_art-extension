@@ -535,9 +535,6 @@ SpeculationRecoveryApproach HDevirtualization::GetRecoveryMethod(HInstruction* i
   }
 
   if (Runtime::Current()->UseCHA()) {
-    if (Runtime::Current()->UseDeoptForCHA()) {
-      return kRecoveryNotNeeded;
-    }
     // For CHA, we prefer code versioning, because the type guard is not perfect.
     // We want to avoid the cost of deopt, when the type guard fails.
     return kRecoveryCodeVersioning;
