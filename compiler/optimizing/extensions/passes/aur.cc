@@ -23,6 +23,8 @@
 #include "ext_utility.h"
 #include "pass_option.h"
 
+#include <unordered_set>
+
 namespace art {
 
 class AggressiveEnvUseRemover : public HGraphVisitor {
@@ -88,8 +90,63 @@ class AggressiveEnvUseRemover : public HGraphVisitor {
     return instr->GetBlock()->IsTryBlock();
   }
 
-  void RemoveEnvAsUser(HInstruction* candidate,
-      bool remove_references) {
+  void RemoveUnusedInstructions(std::unordered_set<HInstruction*>& to_remove) {
+    // Nothing to remove.
+    if (to_remove.empty()) {
+      return;
+    }
+
+    // These instructions will be removed during this processing.
+    std::unordered_set<HInstruction*> removed;
+
+    for (auto instruction : to_remove) {
+      TryKillUseTree(pass_, instruction, &removed);
+    }
+
+    if (stats_ != nullptr) {
+      for (auto instruction : to_remove) {
+        stats_->RecordStat(MethodCompilationStat::kRemovedDeadInstruction);
+        // This stat is a lower estimate since we do not actively remove instructions
+        // that were caused to be dead from the current removal.
+        stats_->RecordStat(MethodCompilationStat::kIntelRemovedDeadInstructionViaAUR);
+        if (instruction->GetType() == Primitive::kPrimNot) {
+          // We also count reference removals since those are great for GC
+          // since the root set becomes smaller.
+          stats_->RecordStat(MethodCompilationStat::kIntelRemovedDeadReferenceViaAUR);
+        }
+      }
+    }
+  }
+
+  void MaybeConsiderForRemoval(bool should_remove,
+                               HInstruction* candidate,
+                               HInstruction* instruction,
+                               HEnvironment* environment,
+                               int32_t index,
+                               std::unordered_set<HInstruction*>& to_remove) {
+    if (should_remove) {
+      PRINT_PASS_OSTREAM_MESSAGE(pass_, "Environment of " << candidate << " no longer uses"
+                                        " the value defined by " << instruction);
+
+      environment->RemoveAsUserOfInput(index);
+      environment->SetRawEnvAt(index, nullptr);
+
+      // Verify that the instruction has a definition - it must be the case since
+      // it was used.
+      DCHECK_NE(instruction->GetType(), Primitive::kPrimVoid);
+
+      to_remove.insert(instruction);
+    } else {
+      PRINT_PASS_OSTREAM_MESSAGE(pass_, "Environment of " << candidate << " still uses"
+                                        " the value defined by " << instruction << " because the"
+                                        " object is live into environment.");
+    }
+  }
+
+  void RemoveEnvAsUser(HInstruction* candidate, bool remove_references) {
+    // We will maybe remove these instructions from code.
+    std::unordered_set<HInstruction*> to_remove;
+
     for (HEnvironment* environment = candidate->GetEnvironment();
         environment != nullptr;
         environment = environment->GetParent()) {
@@ -116,53 +173,15 @@ class AggressiveEnvUseRemover : public HGraphVisitor {
               }
             }
           }
-
-          if (should_remove) {
-            PRINT_PASS_OSTREAM_MESSAGE(pass_, "Environment of " << candidate << " no longer uses"
-                                       " the value defined by " << instruction);
-
-            environment->RemoveAsUserOfInput(i);
-            environment->SetRawEnvAt(i, nullptr);
-
-            // Verify that the instruction has a definition - it must be the case since
-            // it was used.
-            DCHECK_NE(instruction->GetType(), Primitive::kPrimVoid);
-
-            // We removed this instruction as input. Now consider it for complete removal.
-            if (!instruction->GetSideEffects().HasSideEffectsExcludingGC()
-                && !instruction->CanThrow()
-                && !instruction->IsParameterValue()
-                && !instruction->HasUses()
-                && (!instruction->IsInvoke()  // Can remove pure invokes only.
-                    || instruction->CanBeMoved())) {
-              PRINT_PASS_OSTREAM_MESSAGE(pass_, "Removing " << instruction << " because it is no "
-                                         "longer used by any other instruction or environment.");
-
-
-              HBasicBlock* block = instruction->GetBlock();
-              DCHECK(block != nullptr);
-              block->RemoveInstructionOrPhi(instruction);
-
-              if (stats_ != nullptr) {
-                stats_->RecordStat(MethodCompilationStat::kRemovedDeadInstruction);
-                // This stat is a lower estimate since we do not actively remove instructions
-                // that were caused to be dead from the current removal.
-                stats_->RecordStat(MethodCompilationStat::kIntelRemovedDeadInstructionViaAUR);
-                if (instruction->GetType() == Primitive::kPrimNot) {
-                  // We also count reference removals since those are great for GC
-                  // since the root set becomes smaller.
-                  stats_->RecordStat(MethodCompilationStat::kIntelRemovedDeadReferenceViaAUR);
-                }
-              }
-            }
-          } else {
-            PRINT_PASS_OSTREAM_MESSAGE(pass_, "Environment of " << candidate << " still uses"
-                                       " the value defined by " << instruction << " because the "
-                                       "object is live into environment.");
-          }
+          // Remove current instruction from env and consider it for further
+          // removal from the code.
+          MaybeConsiderForRemoval(should_remove, candidate, instruction,
+                                  environment, i, to_remove);
         }
       }
     }
+
+    RemoveUnusedInstructions(to_remove);
   }
 
   void HandleCaller(HInstruction* instr, bool may_trigger_gc) {
