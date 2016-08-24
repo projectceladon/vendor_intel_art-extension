@@ -89,7 +89,6 @@
 #include "ScopedLocalRef.h"
 #include "scoped_thread_state_change.h"
 #include "thread-inl.h"
-#include "thread_list.h"
 #include "trace.h"
 #include "utils.h"
 #include "utils/dex_cache_arrays_layout-inl.h"
@@ -313,7 +312,6 @@ static void ShuffleForward(size_t* current_field_idx,
 ClassLinker::ClassLinker(InternTable* intern_table)
     // dex_lock_ is recursive as it may be used in stack dumping.
     : dex_lock_("ClassLinker dex lock", kDefaultMutexLevel),
-      cha_deopt_lock_("CHA deoptmization lock", kDefaultMutexLevel),
       cha_lock_("Class Hierarchy Analysis lock", kDefaultMutexLevel),
       dex_cache_boot_image_class_lookup_required_(false),
       failed_dex_cache_class_lookups_(0),
@@ -352,68 +350,6 @@ void ClassLinker::CheckSystemClass(Thread* self, Handle<mirror::Class> c1, const
   }
 }
 
-void ClassLinker::RecordCHACaller(ArtMethod* method, mirror::Class* klass) {
-  std::string temp;
-  std::string klass_string(klass->GetDescriptor(&temp));
-  size_t klass_index = 0;
-  if (!GetCHAStringMapIndex(klass_string, klass_index)) {
-    // We didn't find klass in CHA string map.
-    return;
-  }
-  {
-    WriterMutexLock mu(Thread::Current(), cha_lock_);
-    auto iter = cha_caller_.find(method);
-    if (iter != cha_caller_.end()) {
-      iter->second.insert(klass_index);
-    } else {
-      std::set<size_t> new_set;
-      new_set.insert(klass_index);
-      cha_caller_.insert({method, new_set});
-    }
-
-    auto to_caller_iter = cha_to_caller_.find(klass_index);
-    if (to_caller_iter != cha_to_caller_.end()) {
-      to_caller_iter->second.insert(method);
-    } else {
-      std::set<ArtMethod*> new_set;
-      new_set.insert(method);
-      cha_to_caller_.insert({klass_index, new_set});
-    }
-  }
-}
-
-void ClassLinker::RecordCHACallerCallee(ArtMethod* caller, ArtMethod* callee) {
-  if (caller == callee) {
-    // Caller and callee are the same, so just return.
-    return;
-  }
-  WriterMutexLock mu(Thread::Current(), cha_lock_);
-  auto callee_iter = cha_caller_.find(callee);
-  // If there is no callee information, we will just return.
-  if (callee_iter == cha_caller_.end()) {
-    return;
-  }
-  auto caller_iter = cha_caller_.find(caller);
-  if (caller_iter != cha_caller_.end()) {
-    // We will append all values from callee's set to caller.
-    for (auto iter = callee_iter->second.begin(); iter != callee_iter->second.end(); ++iter) {
-      caller_iter->second.insert(*iter);
-    }
-  } else {
-    cha_caller_.insert({caller, callee_iter->second});
-  }
-
-  for (auto iter = callee_iter->second.begin(); iter != callee_iter->second.end(); ++iter) {
-    size_t klass_index = *iter;
-    auto to_caller_iter = cha_to_caller_.find(klass_index);
-    if (to_caller_iter != cha_to_caller_.end()) {
-      to_caller_iter->second.insert(caller);
-    } else {
-      LOG(FATAL) << "CHA: cha_to_caller_ cannot find " << klass_index;
-    }
-  }
-}
-
 void ClassLinker::DumpCHA() {
   ReaderMutexLock mu(Thread::Current(), cha_lock_);
   size_t total = 0;
@@ -431,97 +367,37 @@ void ClassLinker::DumpCHA() {
 }
 
 void ClassLinker::AddCHA(mirror::Class* parent, mirror::Class* child) {
-  Thread* self = Thread::Current();
+  WriterMutexLock mu(Thread::Current(), cha_lock_);
   std::string temp;
-  size_t parent_index = 0;
   std::string parent_string(parent->GetDescriptor(&temp));
   std::string child_string(child->GetDescriptor(&temp));
-  {
-    WriterMutexLock mu(self, cha_lock_);
-    // Find the parent index.
-    auto parent_iter = cha_string_map_.find(parent_string);
-    if (parent_iter == cha_string_map_.end()) {
-      parent_index = cha_string_table_.size();
-      cha_string_map_.insert({parent_string, parent_index});
-      cha_string_table_.push_back(parent_string);
-      cha_child_classes_.push_back(std::vector<size_t>(0));
-    } else {
-      parent_index = parent_iter->second;
-    }
 
-    // Find the child index.
-    auto child_iter = cha_string_map_.find(child_string);
-    size_t child_index = 0;
-    if (child_iter == cha_string_map_.end()) {
-      child_index = cha_string_table_.size();
-      cha_string_map_.insert({child_string, child_index});
-      cha_string_table_.push_back(child_string);
-      cha_child_classes_.push_back(std::vector<size_t>(0));
-    } else {
-      child_index = child_iter->second;
-    }
-
-    // Add the child to the parent's child classes.
-    cha_child_classes_[parent_index].push_back(child_index);
+  // Find the parent index.
+  auto parent_iter = cha_string_map_.find(parent_string);
+  size_t parent_index = 0;
+  if (parent_iter == cha_string_map_.end()) {
+    parent_index = cha_string_table_.size();
+    cha_string_map_.insert({parent_string, parent_index});
+    cha_string_table_.push_back(parent_string);
+    cha_child_classes_.push_back(std::vector<size_t>(0));
+  } else {
+    parent_index = parent_iter->second;
   }
 
-  // We won't need to trigger deopt from the compiler.
-  if (Runtime::Current()->IsCompiler()) {
-    return;
+  // Find the child index.
+  auto child_iter = cha_string_map_.find(child_string);
+  size_t child_index = 0;
+  if (child_iter == cha_string_map_.end()) {
+    child_index = cha_string_table_.size();
+    cha_string_map_.insert({child_string, child_index});
+    cha_string_table_.push_back(child_string);
+    cha_child_classes_.push_back(std::vector<size_t>(0));
+  } else {
+    child_index = child_iter->second;
   }
 
-  std::set<ArtMethod*> deopt_set;
-  {
-    ReaderMutexLock mu(self, cha_lock_);
-    // We need to check if any cha_to_caller_ depends on parent and its superclasses.
-    // We haven't implemented to compare each method provided by the new class.
-    // TODO.  We can record info and compare method prototype to detect deopt exactly.
-    if (cha_to_caller_.empty()) {
-      return;
-    }
-
-    mirror::Class* this_class = parent;
-    for (; this_class != nullptr; this_class = this_class->GetSuperClass()) {
-      size_t this_index = 0;
-      if (this_class == parent) {
-        this_index = parent_index;
-      } else {
-        std::string this_class_string(this_class->GetDescriptor(&temp));
-        auto this_iter = cha_string_map_.find(this_class_string);
-        if (this_iter != cha_string_map_.end()) {
-          this_index = this_iter->second;
-        } else {
-          continue;
-        }
-      }
-      auto to_caller_iter = cha_to_caller_.find(this_index);
-      if (to_caller_iter == cha_to_caller_.end()) {
-        continue;
-      }
-      for (auto method_iter = to_caller_iter->second.begin();
-           method_iter != to_caller_iter->second.end(); ++method_iter) {
-        ArtMethod* method = *method_iter;
-        deopt_set.insert(method);
-      }
-    }
-  }
-
-  if (!deopt_set.empty()) {
-    MutexLock mu(self, cha_deopt_lock_);
-    instrumentation::Instrumentation* instr = Runtime::Current()->GetInstrumentation();
-    DeoptimizationRequest req;
-    req.SetKind(DeoptimizationRequest::kSelectiveDeoptimization);
-    for (auto it = deopt_set.begin(); it != deopt_set.end(); ++it) {
-      ArtMethod* method = *it;
-      if (instr->IsDeoptimized(method)) {
-        continue;
-      }
-      LOG(INFO) << "CHA will deoptimize a method " << PrettyMethod(method);
-      req.SetMethod(method);
-      Dbg::RequestDeoptimization(req);
-    }
-    Dbg::ManageDeoptimization();
-  }
+  // Add the child to the parent's child classes.
+  cha_child_classes_[parent_index].push_back(child_index);
 }
 
 bool ClassLinker::SearchChildren(std::vector<size_t>& match_class_index,

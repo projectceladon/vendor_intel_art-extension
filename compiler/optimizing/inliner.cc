@@ -302,10 +302,6 @@ bool HInliner::TryInline(HInvoke* invoke_instruction) {
     if (result && (is_virtual_or_interface || is_direct_from_virtual)) {
       MaybeRecordStat(kInlinedInvokeVirtualOrInterface);
     }
-    if (result && Runtime::Current()->UseCHA() && Runtime::Current()->UseDeoptForCHA()) {
-      // Record CHA caller and callee information.
-      class_linker->RecordCHACallerCallee(graph_->GetArtMethod(), actual_method);
-    }
     return result;
   }
 
@@ -414,11 +410,6 @@ bool HInliner::TryInlineMonomorphicCall(HInvoke* invoke_instruction,
     return false;
   }
 
-  if (Runtime::Current()->UseCHA() && Runtime::Current()->UseDeoptForCHA()) {
-    // Record CHA caller and callee information.
-    class_linker->RecordCHACallerCallee(graph_->GetArtMethod(), resolved_method);
-  }
-
   // We successfully inlined, now add a guard.
   bool is_referrer =
       (ic.GetMonomorphicType() == outermost_graph_->GetArtMethod()->GetDeclaringClass());
@@ -523,11 +514,6 @@ bool HInliner::TryInlinePolymorphicCall(HInvoke* invoke_instruction,
         !TryBuildAndInline(invoke_instruction, method, &return_replacement)) {
       all_targets_inlined = false;
     } else {
-      if (Runtime::Current()->UseCHA() && Runtime::Current()->UseDeoptForCHA()) {
-        // Record CHA caller and callee information.
-        class_linker->RecordCHACallerCallee(graph_->GetArtMethod(), method);
-      }
-
       one_target_inlined = true;
       bool is_referrer = (ic.GetTypeAt(i) == outermost_graph_->GetArtMethod()->GetDeclaringClass());
 
@@ -706,11 +692,6 @@ bool HInliner::TryInlinePolymorphicCallToSameTarget(HInvoke* invoke_instruction,
   HInstruction* return_replacement = nullptr;
   if (!TryBuildAndInline(invoke_instruction, actual_method, &return_replacement)) {
     return false;
-  }
-
-  if (Runtime::Current()->UseCHA() && Runtime::Current()->UseDeoptForCHA()) {
-    // Record CHA caller and callee information.
-    class_linker->RecordCHACallerCallee(graph_->GetArtMethod(), actual_method);
   }
 
   // We successfully inlined, now add a guard.

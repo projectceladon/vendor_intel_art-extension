@@ -154,7 +154,6 @@ class HDevirtualization : public HSpeculationPass {
   ArenaSet<HInstruction*> no_prediction_from_cha_;
   SafeMap<HInstruction*, TypeHandle> precise_prediction_;
   SafeMap<HInstruction*, TypeHandle> cha_prediction_;
-  SafeMap<HInstruction*, TypeHandle> cha_orig_type_;
   SafeMap<HInstruction*, std::vector<TypeHandle>> imprecise_predictions_;
   StackHandleScopeCollection* const handles_;
   const bool after_inlining_;
