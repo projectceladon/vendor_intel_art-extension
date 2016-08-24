@@ -658,7 +658,12 @@ class Heap {
   // one that's not the non-moving space), either rosalloc_space_ or
   // dlmalloc_space_.
   space::MallocSpace* GetPrimaryFreeListSpace() {
-    if (kUseRosAlloc) {
+    if (IsMovingGc(CurrentCollectorType())
+        && rosalloc_space_ == nullptr
+        && dlmalloc_space_ == nullptr) {
+      DCHECK(bump_pointer_space_ != nullptr);
+      return reinterpret_cast<space::MallocSpace*>(bump_pointer_space_);
+    } else if (kUseRosAlloc) {
       DCHECK(rosalloc_space_ != nullptr);
       // reinterpret_cast is necessary as the space class hierarchy
       // isn't known (#included) yet here.
