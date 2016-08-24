@@ -254,6 +254,24 @@ class HAllUseIterator {
    */
   void DumpLoop(HLoopInformation_X86* loop);
 
+  /**
+   * @brief Whether the expression can be safely removed.
+   * @param instruction The instruction to check.
+   * @return true, if the instruction can be safely removed from code.
+   */
+  bool CanExpressionBeRemoved(HInstruction* instruction);
+
+  /**
+    * @brief Tries to kill an instruction, its inputs, their inputs etc.
+    * @param pass The pass that removes the instruction.
+    * @param insn The instruction to remove.
+    * @param all_removed The output set that contains all removed instructions.
+    *                    May be nullptr, if we don't need to collect those instructions.
+    */
+  void TryKillUseTree(HOptimization_X86* pass,
+                      HInstruction* insn,
+                      std::unordered_set<HInstruction*>* all_removed = nullptr);
+
   enum {
     kHotMethodCount = 50,            // How often must a method be called to be hot?
     kHotMethodBlockCountSum = 2000,  // Sum of all block counts for a method to be hot.
