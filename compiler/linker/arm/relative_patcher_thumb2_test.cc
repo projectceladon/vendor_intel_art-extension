@@ -357,8 +357,9 @@ TEST_F(Thumb2RelativePatcherTest, CallOtherJustTooFarAfter) {
   uint32_t method3_offset = GetMethodOffset(3u);
   ASSERT_TRUE(IsAligned<kArmAlignment>(method3_offset));
   uint32_t method3_header_offset = method3_offset - sizeof(OatQuickMethodHeader);
+  Alignment align = GetInstructionSetAlignment(kThumb2);
   uint32_t thunk_offset =
-      RoundDown(method3_header_offset - ThunkSize(), GetInstructionSetAlignment(kThumb2));
+      RoundDown(method3_header_offset - ThunkSize(), align.mod) + align.offset;
   DCHECK_EQ(thunk_offset + ThunkSize() + CodeAlignmentSize(thunk_offset + ThunkSize()),
             method3_header_offset);
   ASSERT_TRUE(IsAligned<kArmAlignment>(thunk_offset));

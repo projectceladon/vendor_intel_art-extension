@@ -81,12 +81,12 @@ class ExceptionTest : public CommonRuntimeTest {
               fake_header_code_and_maps_.begin() + stack_maps_offset);
 
     // Align the code.
-    const size_t alignment = GetInstructionSetAlignment(kRuntimeISA);
-    fake_header_code_and_maps_.reserve(fake_header_code_and_maps_.size() + alignment);
+    Alignment alignment = GetInstructionSetAlignment(kRuntimeISA);
+    fake_header_code_and_maps_.reserve(fake_header_code_and_maps_.size() + alignment.mod);
     const void* unaligned_code_ptr =
         fake_header_code_and_maps_.data() + (fake_header_code_and_maps_.size() - code_size);
     size_t offset = dchecked_integral_cast<size_t>(reinterpret_cast<uintptr_t>(unaligned_code_ptr));
-    size_t padding = RoundUp(offset, alignment) - offset;
+    size_t padding = alignment.GetOffsetFor(offset);
     // Make sure no resizing takes place.
     CHECK_GE(fake_header_code_and_maps_.capacity(), fake_header_code_and_maps_.size() + padding);
     fake_header_code_and_maps_.insert(fake_header_code_and_maps_.begin(), padding, 0);

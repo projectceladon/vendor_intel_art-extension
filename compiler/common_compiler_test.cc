@@ -67,7 +67,7 @@ void CommonCompilerTest::MakeExecutable(ArtMethod* method) {
 
     header_code_and_maps_chunks_.push_back(std::vector<uint8_t>());
     std::vector<uint8_t>* chunk = &header_code_and_maps_chunks_.back();
-    const size_t max_padding = GetInstructionSetAlignment(compiled_method->GetInstructionSet());
+    const size_t max_padding = GetInstructionSetAlignment(compiled_method->GetInstructionSet()).mod;
     const size_t size = vmap_table.size() + sizeof(method_header) + code_size;
     chunk->reserve(size + max_padding);
     chunk->resize(sizeof(method_header));

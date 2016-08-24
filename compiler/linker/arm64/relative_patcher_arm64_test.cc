@@ -620,8 +620,9 @@ TEST_F(Arm64RelativePatcherTestDefault, CallOtherJustTooFarAfter) {
   uint32_t last_method_offset = GetMethodOffset(last_method_idx);
   ASSERT_TRUE(IsAligned<kArm64Alignment>(last_method_offset));
   uint32_t last_method_header_offset = last_method_offset - sizeof(OatQuickMethodHeader);
+  Alignment align = GetInstructionSetAlignment(kArm64);
   uint32_t thunk_offset =
-      RoundDown(last_method_header_offset - ThunkSize(), GetInstructionSetAlignment(kArm64));
+      RoundDown(last_method_header_offset - ThunkSize(), align.mod) + align.offset;
   DCHECK_EQ(thunk_offset + ThunkSize() + CodeAlignmentSize(thunk_offset + ThunkSize()),
             last_method_header_offset);
   uint32_t diff = thunk_offset - (method1_offset + bl_offset_in_method1);

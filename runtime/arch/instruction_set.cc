@@ -88,22 +88,22 @@ InstructionSet GetInstructionSetFromELF(uint16_t e_machine, uint32_t e_flags) {
   return kNone;
 }
 
-size_t GetInstructionSetAlignment(InstructionSet isa) {
+Alignment GetInstructionSetAlignment(InstructionSet isa) {
   switch (isa) {
     case kArm:
       // Fall-through.
     case kThumb2:
-      return kArmAlignment;
+      return {kArmAlignment, 0};
     case kArm64:
-      return kArm64Alignment;
+      return {kArm64Alignment, 0};
     case kX86:
       // Fall-through.
     case kX86_64:
-      return kX86Alignment;
+      return {kX86Alignment, 2};
     case kMips:
       // Fall-through.
     case kMips64:
-      return kMipsAlignment;
+      return {kMipsAlignment, 0};
     case kNone:
       LOG(FATAL) << "ISA kNone does not have alignment.";
       UNREACHABLE();

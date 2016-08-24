@@ -238,8 +238,8 @@ bool JitCodeCache::WaitForPotentialCollectionToComplete(Thread* self) {
 }
 
 static uintptr_t FromCodeToAllocation(const void* code) {
-  size_t alignment = GetInstructionSetAlignment(kRuntimeISA);
-  return reinterpret_cast<uintptr_t>(code) - RoundUp(sizeof(OatQuickMethodHeader), alignment);
+  auto alignment = GetInstructionSetAlignment(kRuntimeISA);
+  return RoundDown(reinterpret_cast<uintptr_t>(code) - sizeof(OatQuickMethodHeader), alignment.mod);
 }
 
 void JitCodeCache::FreeCode(const void* code_ptr, ArtMethod* method ATTRIBUTE_UNUSED) {
@@ -314,9 +314,10 @@ uint8_t* JitCodeCache::CommitCodeInternal(Thread* self,
                                           const uint8_t* code,
                                           size_t code_size,
                                           bool osr) {
-  size_t alignment = GetInstructionSetAlignment(kRuntimeISA);
+  Alignment alignment = GetInstructionSetAlignment(kRuntimeISA);
   // Ensure the header ends up at expected instruction alignment.
-  size_t header_size = RoundUp(sizeof(OatQuickMethodHeader), alignment);
+  size_t header_size = sizeof(OatQuickMethodHeader) +
+                       alignment.GetOffsetFor(sizeof(OatQuickMethodHeader));
   size_t total_size = header_size + code_size;
 
   OatQuickMethodHeader* method_header = nullptr;
@@ -999,13 +1000,10 @@ void JitCodeCache::InvalidateCompiledCodeFor(ArtMethod* method,
   number_of_deoptimizations_++;
 }
 
-uint8_t* JitCodeCache::AllocateCode(size_t code_size) {
-  size_t alignment = GetInstructionSetAlignment(kRuntimeISA);
+uint8_t* JitCodeCache::AllocateCode(size_t total_size) {
+  Alignment alignment = GetInstructionSetAlignment(kRuntimeISA);
   uint8_t* result = reinterpret_cast<uint8_t*>(
-      mspace_memalign(code_mspace_, alignment, code_size));
-  size_t header_size = RoundUp(sizeof(OatQuickMethodHeader), alignment);
-  // Ensure the header ends up at expected instruction alignment.
-  DCHECK_ALIGNED_PARAM(reinterpret_cast<uintptr_t>(result + header_size), alignment);
+      mspace_memalign(code_mspace_, alignment.mod, total_size));
   used_memory_for_code_ += mspace_usable_size(result);
   return result;
 }

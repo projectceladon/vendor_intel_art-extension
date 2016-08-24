@@ -20,6 +20,7 @@
 #include <iosfwd>
 #include <string>
 
+#include "base/bit_utils.h"
 #include "base/logging.h"  // Logging is required for FATAL in the helper functions.
 
 namespace art {
@@ -123,7 +124,7 @@ static inline bool IsValidInstructionSet(InstructionSet isa) {
   }
 }
 
-size_t GetInstructionSetAlignment(InstructionSet isa);
+Alignment GetInstructionSetAlignment(InstructionSet isa);
 
 static inline bool Is64BitInstructionSet(InstructionSet isa) {
   switch (isa) {

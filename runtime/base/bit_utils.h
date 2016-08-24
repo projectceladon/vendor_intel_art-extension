@@ -156,9 +156,25 @@ static inline bool IsAligned(T* x) {
   return IsAligned<n>(reinterpret_cast<const uintptr_t>(x));
 }
 
+// X is aligned according to {mod, offset} iff (x % mod == offset).
+struct Alignment {
+  uint8_t mod;
+  uint8_t offset;
+
+  size_t GetOffsetFor(size_t x) const {
+    uint8_t current_offset = (x & (mod - 1));
+    return size_t(offset) + (current_offset <= offset ? 0 : mod) - current_offset;
+  }
+};
+
 template<typename T>
-static inline bool IsAlignedParam(T x, int n) {
-  return (x & (n - 1)) == 0;
+static inline bool IsAlignedParam(T x, const Alignment& a) {
+  return (x & (a.mod - 1)) == a.offset;
+}
+
+template<typename T>
+static inline bool IsAlignedParam(T x, const std::size_t mod) {
+  return (x & (mod - 1)) == 0;
 }
 
 #define CHECK_ALIGNED(value, alignment) \

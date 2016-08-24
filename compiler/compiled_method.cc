@@ -51,7 +51,7 @@ size_t CompiledCode::AlignCode(size_t offset) const {
 }
 
 size_t CompiledCode::AlignCode(size_t offset, InstructionSet instruction_set) {
-  return RoundUp(offset, GetInstructionSetAlignment(instruction_set));
+  return offset + GetInstructionSetAlignment(instruction_set).GetOffsetFor(offset);
 }
 
 size_t CompiledCode::CodeDelta() const {
