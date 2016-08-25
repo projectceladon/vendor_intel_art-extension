@@ -38,13 +38,6 @@ class HSharpeningWrapper : public HOptimization_X86 {
   ~HSharpeningWrapper() { }
 
   void Run() OVERRIDE {
-    // FIXME: This pass crashes the host build after extra opts
-    // are enabled for methods with irreducible loops in AOT mode.
-    // Needs to be enabled after fixing this issue. CAR-4257.
-    if (graph_->HasIrreducibleLoops()) {
-      return;
-    }
-
     HSharpening sharpening(graph_, codegen_, compilation_unit_,
                            compiler_driver_, stats_);
     sharpening.Run();

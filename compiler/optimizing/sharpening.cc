@@ -171,7 +171,12 @@ void HSharpening::ProcessLoadString(HLoadString* load_string) {
   if (load_string->GetLoadKind() != HLoadString::LoadKind::kDexCacheViaMethod) {
     return;
   }
-  DCHECK(!load_string->IsInDexCache());
+
+  // This string was already processed during previous run of sharpening.
+  // Nothing to care about.
+  if (load_string->IsInDexCache()) {
+    return;
+  }
 
   const DexFile& dex_file = load_string->GetDexFile();
   uint32_t string_index = load_string->GetStringIndex();
