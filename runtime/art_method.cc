@@ -315,14 +315,51 @@ void ArtMethod::Invoke(Thread* self, uint32_t* args, uint32_t args_size, JValue*
   self->PopManagedStackFragment(fragment);
 }
 
+class AutoFastJniDetectTask FINAL : public jit::JniTask {
+ public:
+  AutoFastJniDetectTask(ArtMethod* method, const void* native_method)
+      : method_(method), native_method_(native_method) { }
+
+  ~AutoFastJniDetectTask() { }
+
+  void Run(Thread* self) OVERRIDE {
+    ScopedObjectAccess soa(self);
+    bool is_fast = IsFastJNI(method_->GetDexMethodIndex(), *method_->GetDexFile(), native_method_);
+    if (is_fast) {
+      method_->SetAccessFlags(method_->GetAccessFlags() | kAccFastNative);
+      VLOG(autofast_jni) << PrettyMethod(method_) << " is a fast JNI Method (async)";
+    } else {
+      VLOG(autofast_jni) << PrettyMethod(method_) << " is not a fast JNI Method (async)";
+    }
+  }
+
+  void Finalize() OVERRIDE {
+    delete this;
+  }
+
+ private:
+  ArtMethod* const method_;
+  const void* native_method_;
+
+  DISALLOW_IMPLICIT_CONSTRUCTORS(AutoFastJniDetectTask);
+};
+
+
 void ArtMethod::RegisterNative(const void* native_method, bool is_fast) {
   CHECK(IsNative()) << PrettyMethod(this);
   CHECK(native_method != nullptr) << PrettyMethod(this);
 #ifdef CAPSTONE
   if (!is_fast && Runtime::Current()->IsAutoFastDetect()) {
-    is_fast = IsFastJNI(GetDexMethodIndex(), *GetDexFile(), native_method);
-    if (is_fast)  {
-      VLOG(autofast_jni) << PrettyMethod(this) << " is a fast JNI Method";
+    jit::Jit* jit = Runtime::Current()->GetJit();
+    if (jit != nullptr) {
+      jit->AddJniTask(Thread::Current(), new AutoFastJniDetectTask(this, native_method));
+    } else {
+      is_fast = IsFastJNI(GetDexMethodIndex(), *GetDexFile(), native_method);
+      if (is_fast) {
+        VLOG(autofast_jni) << PrettyMethod(this) << " is a fast JNI Method";
+      } else {
+        VLOG(autofast_jni) << PrettyMethod(this) << " is not a fast JNI Method";
+      }
     }
   }
 #endif

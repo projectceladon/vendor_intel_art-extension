@@ -764,18 +764,18 @@ void Runtime::InitNonZygoteOrPostFork(
 #ifdef CAPSTONE
 #ifdef __ANDROID__
   char property_value[PROPERTY_VALUE_MAX];
-  property_get("persist.autofast.enable", property_value, "false");
-  SetAutoFastDetect(strcmp(property_value, "true") == 0);
-  property_get("persist.autofast.debug", property_value, "");
+  property_get("persist.dalvik.autofast.disable", property_value, "false");
+  SetAutoFastDetect(strcmp(property_value, "true") != 0);
+  property_get("persist.dalvik.autofast.debug", property_value, "false");
   gLogVerbosity.autofast_jni = (strcmp(property_value, "true") == 0);
 #else
-  const char* autofast_disable = getenv("AUTOFAST_ENABLE");
+  const char* autofast_disable = getenv("ART_AUTOFAST_DISABLE");
   if (autofast_disable != nullptr) {
-    SetAutoFastDetect(strcmp(autofast_disable, "true") == 0);
+    SetAutoFastDetect(strcmp(autofast_disable, "true") != 0);
   } else {
     SetAutoFastDetect(false);
   }
-  const char* autofast_debug = getenv("AUTOFAST_DEBUG");
+  const char* autofast_debug = getenv("ART_AUTOFAST_DEBUG");
   if (autofast_debug != nullptr) {
     gLogVerbosity.autofast_jni = (strcmp(autofast_debug, "true") == 0);
   } else {

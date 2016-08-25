@@ -36,6 +36,7 @@ namespace jit {
 class JitCodeCache;
 class JitOptions;
 class JitCompileTask;
+class JniTask : public Task { };
 
 enum JitTaskKind {
   kAllocateProfile,
@@ -179,6 +180,8 @@ class Jit {
   void AddCompileTask(Thread* self, ArtMethod* method, JitTaskKind kind)
       REQUIRES(!tasks_in_queue_lock_);
   void RemoveCompileTask(ArtMethod* method, JitTaskKind kind) REQUIRES(!tasks_in_queue_lock_);
+
+  bool AddJniTask(Thread* self, JniTask* task);
 
  private:
   Jit();

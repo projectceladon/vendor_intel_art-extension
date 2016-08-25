@@ -704,6 +704,14 @@ void Jit::RemoveCompileTask(ArtMethod* method, JitTaskKind kind) {
   tasks_in_queue_.erase(key);
 }
 
+bool Jit::AddJniTask(Thread* self, JniTask* task) {
+  if (thread_pool_ == nullptr) {
+    return false;
+  }
+  thread_pool_->AddTask(self, task);
+  return true;
+}
+
 void Jit::IncrementBBCount(Thread* thread, ArtMethod* method, uint32_t dex_pc) {
   ScopedAssertNoThreadSuspension ants(thread, __FUNCTION__);
   ProfilingInfo* profiling_info = method->GetProfilingInfo(sizeof(void*));
