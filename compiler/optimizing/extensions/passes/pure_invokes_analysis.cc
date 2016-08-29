@@ -345,7 +345,8 @@ void HPureInvokesAnalysis::ProcessPureInvokes() {
                                            << " of pure method "
                                            << CalledMethodName(call));
           MaybeRecordStat(MethodCompilationStat::kIntelPureStaticCallDeleted);
-          block->RemoveInstruction(call);
+          TryKillUseTree(this, call);
+          DCHECK(call->GetBlock() == nullptr) << call << " was not removed as expected!";
           continue;
         }
       } else {
@@ -360,7 +361,8 @@ void HPureInvokesAnalysis::ProcessPureInvokes() {
                                            << " because it is called for not-null object "
                                            << callee_object);
           MaybeRecordStat(MethodCompilationStat::kIntelPureDirectCallDeleted);
-          block->RemoveInstruction(call);
+          TryKillUseTree(this, call);
+          DCHECK(call->GetBlock() == nullptr) << call << " was not removed as expected!";
           continue;
         }
       }

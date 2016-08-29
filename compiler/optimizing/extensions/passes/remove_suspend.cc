@@ -118,7 +118,9 @@ void HRemoveLoopSuspendChecks::Run() {
       PRINT_PASS_OSTREAM_MESSAGE(this, "Remove the suspend check from loop "
                                << loop_info->GetHeader()->GetBlockId()
                                << ", preheader = " << pre_header->GetBlockId());
-      suspend_check->GetBlock()->RemoveInstruction(suspend_check);
+      TryKillUseTree(this, suspend_check);
+      DCHECK(suspend_check->GetBlock() == nullptr) << suspend_check
+                                                   << " was not removed as expected!";
       loop_info->SetSuppressSuspendCheck(true);
       loop_info->SetSuspendCheck(nullptr);
       MaybeRecordStat(MethodCompilationStat::kIntelRemoveSuspendCheck);

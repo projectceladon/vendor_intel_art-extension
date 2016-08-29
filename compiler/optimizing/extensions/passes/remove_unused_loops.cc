@@ -161,7 +161,9 @@ bool HRemoveUnusedLoops::CheckInstructionsInBlock(HLoopInformation_X86* loop_inf
       }
     }
     for (auto insn_as_phi : worklist) {
-      insn_as_phi->GetBlock()->RemovePhi(insn_as_phi);
+      TryKillUseTree(this, insn_as_phi);
+      DCHECK(insn_as_phi->GetBlock() == nullptr) << insn_as_phi
+                                                 << " was not removed as expected!";
     }
     if (!no_side_effects) {
       return false;  // Other insn may be skipped.

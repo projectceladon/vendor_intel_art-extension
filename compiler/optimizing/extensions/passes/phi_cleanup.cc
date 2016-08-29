@@ -62,8 +62,13 @@ void HPhiCleanup::CleanUpPhis() {
         PRINT_PASS_OSTREAM_MESSAGE(this, "Removing " << phi << " because all"
                                          << " its inputs are the same.");
         DCHECK(phi->InputAt(0)->GetBlock()->Dominates(block));
-        phi->ReplaceWith(phi->InputAt(0));
-        block->RemovePhi(phi);
+        if (phi->HasUses()) {
+          phi->ReplaceWith(phi->InputAt(0));
+          block->RemovePhi(phi);
+        } else {
+          TryKillUseTree(this, phi);
+          DCHECK(phi->GetBlock() == nullptr) << phi << " was not removed as expected!";
+        }
         MaybeRecordStat(MethodCompilationStat::kIntelPhiNodeEliminated);
       } else if (RemoveClique(phi, seen_insns)) {
         PRINT_PASS_OSTREAM_MESSAGE(this, "Clique removed successfully");

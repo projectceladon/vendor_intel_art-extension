@@ -605,7 +605,8 @@ void HFormBottomLoops::CloneInstructions(FBLContext& context,
   }
 
   for (auto phi : to_remove) {
-    loop_header->RemovePhi(phi);
+    TryKillUseTree(this, phi);
+    DCHECK(phi->GetBlock() == nullptr) << phi << " was not removed as expected!";
   }
 }
 

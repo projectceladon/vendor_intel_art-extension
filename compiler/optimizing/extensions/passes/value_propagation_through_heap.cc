@@ -146,8 +146,9 @@ void HValuePropagationThroughHeap::PropagateValueToGetters(HLoopInformation_X86*
       for (auto candidate_getter : candidate_getters) {
         candidate_getter->ReplaceWith(value);
         candidate_getter->GetBlock()->RemoveInstruction(candidate_getter);
-        PRINT_PASS_OSTREAM_MESSAGE(this, "Successfully replaced use of getter " << candidate_getter <<
-                          " with value " << value << " stored in setter " << setter);
+        PRINT_PASS_OSTREAM_MESSAGE(this, "Successfully replaced use of getter " << candidate_getter
+                                         << " with value " << value << " stored in setter "
+                                         << setter);
       }
       MaybeRecordStat(MethodCompilationStat::kIntelValuePropagationThroughHeap,
                       candidate_getters.size());
