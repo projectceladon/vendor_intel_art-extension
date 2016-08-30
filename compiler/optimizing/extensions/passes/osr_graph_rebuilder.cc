@@ -43,9 +43,8 @@ void HOsrGraphRebuilder::InjectionPhiFixup(HLoopInformation_X86* loop,
     // Create a new phi merging OSR and non-osr inputs.
     HPhi* phi = phi_it.Current()->AsPhi();
 
-    // Paranoid: is this a loop Phi from the only back edge?
+    // Paranoid: ensure that we have 2 inputs.
     DCHECK_EQ(phi->InputCount(), 2u);
-    DCHECK(loop->Contains(*phi->InputAt(1)->GetBlock()));
 
     bool degenerate = (phi->InputAt(1) == phi);
 
