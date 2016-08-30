@@ -656,7 +656,8 @@ static void CheckLoopEntriesCanBeUsedForOsr(const HGraph& graph,
   }
   ArenaVector<HSuspendCheck*> loop_headers(graph.GetArena()->Adapter(kArenaAllocMisc));
   for (HReversePostOrderIterator it(graph); !it.Done(); it.Advance()) {
-    if (it.Current()->IsLoopHeader()) {
+    // One of extended optimization passes could have removed the suspend check.
+    if (it.Current()->IsLoopHeader() && it.Current()->GetLoopInformation()->HasSuspendCheck()) {
       HSuspendCheck* suspend_check = it.Current()->GetLoopInformation()->GetSuspendCheck();
       if (!suspend_check->GetEnvironment()->IsFromInlinedInvoke()) {
         loop_headers.push_back(suspend_check);
