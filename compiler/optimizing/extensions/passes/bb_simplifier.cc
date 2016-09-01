@@ -59,6 +59,7 @@ bool HBBSimplifier::TrySimplifyIf(HBasicBlock* block, HIf* if_insn) {
 
       // First, remove block C.
       block->RemoveSuccessor(succ_2);
+      block->RemoveDominatedBlock(succ_2);
       graph->DeleteBlock(succ_2, /* remove_from_loops */ true);
 
       // Second, remove block B, taking care about back edges.
@@ -70,8 +71,16 @@ bool HBBSimplifier::TrySimplifyIf(HBasicBlock* block, HIf* if_insn) {
       }
 
       if (!succ_1_is_a_back_edge) {
+        // We remove succ_1 because it is safe.
         block->ReplaceSuccessor(succ_1, lower_block);
+        block->RemoveDominatedBlock(succ_1);
         graph->DeleteBlock(succ_1, /* remove_from_loops */ true);
+      } else {
+        // The succ_1 remains. Should we update domination with respect to that?
+        if (lower_block->GetDominator() == block) {
+          lower_block->SetDominator(succ_1);
+          succ_1->AddDominatedBlock(lower_block);
+        }
       }
 
       // Third, replace IF with GOTO.
@@ -126,11 +135,6 @@ void HBBSimplifier::Run() {
 
   for (HPostOrderIterator it(*graph_); !it.Done(); it.Advance()) {
     changed |= TrySimplify(it.Current());
-  }
-
-  if (changed) {
-    PRINT_PASS_OSTREAM_MESSAGE(this, "Rebuilding domination in " << GetMethodName(graph));
-    graph->RebuildDomination();
   }
 
   PRINT_PASS_OSTREAM_MESSAGE(this, "End " << GetMethodName(graph));
