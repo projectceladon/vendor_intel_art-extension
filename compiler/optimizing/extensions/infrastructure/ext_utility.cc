@@ -389,6 +389,12 @@ namespace art {
     DCHECK(pass != nullptr);
     DCHECK(insn != nullptr);
 
+    // If we cannot remove even the first instruction, we will not remove
+    // anything. So let's do the fast check to avoid unneeded overhead.
+    if (!CanExpressionBeRemoved(insn)) {
+      return;
+    }
+
     // We will swap these two sets between iterations.
     std::unordered_set<HInstruction*> set_1;
     std::unordered_set<HInstruction*> set_2;
