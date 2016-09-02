@@ -26,7 +26,7 @@
 
 namespace art {
 
-bool AliasCheck::Instance_base_same(HInstruction* x, HInstruction* y) {
+bool AliasCheck::Instance_base_same(HInstruction* x, HInstruction* y) const {
   // Skip NullCheck for aliasing.
   if (x->IsNullCheck()) {
     x = x->InputAt(0);
@@ -44,7 +44,7 @@ bool AliasCheck::Instance_base_same(HInstruction* x, HInstruction* y) {
   return Alias(x, y) == kMustAlias;
 }
 
-bool AliasCheck::May_Types_Alias(HInstruction* x, HInstruction* y) {
+bool AliasCheck::May_Types_Alias(HInstruction* x, HInstruction* y) const {
   // Skip NullCheck and ClinitCheck to find real base.
   while (x->IsNullCheck() || x->IsClinitCheck()) {
     x = x->InputAt(0);
@@ -82,7 +82,7 @@ bool AliasCheck::May_Types_Alias(HInstruction* x, HInstruction* y) {
 AliasCheck::AliasKind AliasCheck::Instance_alias(const FieldInfo& x_field,
                                        const FieldInfo& y_field,
                                        HInstruction* x_base,
-                                       HInstruction* y_base) {
+                                       HInstruction* y_base) const {
   if (x_field.IsVolatile() || y_field.IsVolatile()) {
     return kMayAlias;
   }
@@ -99,7 +99,7 @@ AliasCheck::AliasKind AliasCheck::Instance_alias(const FieldInfo& x_field,
   return kMayAlias;
 }
 
-AliasCheck::AliasKind AliasCheck::Alias(HInstanceFieldGet* x_get, HInstruction* y) {
+AliasCheck::AliasKind AliasCheck::Alias(HInstanceFieldGet* x_get, HInstruction* y) const {
   if (x_get == y) {
     return kMustAlias;
   }
@@ -134,7 +134,7 @@ AliasCheck::AliasKind AliasCheck::Alias(HInstanceFieldGet* x_get, HInstruction* 
   }
 }
 
-AliasCheck::AliasKind AliasCheck::Alias(HInstanceFieldSet* x_set, HInstruction* y) {
+AliasCheck::AliasKind AliasCheck::Alias(HInstanceFieldSet* x_set, HInstruction* y) const {
   if (x_set == y) {
     return kMustAlias;
   }
@@ -172,7 +172,7 @@ AliasCheck::AliasKind AliasCheck::Alias(HInstanceFieldSet* x_set, HInstruction* 
 AliasCheck::AliasKind AliasCheck::Static_alias(const FieldInfo& x_field,
                                                const FieldInfo& y_field,
                                                HInstruction* x_cls,
-                                               HInstruction* y_cls) {
+                                               HInstruction* y_cls) const {
   if (x_field.IsVolatile() || y_field.IsVolatile()) {
     return AliasCheck::kMayAlias;
   }
@@ -192,7 +192,7 @@ AliasCheck::AliasKind AliasCheck::Static_alias(const FieldInfo& x_field,
   return AliasCheck::kMayAlias;
 }
 
-AliasCheck::AliasKind AliasCheck::Alias(HStaticFieldGet* x_get, HInstruction* y) {
+AliasCheck::AliasKind AliasCheck::Alias(HStaticFieldGet* x_get, HInstruction* y) const {
   if (x_get == y) {
     return kMustAlias;
   }
@@ -227,7 +227,7 @@ AliasCheck::AliasKind AliasCheck::Alias(HStaticFieldGet* x_get, HInstruction* y)
   }
 }
 
-AliasCheck::AliasKind AliasCheck::Alias(HStaticFieldSet* x_set, HInstruction* y) {
+AliasCheck::AliasKind AliasCheck::Alias(HStaticFieldSet* x_set, HInstruction* y) const {
   if (x_set == y) {
     return kMustAlias;
   }
@@ -262,7 +262,7 @@ AliasCheck::AliasKind AliasCheck::Alias(HStaticFieldSet* x_set, HInstruction* y)
   }
 }
 
-bool AliasCheck::Array_base_same(HInstruction* x, HInstruction* y) {
+bool AliasCheck::Array_base_same(HInstruction* x, HInstruction* y) const {
   // Identical bases are obviously the same.
   if (x == y) {
     return true;
@@ -272,7 +272,7 @@ bool AliasCheck::Array_base_same(HInstruction* x, HInstruction* y) {
   return Alias(x, y) == kMustAlias;
 }
 
-AliasCheck::AliasKind AliasCheck::Array_index_alias(HInstruction* x, HInstruction* y) {
+AliasCheck::AliasKind AliasCheck::Array_index_alias(HInstruction* x, HInstruction* y) const {
   // See through bounds checks.
   if (x->IsBoundsCheck()) {
     x = x->InputAt(0);
@@ -295,7 +295,7 @@ AliasCheck::AliasKind AliasCheck::Array_index_alias(HInstruction* x, HInstructio
   return kMayAlias;
 }
 
-AliasCheck::AliasKind AliasCheck::Array_alias(HInstruction* x, HInstruction* y) {
+AliasCheck::AliasKind AliasCheck::Array_alias(HInstruction* x, HInstruction* y) const {
   // x and y must be arrays get/set.
   CHECK(x->IsArrayGet() || x->IsArraySet()) << x->GetKind();
   CHECK(y->IsArrayGet() || y->IsArraySet()) << y->GetKind();
@@ -336,7 +336,7 @@ AliasCheck::AliasKind AliasCheck::Array_alias(HInstruction* x, HInstruction* y) 
 
 AliasCheck::AliasKind AliasCheck::LHSMemory_array_alias(HInstructionLHSMemory* x,
                                                         HInstruction *index,
-                                                        HInstruction* y) {
+                                                        HInstruction* y) const {
   // Do they have the same bases?
   if (Array_base_same(x->InputAt(0), y->InputAt(0))) {
     // We know the base is the same.  Can we differentiate the index?
@@ -369,7 +369,7 @@ AliasCheck::AliasKind AliasCheck::LHSMemory_array_alias(HInstructionLHSMemory* x
 
 AliasCheck::AliasKind AliasCheck::LHSMemory_field_alias(HInstructionLHSMemory* x,
                                                         HInstruction* base,
-                                                        const FieldInfo& field) {
+                                                        const FieldInfo& field) const {
   if (field.IsVolatile()) {
     return kMayAlias;
   }
@@ -387,7 +387,7 @@ AliasCheck::AliasKind AliasCheck::LHSMemory_field_alias(HInstructionLHSMemory* x
   return kMayAlias;
 }
 
-AliasCheck::AliasKind AliasCheck::Alias(HArrayGet* x_get, HInstruction* y) {
+AliasCheck::AliasKind AliasCheck::Alias(HArrayGet* x_get, HInstruction* y) const{
   switch (y->GetKind()) {
     case HInstruction::kArrayGet:
     case HInstruction::kArraySet:
@@ -414,7 +414,7 @@ AliasCheck::AliasKind AliasCheck::Alias(HArrayGet* x_get, HInstruction* y) {
   }
 }
 
-AliasCheck::AliasKind AliasCheck::Alias(HArraySet* x_set, HInstruction* y) {
+AliasCheck::AliasKind AliasCheck::Alias(HArraySet* x_set, HInstruction* y) const {
   switch (y->GetKind()) {
     case HInstruction::kArrayGet:
     case HInstruction::kArraySet:
@@ -441,7 +441,7 @@ AliasCheck::AliasKind AliasCheck::Alias(HArraySet* x_set, HInstruction* y) {
   }
 }
 
-AliasCheck::AliasKind AliasCheck::Alias(HInstructionLHSMemory* x_lhs, HInstruction* y) {
+AliasCheck::AliasKind AliasCheck::Alias(HInstructionLHSMemory* x_lhs, HInstruction* y) const {
   HInstruction* index = x_lhs->GetIndex();
   switch (y->GetKind()) {
     case HInstruction::kArrayGet:
@@ -482,7 +482,7 @@ AliasCheck::AliasKind AliasCheck::Alias(HInstructionLHSMemory* x_lhs, HInstructi
   }
 }
 
-AliasCheck::AliasKind AliasCheck::Alias(HInstruction* x, HInstruction* y) {
+AliasCheck::AliasKind AliasCheck::Alias(HInstruction* x, HInstruction* y) const {
   // Always have the 'lower' instruction as the first operand.  This allows
   // easier caching of results.
   if (x->GetId() > y->GetId()) {

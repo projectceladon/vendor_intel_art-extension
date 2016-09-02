@@ -21,12 +21,11 @@
 
 #include "bb_simplifier.h"
 #include "ext_utility.h"
-#include "graph_x86.h"
 
 namespace art {
 
 bool HBBSimplifier::TrySimplifyIf(HBasicBlock* block, HIf* if_insn) {
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph = GetGraphX86();
 
   // Paranoia.
   DCHECK(if_insn != nullptr);
@@ -128,7 +127,7 @@ bool HBBSimplifier::TrySimplify(HBasicBlock* block) {
 }
 
 void HBBSimplifier::Run() {
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph = GetGraphX86();
   PRINT_PASS_OSTREAM_MESSAGE(this, "Start " << GetMethodName(graph));
 
   bool changed = false;

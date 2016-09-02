@@ -46,9 +46,9 @@ class HSharpeningWrapper : public HOptimization_X86 {
   static constexpr const char* kSharpeningAfterInliningPassName = "sharpening_after_inlining";
 
  private:
-  CodeGenerator* codegen_;
+  CodeGenerator* const codegen_;
   const DexCompilationUnit& compilation_unit_;
-  CompilerDriver* compiler_driver_;
+  CompilerDriver* const compiler_driver_;
 
   DISALLOW_COPY_AND_ASSIGN(HSharpeningWrapper);
 };

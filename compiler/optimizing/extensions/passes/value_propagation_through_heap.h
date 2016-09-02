@@ -19,10 +19,7 @@
 
 #include "driver/compiler_driver.h"
 #include "ext_alias.h"
-#include "nodes.h"
 #include "optimization_x86.h"
-
-#include <set>
 
 namespace art {
 

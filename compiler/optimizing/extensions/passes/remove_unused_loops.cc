@@ -21,9 +21,7 @@
  */
 #include "remove_unused_loops.h"
 
-#include "base/stringprintf.h"
 #include "ext_utility.h"
-#include "graph_x86.h"
 #include "loop_formation.h"
 #include "loop_iterators.h"
 
@@ -37,7 +35,7 @@ void HRemoveUnusedLoops::Run() {
   }
   PRINT_PASS_OSTREAM_MESSAGE(this, "start " << GetMethodName(graph_));
 
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph = GetGraphX86();
   HLoopInformation_X86 *graph_loop_info = graph->GetLoopInformation();
 
   // Walk all the inner loops in the graph.
@@ -234,7 +232,7 @@ bool HRemoveUnusedLoops::CheckPhisInBlock(HLoopInformation_X86* loop_info,
 void HRemoveUnusedLoops::RemoveLoop(HLoopInformation_X86* loop_info,
                                    HBasicBlock* pre_header,
                                    HBasicBlock* exit_block) {
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph = GetGraphX86();
   HBasicBlock* loop_header = loop_info->GetHeader();
   PRINT_PASS_OSTREAM_MESSAGE(this, "Remove loop blocks: "
                                    << loop_header->GetBlockId()

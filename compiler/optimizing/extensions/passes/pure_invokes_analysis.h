@@ -18,12 +18,7 @@
 #define ART_COMPILER_OPTIMIZING_PURE_INVOKES_ANALYSIS_H_
 
 #include "driver/compiler_driver.h"
-#include "graph_x86.h"
-#include "ext_utility.h"
-#include "nodes.h"
 #include "optimization_x86.h"
-
-#include <vector>
 
 namespace art {
 

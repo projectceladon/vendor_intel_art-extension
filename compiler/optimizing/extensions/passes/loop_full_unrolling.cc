@@ -16,7 +16,6 @@
 
 #include "cloning.h"
 #include "ext_utility.h"
-#include "graph_x86.h"
 #include "loop_iterators.h"
 #include "loop_full_unrolling.h"
 #include "loop_unrolling.h"
@@ -25,7 +24,7 @@
 namespace art {
 
 void HLoopFullUnrolling::Run() {
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph = GetGraphX86();
   HLoopInformation_X86* loop_start = graph->GetLoopInformation();
   bool graph_updated = false;
   PRINT_PASS_OSTREAM_MESSAGE(this, "Begin " << GetMethodName(graph));

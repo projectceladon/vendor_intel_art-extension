@@ -19,9 +19,6 @@
  * and approved by Intel in writing.
  */
 
-#include <queue>
-
-#include "graph_x86.h"
 #include "loop_iterators.h"
 #include "loop_formation.h"
 
@@ -57,7 +54,7 @@ void HLoopFormation::Run() {
   std::set<HLoopInformation_X86*> info_set;
 
   // Post order visit to visit inner loops before outer loops.
-  GRAPH_TO_GRAPH_X86(graph_)->ClearLoopInformation();
+  GetGraphX86()->ClearLoopInformation();
   for (HPostOrderIterator it(*graph_); !it.Done(); it.Advance()) {
     HBasicBlock* block = it.Current();
     if (block->IsLoopHeader()) {
@@ -72,7 +69,7 @@ void HLoopFormation::Run() {
   }
 
   // Now clear data structures to make way for initialization.
-  HGraph_X86* graph_x86 = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph_x86 = GetGraphX86();
   graph_x86->ClearLoopInformation();
   for (auto loop : info_set) {
     loop->ResetRelationships();

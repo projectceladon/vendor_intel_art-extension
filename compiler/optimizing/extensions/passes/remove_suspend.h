@@ -23,7 +23,6 @@
 #define ART_COMPILER_OPTIMIZING_REMOVE_SUSPEND_H_
 
 #include "driver/compiler_driver.h"
-#include "nodes.h"
 #include "optimization_x86.h"
 
 #define MAX_SUSPEND_TIME_CYCLES 1000000  // 1 million, < 1 ms @ 1.3 GHz.
@@ -43,7 +42,7 @@ class HRemoveLoopSuspendChecks : public HOptimization_X86 {
  private:
   static constexpr const char* kRemoveLoopSuspendChecks = "remove_loop_suspend_checks";
 
-  const CompilerDriver* driver_;
+  const CompilerDriver* const driver_;
 
   DISALLOW_COPY_AND_ASSIGN(HRemoveLoopSuspendChecks);
 };

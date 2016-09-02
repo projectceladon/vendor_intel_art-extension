@@ -20,14 +20,13 @@
  */
 
 #include "ext_utility.h"
-#include "graph_x86.h"
 #include "loop_iterators.h"
 #include "pass_option.h"
 #include "peeling.h"
 
 namespace art {
 
-bool HLoopPeeling::ShouldPeel(HLoopInformation_X86* loop) {
+bool HLoopPeeling::ShouldPeel(HLoopInformation_X86* loop) const {
   DCHECK(loop->IsInner());
 
   static PassOption<int64_t> block_count_threshold(this,
@@ -122,7 +121,7 @@ bool HLoopPeeling::ShouldPeel(HLoopInformation_X86* loop) {
 }
 
 void HLoopPeeling::Run() {
-  HOnlyInnerLoopIterator inner_iter(GRAPH_TO_GRAPH_X86(graph_)->GetLoopInformation());
+  HOnlyInnerLoopIterator inner_iter(GetGraphX86()->GetLoopInformation());
   PRINT_PASS_OSTREAM_MESSAGE(this, "Start " << GetMethodName(graph_));
   while (!inner_iter.Done()) {
     HLoopInformation_X86* inner_loop = inner_iter.Current();

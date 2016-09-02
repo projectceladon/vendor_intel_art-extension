@@ -18,7 +18,6 @@
 #define ART_COMPILER_OPTIMIZING_EXTENSIONS_PASSES_LOOP_FULL_UNROLLING_H_
 
 #include "driver/compiler_driver.h"
-#include "nodes.h"
 #include "optimization_x86.h"
 
 namespace art {
@@ -45,7 +44,7 @@ class HLoopFullUnrolling : public HOptimization_X86 {
 
   static constexpr int64_t kDefaultMaxInstructionsUnrolled = 60;
 
-  const CompilerDriver* driver_;
+  const CompilerDriver* const driver_;
 
   DISALLOW_COPY_AND_ASSIGN(HLoopFullUnrolling);
 };

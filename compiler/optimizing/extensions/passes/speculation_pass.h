@@ -50,7 +50,7 @@ class HSpeculationPass : public HOptimization_X86 {
    * @brief Used to check whether this pass is applicable on graph.
    * @return Returns true if pass should be attempted and false otherwise.
    */
-  virtual bool Gate();
+  virtual bool Gate() const;
 
   /**
    * @brief This is a lightweight check whether current instruction is a potential candidate.

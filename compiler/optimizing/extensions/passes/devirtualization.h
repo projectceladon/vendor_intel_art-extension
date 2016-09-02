@@ -17,10 +17,8 @@
 #ifndef ART_COMPILER_OPTIMIZING_EXTENSIONS_PASSES_DEVIRTUALIZATION_H_
 #define ART_COMPILER_OPTIMIZING_EXTENSIONS_PASSES_DEVIRTUALIZATION_H_
 
-#include "dex_file.h"
 #include "driver/compiler_driver-inl.h"
 #include "driver/compiler_options.h"
-#include "safe_map.h"
 #include "speculation_pass.h"
 
 namespace art {
@@ -53,7 +51,7 @@ class HDevirtualization : public HSpeculationPass {
 
  protected:
   // For explanation on each of these methods, see HSpeculationPass.
-  bool Gate() OVERRIDE;
+  bool Gate() const OVERRIDE;
   bool IsCandidate(HInstruction* instr) OVERRIDE;
   bool HasPrediction(HInstruction* instr, bool update) OVERRIDE;
   uint64_t GetMaxCost() OVERRIDE;

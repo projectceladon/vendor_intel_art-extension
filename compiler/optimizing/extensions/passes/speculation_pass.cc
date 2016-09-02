@@ -15,16 +15,13 @@
  */
 
 #include "common_dominator.h"
-#include "driver/compiler_driver-inl.h"
 #include "ext_utility.h"
-#include "graph_x86.h"
 #include "pass_option.h"
 #include "speculation_pass.h"
-#include <set>
 
 namespace art {
 
-bool HSpeculationPass::Gate() {
+bool HSpeculationPass::Gate() const {
   if (compiler_driver_->GetInstructionSet() != kX86 &&
       compiler_driver_->GetInstructionSet() != kX86_64) {
     PRINT_PASS_MESSAGE(this, "Skipping pass because ISA is not supported.");
@@ -99,7 +96,7 @@ void HSpeculationPass::CodeVersioningHelper(HInstruction* candidate,
                                             HInstructionCloner& cloner,
                                             HSpeculationGuard* guard,
                                             bool needs_trap) {
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph = GetGraphX86();
 
   HBasicBlock* pre_block = candidate->GetBlock();
   HBasicBlock* post_block = pre_block->SplitBeforeForInlining(candidate);
@@ -324,7 +321,7 @@ void HSpeculationPass::Run() {
     }
   }
 
-  HInstructionCloner cloner(GRAPH_TO_GRAPH_X86(graph_));
+  HInstructionCloner cloner(GetGraphX86());
 
   // Now choose and apply the best strategy for each candidate.
   for (auto it : candidates_grouped) {

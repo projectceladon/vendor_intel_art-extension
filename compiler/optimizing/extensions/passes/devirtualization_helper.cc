@@ -19,18 +19,6 @@
 
 #include "devirtualization.h"
 
-#include "art_method-inl.h"
-#include "class_linker.h"
-#include "dex/verified_method.h"
-#include "dex/verification_results.h"
-#include "driver/compiler_driver-inl.h"
-#include "driver/compiler_options.h"
-#include "driver/dex_compilation_unit.h"
-#include "mirror/class_loader.h"
-#include "mirror/dex_cache.h"
-#include "reference_type_propagation.h"
-#include "scoped_thread_state_change.h"
-
 namespace art {
 
 bool HDevirtualization::IsMethodOrDeclaringClassFinal(ArtMethod* method)

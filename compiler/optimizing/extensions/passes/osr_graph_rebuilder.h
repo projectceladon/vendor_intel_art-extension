@@ -22,9 +22,6 @@
 #ifndef ART_OPT_PASSES_OSR_GRAPH_REBUILDER_H_
 #define ART_OPT_PASSES_OSR_GRAPH_REBUILDER_H_
 
-#include <vector>
-
-#include "nodes.h"
 #include "optimization_x86.h"
 
 namespace art {

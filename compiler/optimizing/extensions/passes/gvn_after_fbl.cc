@@ -20,7 +20,6 @@
  */
 
 #include "ext_utility.h"
-#include "graph_x86.h"
 #include "gvn_after_fbl.h"
 #include "gvn.h"
 #include "loop_iterators.h"
@@ -29,7 +28,7 @@
 namespace art {
 
 void GVNAfterFormBottomLoops::Run() {
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph = GetGraphX86();
   HLoopInformation_X86* loop = graph->GetLoopInformation();
 
   // Go through each loop and check whether there is at least one bottom tested

@@ -138,7 +138,7 @@ bool HLoopInformation_X86::ComputeBoundInformation() {
   bound_info_ = HLoopBoundInformation();
 
   // Check that the loop has only one exit.
-  HBasicBlock* exit_block = GetExitBlock();
+  HBasicBlock* exit_block = GetExitBlock(false);
   if (exit_block == nullptr) {
     return false;
   }
@@ -389,7 +389,7 @@ int64_t HLoopInformation_X86::GetNumIterations(HBasicBlock* bb) const {
 
   HBasicBlock* biv_increment_bb = iv->GetLinearInsn()->GetBlock();
   DCHECK(biv_increment_bb != nullptr);
-  HBasicBlock* exit_block = GetExitBlock();
+  HBasicBlock* exit_block = GetExitBlock(false);
 
   if (exit_block == nullptr) {
     return -1;
@@ -596,12 +596,12 @@ HConstant* HLoopInformation_X86::FindBIVEntrySSA(HPhi* phi) const {
 bool HLoopInformation_X86::HasOneExitEdge() const {
   // We call GetExitBlock because we know that will bail as soon
   // as it finds two exits.
-  bool has_one_exit = GetExitBlock() != nullptr;
+  bool has_one_exit = GetExitBlock(false) != nullptr;
   DCHECK_EQ(has_one_exit, GetLoopExitCount() == 1u);
   return has_one_exit;
 }
 
-HBasicBlock* HLoopInformation_X86::GetExitBlock() const {
+HBasicBlock* HLoopInformation_X86::GetExitBlock(bool guarantee_one_exit) const {
   HBasicBlock* exit_block = nullptr;
   for (HBlocksInLoopIterator it_loop(*this); !it_loop.Done(); it_loop.Advance()) {
     HBasicBlock* loop_block = it_loop.Current();
@@ -613,7 +613,19 @@ HBasicBlock* HLoopInformation_X86::GetExitBlock() const {
           // This is the first exit edge we found.
           // Note, we do not allow multiple edges to same block.
           exit_block = successor;
+          if (!kIsDebugBuild && guarantee_one_exit) {
+            // If this parameter is true, we know for sure that the graph has
+            // strictly one exit block. So we can stop the search here.
+            // In debug build, let's be pessimistic and continue search to make
+            // sure that we don't find another exit block.
+            return exit_block;
+          }
         } else {
+          if (guarantee_one_exit) {
+            CHECK(false) << "Loop #" << GetHeader()->GetBlockId()
+                         << " is expected to have one exit block,"
+                         << " but has at least 2.";
+          }
           // More than one different exit blocks.
           return nullptr;
         }
@@ -621,6 +633,11 @@ HBasicBlock* HLoopInformation_X86::GetExitBlock() const {
     }
   }
 
+  if (guarantee_one_exit && exit_block == nullptr) {
+    CHECK(false) << "Loop #" << GetHeader()->GetBlockId()
+                 << " is expected to have one exit block,"
+                 << " but does not have any.";
+  }
   return exit_block;
 }
 
@@ -1224,7 +1241,7 @@ bool HLoopInformation_X86::RemoveFromGraph() {
 
   // First, we want to retrieve the loop pre-header and exit blocks.
   HBasicBlock* pre_header = GetPreHeader();
-  HBasicBlock* exit_block = GetExitBlock();
+  HBasicBlock* exit_block = GetExitBlock(false);
 
   // If we can't take either of these blocks, we can't go any further.
   if (pre_header == nullptr || exit_block == nullptr) {

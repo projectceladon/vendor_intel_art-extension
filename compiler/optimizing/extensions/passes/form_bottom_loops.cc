@@ -23,7 +23,6 @@
 
 #include "cloning.h"
 #include "ext_utility.h"
-#include "graph_x86.h"
 #include "loop_iterators.h"
 #include "reference_type_propagation.h"
 
@@ -93,7 +92,7 @@ struct FBLContext {
 
 void HFormBottomLoops::Run() {
   DCHECK(handles_ != nullptr);
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph = GetGraphX86();
   HLoopInformation_X86* graph_loop = graph->GetLoopInformation();
 
   PRINT_PASS_OSTREAM_MESSAGE(this, "Begin: " << GetMethodName(graph));
@@ -107,7 +106,6 @@ void HFormBottomLoops::Run() {
     PRINT_PASS_OSTREAM_MESSAGE(this, "Visit " << loop->GetHeader()->GetBlockId()
                                      << ", preheader = " << pre_header->GetBlockId());
 
-    // The exit block from the loop.
     HBasicBlock* loop_header = loop->GetHeader();
     HBasicBlock* exit_block = loop->GetExitBlock();
 
@@ -142,7 +140,7 @@ static bool IsSingleGotoBackEdge(HBasicBlock* bb) {
 
 bool HFormBottomLoops::ShouldTransformLoop(HLoopInformation_X86* loop,
                                            HBasicBlock* loop_header,
-                                           HBasicBlock* exit_block) {
+                                           HBasicBlock* exit_block) const {
   if (exit_block == nullptr) {
     // We need exactly 1 exit block from the loop.
     PRINT_PASS_MESSAGE(this, "Too many or too few exit blocks");
@@ -264,7 +262,7 @@ void HFormBottomLoops::RewriteLoop(HLoopInformation_X86* loop,
   DCHECK(loop_header != nullptr);
   DCHECK(exit_block != nullptr);
 
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph = GetGraphX86();
   HBasicBlock* pre_header = loop->GetPreHeader();
 
   PRINT_PASS_OSTREAM_MESSAGE(this, "Rewrite loop " << loop_header->GetBlockId()
@@ -334,10 +332,10 @@ void HFormBottomLoops::RewriteLoop(HLoopInformation_X86* loop,
 }
 
 
-bool HFormBottomLoops::CheckLoopHeader(HBasicBlock* loop_header) {
+bool HFormBottomLoops::CheckLoopHeader(HBasicBlock* loop_header) const {
   // Walk through the instructions in the loop, looking for instructions that aren't
   // clonable, or that have results that are used outside of this block.
-  HInstructionCloner cloner(GRAPH_TO_GRAPH_X86(graph_), false);
+  HInstructionCloner cloner(GetGraphX86(), false);
 
   for (HInstructionIterator inst_it(loop_header->GetInstructions());
        !inst_it.Done();

@@ -360,7 +360,7 @@ namespace art {
     for (HBasicBlock* back_block : loop->GetBackEdges()) {
       LOG(INFO) << "BackEdge " << back_block->GetBlockId();
     }
-    HBasicBlock* exit_block = loop->GetExitBlock();
+    HBasicBlock* exit_block = loop->GetExitBlock(false);
     if (exit_block != nullptr) {
       LOG(INFO) << "Exit " << exit_block->GetBlockId();
     }

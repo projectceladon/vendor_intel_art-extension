@@ -39,38 +39,38 @@ class AliasCheck {
   * @returns kNoAlias if the instructions cannot alias,
   * kMayAlias if they might alias, and kMustAlias if they refer to the same memory.
   */
-  AliasKind Alias(HInstruction* x, HInstruction* y);
+  AliasKind Alias(HInstruction* x, HInstruction* y) const;
 
  /**
   * @brief Could this instruction potentially alias another instruction?
   * @param insn Instruction to check.
   * @returns 'true' if this is a potentially aliasing instruction.
   */
-  bool HasWriteSideEffects(HInstruction* insn) {
+  bool HasWriteSideEffects(HInstruction* insn) const {
     return insn->DoesAnyWrite() || insn->IsMonitorOperation();
   }
 
  private:
-  inline AliasKind Alias(HInstanceFieldGet* x, HInstruction* y);
-  inline AliasKind Alias(HInstanceFieldSet* x, HInstruction* y);
-  inline AliasKind Alias(HStaticFieldGet* x, HInstruction* y);
-  inline AliasKind Alias(HStaticFieldSet* x, HInstruction* y);
-  inline AliasKind Alias(HArrayGet* x, HInstruction* y);
-  inline AliasKind Alias(HArraySet* x, HInstruction* y);
-  inline AliasKind Alias(HInstructionLHSMemory* x, HInstruction* y);
-  AliasKind Array_index_alias(HInstruction* x, HInstruction *y);
-  bool Array_base_same(HInstruction* x, HInstruction* y);
-  bool Instance_base_same(HInstruction* x, HInstruction* y);
-  bool May_Types_Alias(HInstruction* x, HInstruction* y);
-  AliasKind Array_alias(HInstruction* x, HInstruction* y);
+  inline AliasKind Alias(HInstanceFieldGet* x, HInstruction* y) const;
+  inline AliasKind Alias(HInstanceFieldSet* x, HInstruction* y) const;
+  inline AliasKind Alias(HStaticFieldGet* x, HInstruction* y) const;
+  inline AliasKind Alias(HStaticFieldSet* x, HInstruction* y) const;
+  inline AliasKind Alias(HArrayGet* x, HInstruction* y) const;
+  inline AliasKind Alias(HArraySet* x, HInstruction* y) const;
+  inline AliasKind Alias(HInstructionLHSMemory* x, HInstruction* y) const;
+  AliasKind Array_index_alias(HInstruction* x, HInstruction *y) const;
+  bool Array_base_same(HInstruction* x, HInstruction* y) const;
+  bool Instance_base_same(HInstruction* x, HInstruction* y) const;
+  bool May_Types_Alias(HInstruction* x, HInstruction* y) const;
+  AliasKind Array_alias(HInstruction* x, HInstruction* y) const;
   AliasKind Instance_alias(const FieldInfo& x_field, const FieldInfo& y_field,
-                           HInstruction* x_base, HInstruction* y_base);
+                           HInstruction* x_base, HInstruction* y_base) const;
   AliasKind Static_alias(const FieldInfo& x_field, const FieldInfo& y_field,
-                         HInstruction* x_cls, HInstruction* y_cls);
+                         HInstruction* x_cls, HInstruction* y_cls) const;
   AliasKind LHSMemory_array_alias(HInstructionLHSMemory* x, HInstruction* index,
-                                  HInstruction* y);
+                                  HInstruction* y) const;
   AliasKind LHSMemory_field_alias(HInstructionLHSMemory* x, HInstruction* base,
-                                  const FieldInfo& field);
+                                  const FieldInfo& field) const;
 };
 
 }  // namespace art

@@ -24,7 +24,6 @@
 #include "ext_utility.h"
 #include "loadhoist_storesink.h"
 #include "loop_iterators.h"
-#include "nodes.h"
 #include "ssa_builder.h"
 #include <unordered_set>
 
@@ -37,7 +36,7 @@ void LoadHoistStoreSink::Run() {
     return;
   }
 
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph = GetGraphX86();
   HLoopInformation_X86* loop_start = graph->GetLoopInformation();
   // For each inner loop in the graph.
   bool graph_changed = false;
@@ -150,7 +149,7 @@ bool LoadHoistStoreSink::DoLoadHoistStoreSink(HLoopInformation_X86* loop,
 
   HBasicBlock* pre_header = loop->GetPreHeader();
   HBasicBlock* loop_header = loop->GetHeader();
-  HBasicBlock* exit_block = loop->GetExitBlock();
+  HBasicBlock* exit_block = loop->GetExitBlock(true);
   ArenaAllocator* arena = graph_->GetArena();
   bool has_suspend = HasSuspendPoint(loop);
   bool suspend_block_created = false;
@@ -167,7 +166,7 @@ bool LoadHoistStoreSink::DoLoadHoistStoreSink(HLoopInformation_X86* loop,
   DCHECK(loop_header != nullptr);
 
   // Paranoid: There should be an exit block at this point since there is exactly one exit edge.
-  CHECK(exit_block != nullptr);
+  DCHECK(exit_block != nullptr);
 
   // The exit block must be the right place to put the stores.  Ensure that it isn't
   // shared with the branch around the loop.
@@ -296,7 +295,7 @@ static bool LoopHeaderOrInvariant(HLoopInformation_X86* loop, HInstruction* set,
 
 bool LoadHoistStoreSink::FindLoadStoreCouples(HLoopInformation_X86* loop,
                                               GetSetToHoistSink& get_to_set,
-                                              SetsToSink& sets_to_sink) {
+                                              SetsToSink& sets_to_sink) const {
   DCHECK(loop != nullptr);
 
   // We will need this as a gate for reference sinks.
@@ -316,8 +315,8 @@ bool LoadHoistStoreSink::FindLoadStoreCouples(HLoopInformation_X86* loop,
   // Container of side effects instructions (include sets) in the loop.
   std::unordered_set<HInstruction*> has_side_effects;
 
-  HBasicBlock* exit_block = loop->GetExitBlock();
-  CHECK(exit_block != nullptr);  // Paranoid: we made sure there is one in the gate.
+  HBasicBlock* exit_block = loop->GetExitBlock(true);
+  DCHECK(exit_block != nullptr);  // Paranoid: we made sure there is one in the gate.
 
   // Get the list of get, set and instructions that have side effects within the loop.
   for (HBlocksInLoopIterator bb_it(*loop); !bb_it.Done(); bb_it.Advance()) {

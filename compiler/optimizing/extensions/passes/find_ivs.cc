@@ -22,13 +22,11 @@
 
 #include "ext_utility.h"
 #include "find_ivs.h"
-#include "graph_x86.h"
-#include "induction_variable.h"
 #include "loop_iterators.h"
 
 namespace art {
 
-void HFindInductionVariables::FindInductionVariablesHelper(HLoopInformation_X86* info) {
+void HFindInductionVariables::FindInductionVariablesHelper(HLoopInformation_X86* info) const {
   // Get the loop entry BB.
   HBasicBlock* entry = info->GetHeader();
 
@@ -63,11 +61,11 @@ void HFindInductionVariables::FindInductionVariablesHelper(HLoopInformation_X86*
   }
 }
 
-HIf* HFindInductionVariables::FindLoopIf(HLoopInformation_X86* loop) {
+HIf* HFindInductionVariables::FindLoopIf(HLoopInformation_X86* loop) const {
   DCHECK(loop != nullptr);
 
   // Get the only exit block.
-  HBasicBlock* exit_block = loop->GetExitBlock();
+  HBasicBlock* exit_block = loop->GetExitBlock(true);
   DCHECK(exit_block != nullptr);
 
   // exit_block always has only one predecessor and it comes from the loop.
@@ -83,7 +81,8 @@ HIf* HFindInductionVariables::FindLoopIf(HLoopInformation_X86* loop) {
   return last_insn->AsIf();
 }
 
-bool HFindInductionVariables::FindLoopUpperBound(HLoopInformation_X86* loop, int64_t& upper_bound) {
+bool HFindInductionVariables::FindLoopUpperBound(HLoopInformation_X86* loop,
+                                                 int64_t& upper_bound) const {
   DCHECK(loop != nullptr);
 
   if (!loop->HasOneExitEdge()) {
@@ -144,7 +143,8 @@ bool HFindInductionVariables::FindLoopUpperBound(HLoopInformation_X86* loop, int
   return upper_bound_found;
 }
 
-bool HFindInductionVariables::IsValidCastForIV(HInstruction* candidate, HLoopInformation_X86* loop) {
+bool HFindInductionVariables::IsValidCastForIV(HInstruction* candidate,
+                                               HLoopInformation_X86* loop) const {
   DCHECK(candidate != nullptr);
   DCHECK(loop != nullptr);
 
@@ -187,7 +187,8 @@ bool HFindInductionVariables::IsValidCastForIV(HInstruction* candidate, HLoopInf
   return true;
 }
 
-void HFindInductionVariables::DetectAndInitializeBasicIV(HLoopInformation_X86* info, HPhi* phi) {
+void HFindInductionVariables::DetectAndInitializeBasicIV(HLoopInformation_X86* info,
+                                                         HPhi* phi) const {
   size_t input_count = phi->InputCount();
 
   // For now accept only PHI nodes that have two uses and one define.
@@ -285,7 +286,7 @@ void HFindInductionVariables::DetectAndInitializeBasicIV(HLoopInformation_X86* i
 }
 
 void HFindInductionVariables::Run() {
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph = GetGraphX86();
   HLoopInformation_X86* loop_info = graph->GetLoopInformation();
   PRINT_PASS_OSTREAM_MESSAGE(this, "Find IVs: Begin " << GetMethodName(graph));
   for (HOutToInLoopIterator loop_iter(loop_info); !loop_iter.Done(); loop_iter.Advance()) {

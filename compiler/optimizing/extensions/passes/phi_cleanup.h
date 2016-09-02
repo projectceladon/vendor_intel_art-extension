@@ -22,7 +22,6 @@
 #ifndef ART_COMPILER_OPTIMIZING_EXTENSIONS_PASSES_PHI_CLEANUP_H_
 #define ART_COMPILER_OPTIMIZING_EXTENSIONS_PASSES_PHI_CLEANUP_H_
 
-#include "nodes.h"
 #include "optimization_x86.h"
 
 namespace art {
@@ -49,7 +48,7 @@ class HPhiCleanup : public HOptimization_X86 {
     *          methods with loops only.
     * @return true, if Phi Cleanup should be applied.
     */
-  bool Gate();
+  bool Gate() const;
 
   /**
     * @brief Performs phi cleanup.
@@ -61,7 +60,7 @@ class HPhiCleanup : public HOptimization_X86 {
    * @param phi The Phi to check.
    * @return true, if the Phi has the same instruction on all inputs.
    */
-  bool AllInputsSame(HPhi* phi);
+  bool AllInputsSame(HPhi* phi) const;
 
   /**
    * @brief Recursively checks that all users of the instruction are from the same clique.

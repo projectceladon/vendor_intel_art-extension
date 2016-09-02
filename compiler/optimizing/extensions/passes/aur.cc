@@ -21,9 +21,6 @@
 
 #include "aur.h"
 #include "ext_utility.h"
-#include "pass_option.h"
-
-#include <unordered_set>
 
 namespace art {
 

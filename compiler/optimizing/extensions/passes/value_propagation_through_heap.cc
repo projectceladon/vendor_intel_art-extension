@@ -15,13 +15,10 @@
  */
 
 #include "ext_utility.h"
-#include "graph_x86.h"
 #include "loop_iterators.h"
 #include "loop_formation.h"
 #include "value_propagation_through_heap.h"
 #include "pass_option.h"
-
-#include <set>
 
 namespace art {
 
@@ -191,7 +188,7 @@ void HValuePropagationThroughHeap::Run() {
     return;
   }
   PRINT_PASS_OSTREAM_MESSAGE(this, "Try to optimize : " << GetMethodName(graph_));
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph = GetGraphX86();
   HLoopInformation_X86* loop_info = graph->GetLoopInformation();
 
   // Walk through loops from outer to inner.

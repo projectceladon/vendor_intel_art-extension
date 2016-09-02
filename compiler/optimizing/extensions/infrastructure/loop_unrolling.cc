@@ -157,7 +157,8 @@ void HLoopUnrolling::CopyBody(LoopBody& dst, uint64_t iteration_count) {
 
 void HLoopUnrolling::ListLoopConditionInstructions() {
   // Last instruction should be the loop control flow, and we do not need it.
-  HInstruction* control_flow = loop_->GetExitBlock()->GetPredecessors()[0]->GetLastInstruction();
+  HInstruction* control_flow =
+    loop_->GetExitBlock(true)->GetPredecessors()[0]->GetLastInstruction();
   loop_condition_instructions_.insert(control_flow);
   for (HInputIterator inputs(control_flow); !inputs.Done(); inputs.Advance()) {
     HInstruction* input = inputs.Current();
@@ -400,7 +401,7 @@ bool HLoopUnrolling::UnrollBody(uint64_t unrolling_factor) {
 
 void HLoopUnrolling::UpdateGraph() {
   HBasicBlock* loop_pre_header = loop_->GetPreHeader();
-  HBasicBlock* exit_block = loop_->GetExitBlock();
+  HBasicBlock* exit_block = loop_->GetExitBlock(true);
   DCHECK(exit_block != nullptr);
   DCHECK(unrolled_body_.entry_block_ != nullptr);
   DCHECK(unrolled_body_.tail_block_ != nullptr);

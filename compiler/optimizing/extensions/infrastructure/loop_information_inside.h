@@ -254,9 +254,10 @@ class HLoopInformation_X86 : public HLoopInformation {
 
   /**
    * @brief Get the exit block if there is only one exit edge.
+   * @param guarantee_one_exit Whether we know for sure that the loop has one exit block.
    * @return Returns the exit block, nullptr if more than one.
    */
-  HBasicBlock* GetExitBlock() const;
+  HBasicBlock* GetExitBlock(bool guarantee_one_exit = false) const;
 
   /**
    * @brief Get the number of iterations of given basic block.
@@ -397,7 +398,7 @@ class HLoopInformation_X86 : public HLoopInformation {
   void PeelHead(HOptimization_X86* optim) {
     DCHECK_EQ(IsPeelable(optim), true);
     bool peeled = PeelHelperHead();
-    CHECK(peeled);
+    DCHECK(peeled);
   }
 
   /**
@@ -417,7 +418,7 @@ class HLoopInformation_X86 : public HLoopInformation {
    * @brief Used to check whether a loop has already been peeled.
    * @returns True if the loop has been peeled.
    */
-  bool HasBeenPeeled() {
+  bool HasBeenPeeled() const {
     return !peeled_blocks_.empty();
   }
 

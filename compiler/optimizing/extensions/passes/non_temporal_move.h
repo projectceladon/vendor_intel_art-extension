@@ -23,7 +23,6 @@
 #define ART_COMPILER_OPTIMIZING_NON_TEMPORAL_MOVE_H_
 
 #include "driver/compiler_driver.h"
-#include "nodes.h"
 #include "optimization_x86.h"
 
 namespace art {
@@ -51,9 +50,9 @@ class HNonTemporalMove : public HOptimization_X86 {
    * @param array_sets ArraySet instructions found in the loop are added to array_sets.
    * @returns 'true' if the loop should use non-temporal moves.
    */
-  bool Gate(HLoopInformation_X86* loop_info, ArraySets& array_sets);
+  bool Gate(HLoopInformation_X86* loop_info, ArraySets& array_sets) const;
 
-  const CompilerDriver* driver_;
+  const CompilerDriver* const driver_;
 
   DISALLOW_COPY_AND_ASSIGN(HNonTemporalMove);
 };

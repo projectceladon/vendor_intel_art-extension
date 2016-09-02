@@ -22,15 +22,8 @@
 #ifndef ART_COMPILER_OPTIMIZING_LOADHOIST_STORESINK_H_
 #define ART_COMPILER_OPTIMIZING_LOADHOIST_STORESINK_H_
 
-#include "cloning.h"
 #include "ext_alias.h"
-#include "graph_x86.h"
-#include "loop_information.h"
-#include "nodes.h"
 #include "optimization_x86.h"
-
-#include <map>
-#include <set>
 
 namespace art {
 
@@ -56,7 +49,7 @@ class LoadHoistStoreSink : public HOptimization_X86 {
    */
   bool FindLoadStoreCouples(HLoopInformation_X86* loop,
                             GetSetToHoistSink& get_to_set,
-                            SetsToSink& sets_to_sink);
+                            SetsToSink& sets_to_sink) const;
 
   bool LoopGate(HLoopInformation_X86* loop) const;
 

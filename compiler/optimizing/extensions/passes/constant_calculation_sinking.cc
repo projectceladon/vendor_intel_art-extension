@@ -16,11 +16,7 @@
 
 #include "constant_calculation_sinking.h"
 #include "ext_utility.h"
-#include "graph_x86.h"
-#include "induction_variable.h"
 #include "loop_iterators.h"
-#include "ssa_phi_elimination.h"
-#include <cmath>
 
 namespace art {
 
@@ -192,8 +188,9 @@ void HConstantCalculationSinking::FillAccumulator(HLoopInformation_X86* loop_inf
     if (phi_has_outside_loop_uses) {
       // If accumulation is used between phi node (header) and if block
       // then they differ.
-      HBasicBlock* exit_block = loop_info->GetExitBlock();
-      if (exit_block != nullptr && candidate->GetBlock()->Dominates(exit_block)) {
+      HBasicBlock* exit_block = loop_info->GetExitBlock(true);
+      DCHECK(exit_block != nullptr);
+      if (candidate->GetBlock()->Dominates(exit_block)) {
         continue;
       }
     }
@@ -865,8 +862,8 @@ void HConstantCalculationSinking::DoConstantSinking(const std::vector<Accumulato
         HLoopInformation_X86* loop_info, std::vector<AccumulatorAssociation>& to_remove) const {
   std::vector<AccumulatorAssociation>::const_iterator sink_iter;
   // Get the Exit Basic Block.
-  HBasicBlock* exit_bb = loop_info->GetExitBlock();
-  CHECK(exit_bb != nullptr);
+  HBasicBlock* exit_bb = loop_info->GetExitBlock(true);
+  DCHECK(exit_bb != nullptr);
 
   for (sink_iter = to_sink.begin(); sink_iter != to_sink.end(); sink_iter++) {
     AccumulatorAssociation accum_assoc = *sink_iter;
@@ -998,7 +995,7 @@ void HConstantCalculationSinking::HandleLoop(HLoopInformation_X86* loop_info) co
 }
 
 void HConstantCalculationSinking::Run() {
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph = GetGraphX86();
   HLoopInformation_X86* loop_info = graph->GetLoopInformation();
 
   // CCS will affect debugging the VR values.

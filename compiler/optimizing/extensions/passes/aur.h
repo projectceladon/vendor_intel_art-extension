@@ -22,15 +22,11 @@
 #ifndef ART_COMPILER_OPTIMIZING_EXTENSIONS_PASSES_AUR_H_
 #define ART_COMPILER_OPTIMIZING_EXTENSIONS_PASSES_AUR_H_
 
-#include "nodes.h"
-#include "optimization_x86.h"
 #include "driver/compiler_driver-inl.h"
 #include "driver/compiler_options.h"
+#include "optimization_x86.h"
 
 namespace art {
-
-// Forward declarations.
-class CompilerDriver;
 
 /**
  * @brief This is an optimization pass that cleans up environments in non-debuggable mode.

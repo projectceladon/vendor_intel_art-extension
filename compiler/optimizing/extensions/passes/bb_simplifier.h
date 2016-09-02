@@ -22,7 +22,6 @@
 #ifndef ART_OPT_PASSES_BB_SIMPLIFIER_H_
 #define ART_OPT_PASSES_BB_SIMPLIFIER_H_
 
-#include "nodes.h"
 #include "optimization_x86.h"
 
 namespace art {

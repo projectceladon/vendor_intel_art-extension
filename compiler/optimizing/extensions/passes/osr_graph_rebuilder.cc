@@ -19,11 +19,7 @@
  * and approved by Intel in writing.
  */
 
-#include <unordered_set>
-#include <vector>
-
 #include "ext_utility.h"
-#include "graph_x86.h"
 #include "loop_iterators.h"
 #include "osr_graph_rebuilder.h"
 
@@ -82,7 +78,7 @@ void HOsrGraphRebuilder::InjectionPhiFixup(HLoopInformation_X86* loop,
 void HOsrGraphRebuilder::InjectOsrIntoLoops(HBasicBlock* osr_path) {
   DCHECK(osr_path != nullptr);
   DCHECK(osr_path->GetLoopInformation() == nullptr);
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph = GetGraphX86();
 
   for (auto loop : fixable_loops_) {
     HBasicBlock* header = loop->GetHeader();
@@ -125,7 +121,7 @@ void HOsrGraphRebuilder::InjectOsrIntoLoops(HBasicBlock* osr_path) {
 void HOsrGraphRebuilder::TransformCfg(HBasicBlock*& osr_fork,
                                       HBasicBlock*& normal_path,
                                       HBasicBlock*& osr_path) {
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph = GetGraphX86();
 
   HBasicBlock* method_entry = graph->GetEntryBlock();
   osr_fork = graph->CreateNewBasicBlock();
@@ -161,7 +157,7 @@ void HOsrGraphRebuilder::MoveParams(HBasicBlock* entry_block,
 }
 
 void HOsrGraphRebuilder::DoOsrPreparation() {
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph = GetGraphX86();
 
   HBasicBlock* osr_fork = nullptr;
   HBasicBlock* normal_path = nullptr;
@@ -188,7 +184,7 @@ void HOsrGraphRebuilder::DoOsrPreparation() {
 }
 
 bool HOsrGraphRebuilder::Gate() {
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph = GetGraphX86();
   HLoopInformation_X86* loop_info = graph->GetLoopInformation();
 
   // Collect all fixable loops.

@@ -20,11 +20,8 @@
  *
  */
 
-#include "base/stringprintf.h"
 #include "ext_utility.h"
-#include "graph_x86.h"
 #include "loop_iterators.h"
-#include "nodes.h"
 #include "pass_option.h"
 #include "trivial_loop_evaluator.h"
 
@@ -652,7 +649,7 @@ class TLEVisitor : public HGraphVisitor {
 
 void TrivialLoopEvaluator::Run() {
   // Build the list of loops belonging to the CFG.
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph = GetGraphX86();
   HLoopInformation_X86* loop_start = graph->GetLoopInformation();
   bool graph_updated = false;
   PRINT_PASS_OSTREAM_MESSAGE(this, "TrivialLoopEvaluator: Begin " << GetMethodName(graph));
@@ -731,10 +728,8 @@ bool TrivialLoopEvaluator::EvaluateLoop(HLoopInformation_X86* loop, TLEVisitor& 
   return true;
 }
 
-void TrivialLoopEvaluator::UpdateRegisters(HLoopInformation_X86* loop,
-                                           TLEVisitor& visitor) {
+void TrivialLoopEvaluator::UpdateRegisters(HLoopInformation_X86* loop, TLEVisitor& visitor) {
   DCHECK(loop != nullptr);
-  UNUSED(visitor);
 
   // We want to find all the users of the values we need to write back.
   // Then, we replace the corresponding input by the HConstant.
@@ -754,14 +749,14 @@ void TrivialLoopEvaluator::UpdateRegisters(HLoopInformation_X86* loop,
 
       if (constant_node == nullptr) {
         constant_node = visitor.GetConstant(graph_, insn, constant);
-        CHECK(constant_node);
+        DCHECK(constant_node != nullptr);
       }
       it.ReplaceInput(constant_node);
     }
   }
 }
 
-bool TrivialLoopEvaluator::LoopGate(HLoopInformation_X86* loop) {
+bool TrivialLoopEvaluator::LoopGate(HLoopInformation_X86* loop) const {
   DCHECK(loop != nullptr);
 
   unsigned int num_blocks = loop->NumberOfBlocks();

@@ -23,7 +23,6 @@
 #define ART_COMPILER_OPTIMIZING_EXTENSIONS_PASSES_PEELING_H_
 
 #include "driver/compiler_driver.h"
-#include "nodes.h"
 #include "optimization_x86.h"
 
 namespace art {
@@ -40,7 +39,7 @@ class HLoopPeeling : public HOptimization_X86 {
 
   void Run() OVERRIDE;
 
-  bool ShouldPeel(HLoopInformation_X86* loop);
+  bool ShouldPeel(HLoopInformation_X86* loop) const;
 
  private:
   // How many maximum instructions a loop can have to be considered for peeling.
@@ -51,7 +50,7 @@ class HLoopPeeling : public HOptimization_X86 {
   static constexpr int kDefaultLeastCandidateCount = 1;
   // How many opaque (no analysis available) invokes should terminate peeling consideration.
   static constexpr int kDefaultAllowedOpaqueInvokes = 2;
-  const CompilerDriver* driver_;
+  const CompilerDriver* const driver_;
 };
 
 }  // namespace art

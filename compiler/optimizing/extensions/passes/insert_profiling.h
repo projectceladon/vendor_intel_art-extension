@@ -66,7 +66,7 @@ class HInsertProfiling : public HOptimization_X86 {
 
   struct BlockOrderer {
     // Ensure that we keep the blocks in a sorted order, to ensure B0 is first.
-    bool operator()(HBasicBlock* a, HBasicBlock*b) {
+    bool operator()(HBasicBlock* a, HBasicBlock*b) const {
       return a->GetBlockId() < b->GetBlockId();
     }
   };
@@ -75,7 +75,7 @@ class HInsertProfiling : public HOptimization_X86 {
   void CollectInformation(std::map<uint32_t, HInvoke*>* virtual_invoke_map,
                           OrderedBlocks& blocks,
                           int32_t& max_profiled_block,
-                          CompilerOptions::ProfilingCounts profiling_counts);
+                          CompilerOptions::ProfilingCounts profiling_counts) const;
 
   void ResetLastIndex() {
     last_bb_index_ = 0;
@@ -83,7 +83,7 @@ class HInsertProfiling : public HOptimization_X86 {
 
   void DumpBBCountsIfNeeded();
 
-  const CompilerDriver* driver_;
+  const CompilerDriver* const driver_;
 
   const bool locked_;
 

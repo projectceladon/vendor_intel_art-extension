@@ -18,7 +18,6 @@
 #define ART_COMPILER_OPTIMIZING_CONSTANT_CALCULATION_SINKING_H_
 
 #include "induction_variable.h"
-#include "nodes.h"
 #include "optimization_x86.h"
 
 namespace art {

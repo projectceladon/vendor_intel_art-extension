@@ -21,16 +21,14 @@
  */
 #include "remove_suspend.h"
 
-#include "base/stringprintf.h"
 #include "ext_utility.h"
-#include "graph_x86.h"
 #include "loop_iterators.h"
 #include "pass_option.h"
 
 namespace art {
 
 void HRemoveLoopSuspendChecks::Run() {
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph = GetGraphX86();
   HLoopInformation_X86 *graph_loop_info = graph->GetLoopInformation();
   PRINT_PASS_OSTREAM_MESSAGE(this, "Begin: " << GetMethodName(graph));
 

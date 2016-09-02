@@ -21,9 +21,6 @@
 
 #include "abi_transition_helper.h"
 #include "driver/compiler_driver-inl.h"
-#include "ext_utility.h"
-#include "graph_x86.h"
-#include "pass_option.h"
 
 namespace art {
 

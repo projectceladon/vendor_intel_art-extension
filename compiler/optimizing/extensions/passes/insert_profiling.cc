@@ -23,7 +23,6 @@
 #include "ext_utility.h"
 #include "ext_profiling.h"
 #include "gc_root-inl.h"
-#include "graph_x86.h"
 #include "jit/jit.h"
 #include "jit/jit_code_cache.h"
 #include "jit/profiling_info.h"
@@ -66,8 +65,7 @@ void HInsertProfiling::CollectInformation(
     std::map<uint32_t, HInvoke*>* virtual_invoke_map,
     OrderedBlocks& blocks,
     int32_t& max_profiled_block,
-    CompilerOptions::ProfilingCounts profiling_counts) {
-
+    CompilerOptions::ProfilingCounts profiling_counts) const {
   std::set<uint32_t> dex_pcs_seen;
   max_profiled_block = -1;
   for (HBasicBlock* block : graph_->GetBlocks()) {
@@ -291,7 +289,7 @@ void HInsertProfiling::Run() {
     }
   }
 
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph = GetGraphX86();
   graph->SetNumProfiledBlocks(max_profiled_block+1);
 
   if (!virtual_invoke_map.empty()) {
@@ -379,7 +377,7 @@ void HInsertProfiling::InsertProfilingInformationFromProfile(ExactProfiler* ep)
         block->SetBlockCount(method_info->counts[i]);
       }
     }
-    HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+    HGraph_X86* graph = GetGraphX86();
     graph->SetProfileCountKind(
         method_info->num_blocks == 1 ? HGraph_X86::kMethodCount : HGraph_X86::kBasicBlockCounts);
 

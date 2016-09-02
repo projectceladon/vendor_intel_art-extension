@@ -19,7 +19,7 @@
 namespace art {
 
 void HConstantFolding_X86::Run() {
-  fold.Run();
+  fold_.Run();
 }
 
 }  // namespace art

@@ -15,15 +15,13 @@
  */
 
 #include "devirtualization.h"
-#include "driver/dex_compilation_unit.h"
 #include "ext_profiling.h"
 #include "ext_utility.h"
-#include "utils/dex_cache_arrays_layout-inl.h"
 #include "scoped_thread_state_change.h"
 
 namespace art {
 
-bool HDevirtualization::Gate() {
+bool HDevirtualization::Gate() const {
   if (graph_->GetArtMethod() == nullptr) {
     // We need to have art_method_ to work.
     return false;

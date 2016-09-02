@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "ext_utility.h"
 #include "loop_iterators.h"
 #include "pure_invokes_analysis.h"
 
@@ -212,7 +213,7 @@ void HPureInvokesAnalysis::Run() {
     return;
   }
   // Reduce the scope to method with loops only to not hurt compile time.
-  HOnlyInnerLoopIterator loop_iter(GRAPH_TO_GRAPH_X86(graph_)->GetLoopInformation());
+  HOnlyInnerLoopIterator loop_iter(GetGraphX86()->GetLoopInformation());
   if (loop_iter.Done()) {
     // TODO: This limitation can be removed when the purity checks gets cheaper.
     PRINT_PASS_OSTREAM_MESSAGE(this, "Skip the method " << GetMethodName(graph_)

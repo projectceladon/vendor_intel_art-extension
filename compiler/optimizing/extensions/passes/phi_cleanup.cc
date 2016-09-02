@@ -19,10 +19,7 @@
  * and approved by Intel in writing.
  */
 
-#include <unordered_set>
-
 #include "ext_utility.h"
-#include "graph_x86.h"
 #include "loop_iterators.h"
 #include "phi_cleanup.h"
 
@@ -39,9 +36,9 @@ void HPhiCleanup::Run() {
   }
 }
 
-bool HPhiCleanup::Gate() {
+bool HPhiCleanup::Gate() const {
   // Apply only for methods with loops.
-  return GRAPH_TO_GRAPH_X86(graph_)->GetLoopInformation() != nullptr;
+  return GetGraphX86()->GetLoopInformation() != nullptr;
 }
 
 void HPhiCleanup::CleanUpPhis() {
@@ -78,7 +75,7 @@ void HPhiCleanup::CleanUpPhis() {
 }
 
 
-bool HPhiCleanup::AllInputsSame(HPhi* phi) {
+bool HPhiCleanup::AllInputsSame(HPhi* phi) const {
   HInstruction* in_0 = phi->InputAt(0);
   for (size_t i = 1, e = phi->InputCount(); i < e; i++) {
     if (phi->InputAt(i) != in_0) {

@@ -22,16 +22,14 @@
 #include "non_temporal_move.h"
 
 #include "ext_utility.h"
-#include "graph_x86.h"
 #include "induction_variable.h"
-#include "loop_formation.h"
 #include "loop_iterators.h"
 #include "pass_option.h"
 
 namespace art {
 
 void HNonTemporalMove::Run() {
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HGraph_X86* graph = GetGraphX86();
   HLoopInformation_X86* graph_loop_info = graph->GetLoopInformation();
   PRINT_PASS_OSTREAM_MESSAGE(this, "Begin: " << GetMethodName(graph_));
 
@@ -55,8 +53,8 @@ void HNonTemporalMove::Run() {
     MaybeRecordStat(MethodCompilationStat::kIntelNonTemporalMove, array_sets.size());
 
     // Add the needed barrier to the exit.
-    HBasicBlock* exit_block = loop_info->GetExitBlock();
-    CHECK(exit_block);
+    HBasicBlock* exit_block = loop_info->GetExitBlock(true);
+    DCHECK(exit_block != nullptr);
     HMemoryBarrier* mb = new (graph->GetArena()) HMemoryBarrier(MemBarrierKind::kAnyAny);
     PRINT_PASS_OSTREAM_MESSAGE(this, "Add memory barrier to exit block");
     exit_block->InsertInstructionBefore(mb, exit_block->GetFirstInstruction());
@@ -75,7 +73,7 @@ void HNonTemporalMove::Run() {
   }
 }
 
-bool HNonTemporalMove::Gate(HLoopInformation_X86* loop_info, ArraySets& array_sets) {
+bool HNonTemporalMove::Gate(HLoopInformation_X86* loop_info, ArraySets& array_sets) const {
   // This must be a countable loop.
   if (!loop_info->HasKnownNumIterations()) {
     PRINT_PASS_OSTREAM_MESSAGE(this, "Loop is not countable");

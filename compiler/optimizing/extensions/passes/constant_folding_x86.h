@@ -26,14 +26,14 @@ class HConstantFolding_X86 : public HOptimization_X86 {
  public:
   explicit HConstantFolding_X86(HGraph* graph, OptimizingCompilerStats* stats = nullptr,
                                 const char* name = kConstantFoldingPassName)
-      : HOptimization_X86(graph, name, stats), fold(graph, name) {}
+      : HOptimization_X86(graph, name, stats), fold_(graph, name) {}
 
   void Run() OVERRIDE;
 
  private:
   static constexpr const char* kConstantFoldingPassName = "constant_folding_x86";
 
-  HConstantFolding fold;
+  HConstantFolding fold_;
 
   DISALLOW_COPY_AND_ASSIGN(HConstantFolding_X86);
 };

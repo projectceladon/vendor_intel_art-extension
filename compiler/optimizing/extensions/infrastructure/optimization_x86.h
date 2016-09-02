@@ -22,6 +22,7 @@
 #ifndef ART_OPT_INFRASTRUCTURE_OPTIMIZATION_X86_H_
 #define ART_OPT_INFRASTRUCTURE_OPTIMIZATION_X86_H_
 
+#include "graph_x86.h"
 #include "optimization.h"
 
 namespace art {
@@ -52,6 +53,10 @@ class HOptimization_X86 : public HOptimization {
    */
   void SetVerbose(bool verbose) {
     verbose_ = verbose;
+  }
+
+  ALWAYS_INLINE HGraph_X86* GetGraphX86() const {
+    return GRAPH_TO_GRAPH_X86(graph_);
   }
 
  private:

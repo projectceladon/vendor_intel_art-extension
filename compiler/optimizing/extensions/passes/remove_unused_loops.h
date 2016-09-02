@@ -22,7 +22,6 @@
 #ifndef ART_COMPILER_OPTIMIZING_REMOVE_UNUSED_LOOPS_H_
 #define ART_COMPILER_OPTIMIZING_REMOVE_UNUSED_LOOPS_H_
 
-#include "nodes.h"
 #include "optimization_x86.h"
 
 namespace art {

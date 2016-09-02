@@ -39,8 +39,8 @@ class PassOption {
              const CompilerDriver* driver,
              const std::string& option_name,
              const T default_value) {
+    DCHECK(driver != nullptr);
     ScopedObjectAccess soa(Thread::Current());
-    CHECK(driver != nullptr);
 
     bool result = ReadUserDefinedOption(driver, optimization, option_name, value);
     if (!result) {

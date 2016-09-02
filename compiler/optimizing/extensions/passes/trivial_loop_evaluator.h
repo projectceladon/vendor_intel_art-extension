@@ -23,13 +23,8 @@
 #ifndef ART_COMPILER_OPTIMIZING_TRIVIAL_LOOP_EVALUATOR_H_
 #define ART_COMPILER_OPTIMIZING_TRIVIAL_LOOP_EVALUATOR_H_
 
-#include "code_generator.h"
 #include "driver/compiler_driver.h"
-#include "ext_utility.h"
-#include "nodes.h"
 #include "optimization_x86.h"
-
-#include <iostream>
 
 namespace art {
 // Forward declaration.
@@ -57,7 +52,7 @@ class TrivialLoopEvaluator : public HOptimization_X86 {
      * @param loop The HLoopInformation_X86 loop this method will check.
      * @return True if the loop is a valid candidate for TLE, or false otherwise.
      */
-    bool LoopGate(HLoopInformation_X86* loop);
+    bool LoopGate(HLoopInformation_X86* loop) const;
 
     /**
      * @brief Tries to statically evaluate the given loop.
@@ -82,7 +77,7 @@ class TrivialLoopEvaluator : public HOptimization_X86 {
      * too costly to be statically evaluated. */
     static constexpr int64_t kDefaultLoopEvalMaxIter = 1000;
 
-    const CompilerDriver* driver_;
+    const CompilerDriver* const driver_;
 
     /** Copy and assignment are not allowed. */
     DISALLOW_COPY_AND_ASSIGN(TrivialLoopEvaluator);

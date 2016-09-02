@@ -23,8 +23,6 @@
 #define ART_COMPILER_OPTIMIZING_FORM_BOTTOM_LOOPS_H_
 
 #include "driver/dex_compilation_unit.h"
-#include "ext_utility.h"
-#include "nodes.h"
 #include "optimization_x86.h"
 
 #include <unordered_map>
@@ -65,14 +63,14 @@ class HFormBottomLoops : public HOptimization_X86 {
    */
   bool ShouldTransformLoop(HLoopInformation_X86* loop,
                            HBasicBlock* loop_header,
-                           HBasicBlock* exit_block);
+                           HBasicBlock* exit_block) const;
 
   /**
    * @brief Is the loop header block safe to rewrite?
    * @param loop_block The top of the loop.
    * @returns 'true' if all instructions in the loop are safe to rewrite.
    */
-  bool CheckLoopHeader(HBasicBlock* loop_block);
+  bool CheckLoopHeader(HBasicBlock* loop_block) const;
 
   /**
    * @brief Rewrite the loop as a bottom tested loop.
