@@ -285,9 +285,9 @@ void ProfilingInfo::LogInformation() {
 
       VLOG(jit) << "\t\t" << i << " from dex : 0x" << std::hex << class_info.dex_pc_;
       VLOG(jit) << "\t\t\tMonomorphic: actual: " << std::boolalpha
-                << class_info.IsActualMonomorphic() << " ; basic: " << class_info.IsMonomorphic();
+                << class_info.IsMonomorphic() << " ; basic: " << class_info.IsSkewedToMonomorphic();
       VLOG(jit) << "\t\t\tPolymorphic: actual: " << std::boolalpha
-                << class_info.IsActualPolymorphic() << " ; basic: " << class_info.IsPolymorphic();
+                << class_info.IsPolymorphic() << " ; basic: " << (class_info.IsPolymorphic() && !class_info.IsSkewedToMonomorphic());
       VLOG(jit) << "\t\t\tMegamorphic: " << std::boolalpha << class_info.IsMegamorphic();
       VLOG(jit) << "\t\t\tCounts for each class info: ";
 
