@@ -198,6 +198,7 @@ bool HOsrGraphRebuilder::Gate() {
     if (loop->IsIrreducible() &&
         loop->HasSuspendCheck() &&
         loop->NumberOfBackEdges() == 1 &&
+        !loop->GetHeader()->IsTryBlock() &&
         !loop->IsIrreducibleSlowCheck()) {
       DCHECK(loop->IsInner());
       fixable_loops_.push_back(loop);
