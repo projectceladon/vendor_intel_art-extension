@@ -344,7 +344,6 @@ class AutoFastJniDetectTask FINAL : public jit::JniTask {
   DISALLOW_IMPLICIT_CONSTRUCTORS(AutoFastJniDetectTask);
 };
 
-
 void ArtMethod::RegisterNative(const void* native_method, bool is_fast) {
   CHECK(IsNative()) << PrettyMethod(this);
   CHECK(native_method != nullptr) << PrettyMethod(this);
@@ -354,12 +353,11 @@ void ArtMethod::RegisterNative(const void* native_method, bool is_fast) {
     if (jit != nullptr) {
       jit->AddJniTask(Thread::Current(), new AutoFastJniDetectTask(this, native_method));
     } else {
-      is_fast = IsFastJNI(GetDexMethodIndex(), *GetDexFile(), native_method);
-      if (is_fast) {
-        VLOG(autofast_jni) << PrettyMethod(this) << " is a fast JNI Method";
-      } else {
-        VLOG(autofast_jni) << PrettyMethod(this) << " is not a fast JNI Method";
-      }
+      // If we can't use JIT's thread pool it's better to disable auto fast JNI detection because
+      // if we run it in main thread it causes ~20% app launch time regression, so we decided to
+      // disable it as app launch time much more important than this optimization. Now auto fast
+      // JNI detection doesn't work in AOT at all. In JIT mode it doesn't work too but only between
+      // process startup and JIT creation.
     }
   }
 #endif
