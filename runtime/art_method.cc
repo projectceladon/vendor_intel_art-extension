@@ -348,7 +348,8 @@ void ArtMethod::RegisterNative(const void* native_method, bool is_fast) {
   CHECK(IsNative()) << PrettyMethod(this);
   CHECK(native_method != nullptr) << PrettyMethod(this);
 #ifdef CAPSTONE
-  if (!is_fast && Runtime::Current()->IsAutoFastDetect()) {
+  const bool not_going_to_unregister = (native_method != GetJniDlsymLookupStub());
+  if (!is_fast && Runtime::Current()->IsAutoFastDetect() && not_going_to_unregister) {
     jit::Jit* jit = Runtime::Current()->GetJit();
     if (jit != nullptr) {
       jit->AddJniTask(Thread::Current(), new AutoFastJniDetectTask(this, native_method));
