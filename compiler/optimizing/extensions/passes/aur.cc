@@ -104,7 +104,7 @@ class AggressiveEnvUseRemover : public HGraphVisitor {
     }
 
     if (stats_ != nullptr) {
-      for (auto instruction : to_remove) {
+      for (auto instruction : removed) {
         stats_->RecordStat(MethodCompilationStat::kRemovedDeadInstruction);
         // This stat is a lower estimate since we do not actively remove instructions
         // that were caused to be dead from the current removal.
