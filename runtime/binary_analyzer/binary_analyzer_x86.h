@@ -70,7 +70,7 @@ class MachineInstruction {
    * @brief returns the human readable x86 instruction.
    * @return the decoded x86 instruction.
    */
-  inline std::string GetInstruction() {
+  const std::string& GetInstruction() const {
     return instr_;
   }
 
@@ -78,7 +78,7 @@ class MachineInstruction {
    * @brief Get the number of bytes of assembly instruction.
    * @return the number of bytes the instruction consumes.
    */
-  inline uint8_t GetLength() const {
+  uint8_t GetLength() const {
     return length_;
   }
 
@@ -86,7 +86,7 @@ class MachineInstruction {
    * @brief Get the pointer to the instruction.
    * @return the byte pointer to the x86 assembly code.
    */
-  inline const uint8_t* GetInstructionPtr() const {
+  const uint8_t* GetInstructionPtr() const {
     return instr_ptr_;
   }
 
@@ -94,7 +94,7 @@ class MachineInstruction {
    * @brief Get the previous Instruction pointer.
    * @return the previous instruction's pointer.
    */
-  inline const MachineInstruction* GetPrevInstruction() {
+  const MachineInstruction* GetPrevInstruction() {
     return prev_instr_;
   }
 
@@ -102,7 +102,7 @@ class MachineInstruction {
    * @brief Get the next Instruction pointer.
    * @return the next instruction's pointer.
    */
-  inline MachineInstruction* GetNextInstruction() {
+  MachineInstruction* GetNextInstruction() {
     return next_instr_;
   }
 
@@ -110,7 +110,7 @@ class MachineInstruction {
    * @brief Set the previous instruction pointer for the current Instruction.
    * @param prev the previous instruction pointer.
    */
-  inline void SetPrevInstruction(MachineInstruction* prev) {
+  void SetPrevInstruction(MachineInstruction* prev) {
     prev_instr_ = prev;
   }
 
@@ -118,7 +118,7 @@ class MachineInstruction {
    * @brief Set the next instruction pointer for the current Instruction.
    * @param next the next instruction pointer.
    */
-  inline void SetNextInstruction(MachineInstruction* next) {
+  void SetNextInstruction(MachineInstruction* next) {
     next_instr_ = next;
   }
 
@@ -157,7 +157,7 @@ class MachineBlock {
    * @brief Get the last Instruction class pointer for the Basic Block.
    * @return the pointer to the last Instruction of the Basic Block.
    */
-  inline MachineInstruction* GetLastInstruction() {
+  MachineInstruction* GetLastInstruction() const {
     if (!instrs_.empty()) {
       return instrs_.back();
     }
@@ -168,7 +168,7 @@ class MachineBlock {
    * @brief Set the starting address of the Basic Block.
    * @param start - Starting address of the Basic Block.
    */
-  inline void SetStartAddr(const uint8_t* start) {
+  void SetStartAddr(const uint8_t* start) {
     start_addr_ = start;
   }
 
@@ -176,7 +176,7 @@ class MachineBlock {
    * @brief Get the starting address of the Basic Block.
    * @return Starting address of the Basic Block.
    */
-  inline const uint8_t* GetStartAddr() const {
+  const uint8_t* GetStartAddr() const {
     return start_addr_;
   }
 
@@ -184,7 +184,7 @@ class MachineBlock {
    * @brief Set the ending address of the Basic Block.
    * @param end - Ending address of the Basic Block.
    */
-  inline void SetEndAddr(const uint8_t* end) {
+  void SetEndAddr(const uint8_t* end) {
     end_addr_ = end;
   }
 
@@ -192,14 +192,14 @@ class MachineBlock {
    * @brief Get the ending address of the Basic Block.
    * @return Ending address of the Basic Block.
    */
-  inline const uint8_t* GetEndAddr() const {
+  const uint8_t* GetEndAddr() const {
     return end_addr_;
   }
 
   /**
    * @brief Set this Basic Block as Dummy.
    */
-  inline void SetDummy() {
+  void SetDummy() {
     is_dummy_ = true;
   }
 
@@ -207,7 +207,7 @@ class MachineBlock {
    * @brief Is this Basic Block a dummy.
    * @return whether the basic block is a dummy or not.
    */
-  inline bool IsDummy() const {
+  bool IsDummy() const {
     return is_dummy_;
   }
 
@@ -215,7 +215,7 @@ class MachineBlock {
    * @brief Get the number of Instructions.
    * @return number of Instructions in the Basic Block.
    */
-  inline uint32_t GetInstrCnt() const {
+  uint32_t GetInstrCnt() const {
     return num_of_instrs_;
   }
 
@@ -223,7 +223,7 @@ class MachineBlock {
    * @brief Get The Id of this Basic Block.
    * @return the Basic Block's id.
    */
-  inline uint32_t GetId() const {
+  uint32_t GetId() const {
     return id_;
   }
 
@@ -231,7 +231,7 @@ class MachineBlock {
    * @brief Set the Basic Block's Id.
    * @param - the Id for the Basic Block.
    */
-  inline void SetId(uint32_t id) {
+  void SetId(uint32_t id) {
     id_ = id;
   }
 
@@ -239,7 +239,7 @@ class MachineBlock {
    * @brief Add the Instruction to the Basic Block.
    * @param instruction - The instruction to be added to the Basic Block.
    */
-  inline void AddInstruction(MachineInstruction* instruction) {
+  void AddInstruction(MachineInstruction* instruction) {
     instrs_.push_back(instruction);
     ++num_of_instrs_;
   }
@@ -266,7 +266,7 @@ class MachineBlock {
    * Get the list of predecessor Basic Blocks.
    * @return the predecessor Basic Block List.
    */
-  inline std::list<MachineBlock*> GetPredBBlockList() {
+  const std::vector<MachineBlock*>& GetPredBBlockList() const {
     return pred_bblock_;
   }
 
@@ -274,33 +274,33 @@ class MachineBlock {
    * Get the list of successor Basic Blocks.
    * @return the successor Basic Block List.
    */
-  inline std::list<MachineBlock*> GetSuccBBlockList() {
+  const std::vector<MachineBlock*>& GetSuccBBlockList() const {
     return succ_bblock_;
   }
 
   /**
-   * @brief Make a copy of the list of predecessor Basic Blocks.
-   * @param copy_list - The list that will contain a copy of predecessor Basic Blocks.
+   * @brief Make a copy of the array of predecessor Basic Blocks.
+   * @param to_copy - The vector that contain predecessor Basic Blocks to be copied.
    */
-  void CopyPredBBlockList(std::list<MachineBlock*> copy_list);
+  void CopyPredBBlockList(const std::vector<MachineBlock*>& to_copy);
 
   /**
-   * @brief Make a copy of the list of successor Basic Blocks.
-   * @param copy_list - The list that will contain a copy of successor Basic Blocks.
+   * @brief Make a copy of the array of successor Basic Blocks.
+   * @param to_copy - The vector that contain successor Basic Blocks to be copied.
    */
-  void CopySuccBBlockList(std::list<MachineBlock*> copy_list);
+  void CopySuccBBlockList(const std::vector<MachineBlock*>& to_copy);
 
   /**
-   * @brief Clear the list of predecessor Basic Blocks.
+   * @brief Clear the array of predecessor Basic Blocks.
    */
-  inline void ClearPredBBlockList() {
+  void ClearPredBBlockList() {
     pred_bblock_.clear();
   }
 
   /**
-   * @brief Clear the list of successor Basic Blocks.
+   * @brief Clear the array of successor Basic Blocks.
    */
-  inline void ClearSuccBBlockList() {
+  void ClearSuccBBlockList() {
     succ_bblock_.clear();
   }
 
@@ -308,7 +308,7 @@ class MachineBlock {
    * @brief Get the Instruction Class Pointer List for the Basic Block.
    * @return The Instruction class pointer list.
    */
-  inline const std::list<MachineInstruction*> GetInstructions() {
+  const std::vector<MachineInstruction*>& GetInstructions() const {
     return instrs_;
   }
 
@@ -327,16 +327,6 @@ class MachineBlock {
   std::ostringstream Print(bool is_dot);
 
   /**
-   * @brief Visits the current Basic Block, then recursively visits
-   * each predecessor Basic Block followed by recursively visiting each
-   * Successor Basic Block.
-   * @param bblock_set - The set of all the visited Basic Blocks.
-   * @param bblock_order - The list that contains the Basic Blocks in the order
-   *        they were visited.
-   */
-  void Visit(std::set<MachineBlock*>* bblock_set, std::list<MachineBlock*>* bblock_order);
-
-  /**
    * @brief Copies the Instructions Starting from a certain Address to the Basic Block.
    * @param from_bblock - the Basic Block from which Instructions have to be copied.
    * @param start - The starting pointer to the Instruction Class.
@@ -347,16 +337,16 @@ class MachineBlock {
    * @brief Deletes a certain Instruction from the Basic Block.
    * @param it - iterator for the Instruction List.
    */
-  void DeleteInstruction(std::list<MachineInstruction*>::iterator it);
+  void DeleteInstruction(std::vector<MachineInstruction*>::iterator it);
 
  private:
   uint32_t id_;
   const uint8_t* start_addr_;
   const uint8_t* end_addr_;
   uint32_t num_of_instrs_;
-  std::list<MachineBlock*> pred_bblock_;
-  std::list<MachineBlock*> succ_bblock_;
-  std::list<MachineInstruction*> instrs_;
+  std::vector<MachineBlock*> pred_bblock_;
+  std::vector<MachineBlock*> succ_bblock_;
+  std::vector<MachineInstruction*> instrs_;
   bool is_dummy_;
 };
 
@@ -383,19 +373,51 @@ struct CallInstrDs {
   uint8_t* start;
 };
 
+enum class AnalysisResult {
+  kFast,
+  kHasLocks,
+  kHasCycles,
+  kHasInterrupts,
+  kHasIndirectCalls,
+  kHasIndirectJumps,
+  kHasUnknownInstructions,
+  kCallDepthLimitExceeded,
+  kBasicBlockLimitExceeded,
+  kInstructionLimitExceeded,
+};
+
+constexpr const char* AnalysisResultToStr(AnalysisResult res) {
+  switch (res) {
+    case AnalysisResult::kFast:
+      return "fast";
+    case AnalysisResult::kHasLocks:
+      return "has locks";
+    case AnalysisResult::kHasCycles:
+      return "has cycles";
+    case AnalysisResult::kHasInterrupts:
+      return "has interrupts";
+    case AnalysisResult::kHasIndirectCalls:
+      return "has indirect calls";
+    case AnalysisResult::kHasIndirectJumps:
+      return "has indirect jumps";
+    case AnalysisResult::kHasUnknownInstructions:
+      return "has unknown instructions";
+    case AnalysisResult::kCallDepthLimitExceeded:
+      return "exceeds call depth limit";
+    case AnalysisResult::kBasicBlockLimitExceeded:
+      return "exceeds basic block limit";
+    case AnalysisResult::kInstructionLimitExceeded:
+      return "exceeds instruction limit";
+  }
+}
+
 /**
  * CFGraph Class has information about the Control Flow Graph.
  */
 class CFGraph {
  public:
   explicit CFGraph(std::string method_name)
-      : is_simple_(true),
-        num_of_bblocks_(0),
-        num_of_instrs_(0),
-        call_depth_(0),
-        has_unknown_instructions_(false),
-        has_indirect_calls_(false),
-        method_name_(method_name) {}
+      : method_name_(method_name) {}
 
   ~CFGraph() {
     for (auto it : cfg_bblock_list_) {
@@ -411,7 +433,7 @@ class CFGraph {
    * @param bblock_to_be_deleted - the Basic Block to be deleted.
    * @param bblock_to_be_added - the Basic Block to de added.
    */
-  void ChangePredecessors(std::list<MachineBlock*> bblock_list,
+  void ChangePredecessors(const std::vector<MachineBlock*> &bblock_list,
                           MachineBlock* bblock_to_be_deleted,
                           MachineBlock* bblock_to_be_added);
 
@@ -426,84 +448,80 @@ class CFGraph {
    * @brief Get the name of the method being analyzed.
    * @return the method's PrettyName.
    */
-  inline const std::string GetMethodName() {
+  const std::string& GetMethodName() const {
     return method_name_;
   }
 
-  /**
-   * @brief Does the CFG have an unknown/unsupported Instruction.
-   * @return whether the CFG has unknown/unsupported Instruction.
-   */
-  inline bool HasUnknownInstructions() {
-    return has_unknown_instructions_;
+  void SetHasUnknownInstructions() {
+    state_ = AnalysisResult::kHasUnknownInstructions;
   }
 
-  /**
-   * @brief The CFG has an unknown/unsupported Instruction.
-   */
-  inline void SetHasUnknownInstructions() {
-    has_unknown_instructions_ = true;
+  void SetHasCycles() {
+    state_ = AnalysisResult::kHasCycles;
   }
 
-  /**
-   * @brief Does the CFG have an indirect Call.
-   * @return whether the CFG has indirect Call.
-   */
-  inline bool HasIndirectCalls() {
-    return has_indirect_calls_;
+  void SetHasLocks() {
+    state_ = AnalysisResult::kHasLocks;
   }
 
-  /**
-   * @brief The CFG has an Indirect Call.
-   */
-  inline void SetHasIndirectCalls() {
-    has_indirect_calls_ = true;
+  void SetHasIndirectJumps() {
+    state_ = AnalysisResult::kHasIndirectJumps;
+  }
+
+  void SetHasInterrupts() {
+    state_ = AnalysisResult::kHasInterrupts;
+  }
+
+  void SetHasIndirectCalls() {
+    state_ = AnalysisResult::kHasIndirectCalls;
   }
 
   /**
    * @brief Get the levels of call nesting.
    * @return the levels of call nesting.
    */
-  inline uint32_t GetCallDepth() {
+  uint32_t GetCallDepth() const {
     return call_depth_;
   }
 
   /**
-   * @brief Sets the call nesting level
+   * @brief Sets the call nesting level (and checks if we are still in budget)
    * @param depth - the level of call nesting.
    */
-  inline void SetCallDepth(uint32_t depth) {
-    call_depth_ = depth;
-  }
-
-  /**
-   * @brief Increase level of Call nesting in CFG by one.
-   */
-  inline void IncCallDepth() {
-    ++call_depth_;
-  }
+  void SetCallDepth(uint32_t depth);
 
   /**
    * @brief Get the Number of Instructions in the CFG.
    * @return the number of Instructions.
    */
-  inline uint32_t GetInstructionCnt() const {
+  uint32_t GetInstructionCnt() const {
     return num_of_instrs_;
   }
+
+  /**
+   * @brief Increase instruction count by the given amount (and check if we are still in budget).
+   * @param amount - amount of added instructions.
+   */
+  void IncreaseInstructionCnt(uint32_t amount);
 
   /**
    * @brief Get the Number of Basic Blocks in the CFG.
    * @return the number of Basic Blocks.
    */
-  inline uint32_t GetBBlockCnt() const {
+  uint32_t GetBBlockCnt() const {
     return num_of_bblocks_;
   }
+
+  /**
+   * @brief Increment basic block count (and check if we are still in budget)
+   */
+  void IncBBlockCnt();
 
   /**
    * @brief Add a Basic Block as the Starting Basic Block for CFG.
    * @param start_bblock - the starting Basic Block.
    */
-  inline void AddStartBBlock(MachineBlock* start_bblock) {
+  void AddStartBBlock(MachineBlock* start_bblock) {
     start_bblock_ = start_bblock;
   }
 
@@ -523,36 +541,13 @@ class CFGraph {
    */
   void ChangePredForBacklog(MachineBlock* old_pred,
                             MachineBlock* new_pred,
-                            std::list<BackLogDs*>* backlog);
-
-  /**
-   * @brief Set the CFG as not being Simple.
-   */
-  inline void SetNotSimple() {
-    is_simple_ = false;
-  }
-
-  /**
-   * @brief Returns if CFG is Simple.
-   * @return whether the CFG is simple or not.
-   */
-  inline bool IsSimple() const {
-    return is_simple_;
-  }
-
-  /**
-   * @brief Add a Basic Block as one of the many Ending Basic Block for CFG.
-   * @param bblock - one of the many ending Basic Block.
-   */
-  inline void AddEndBBlock(MachineBlock* bblock) {
-    end_bblock_list_.insert(bblock);
-  }
+                            std::vector<BackLogDs*>* backlog);
 
   /**
    * @brief Get the First Basic Block of the CFG.
    * @return The first Basic Block.
    */
-  inline MachineBlock* GetStartBBlock() {
+  MachineBlock* GetStartBBlock() {
     return start_bblock_;
   }
 
@@ -570,7 +565,7 @@ class CFGraph {
    * @param prev_bblock - Predecessor Basic Block.
    * @return true if visited. False otherwise.
    */
-  bool IsVisitedForCall(uint8_t* addr, MachineBlock* prev_bblock);
+  bool IsVisitedForCall(uint8_t* addr, MachineBlock* prev_bblock) const;
 
   /**
    * @brief Check if an entry in the backlog was analyzed already.
@@ -578,7 +573,7 @@ class CFGraph {
    * @param backlog - list of backlog entries.
    * @return true of visited; false otherwise.
    */
-  bool IsVisitedForBacklog(struct BackLogDs* entry, std::list<BackLogDs*>* backlog);
+  bool IsVisitedForBacklog(BackLogDs* entry, std::vector<BackLogDs*>* backlog);
 
   /**
    * @brief Check if a certain location(instruction) was already analyzed or not.
@@ -591,101 +586,48 @@ class CFGraph {
   bool IsVisited(const uint8_t* addr,
                  MachineBlock* prev_bblock,
                  MachineBlock* succ_bblock,
-                 std::list<BackLogDs*>* backlog);
+                 std::vector<BackLogDs*>* backlog);
 
   /**
    * @brief prints the CFG in human readable/dot format to logcat.
    * @param output - output stream.
    * @param is_dot - whether the output must be in dot format.
    */
-  void Print(std::ostringstream &output, bool is_dot);
+  void Print(std::ostringstream &output, bool is_dot) const;
 
   /**
    * @brief Determine if the CFG falls within the budget to call it Fast or not.
    * @return true if method's CFG satisfies budget; false otherwise.
    */
-  bool IsWithinBudget();
+  bool IsStillFast() const;
+
+  /**
+   * @brief Get the current state of CFG analysis.
+   * @return Current state of analysis.
+   */
+  AnalysisResult GetAnalysisState() const {
+    return state_;
+  }
 
  private:
   MachineBlock* start_bblock_;
-  bool is_simple_;
-  uint32_t num_of_bblocks_;
-  uint32_t num_of_instrs_;
-  uint32_t call_depth_;
-  bool has_unknown_instructions_;
-  bool has_indirect_calls_;
-  std::list<MachineBlock*> cfg_bblock_list_;
-  std::list<MachineBlock*> visited_bblock_list_;
-  std::set<MachineBlock*> end_bblock_list_;
+  uint32_t num_of_bblocks_ = 0u;
+  uint32_t num_of_instrs_ = 0u;
+  uint32_t call_depth_ = 0u;
+  AnalysisResult state_ = AnalysisResult::kFast;
+  std::vector<MachineBlock*> cfg_bblock_list_;
+  std::vector<MachineBlock*> visited_bblock_list_;
   std::string method_name_;
 };
 
 /**
- * @brief BinaryAnalyzer class has methods & helpers to analyze a native method.
+ * @brief Analyze a method and determine whether it can be marked fast or not.
+ * @param method_idx - dex method Index.
+ * @param dex_file - dex File.
+ * @param fn_ptr - Function pointer of method to be analyzed.
+ * @return true if fast; false otherwise.
  */
-class BinaryAnalyzer {
- public:
-  explicit BinaryAnalyzer() : cfg_(nullptr) {
-    disassembler_ = new Disassembler(Runtime::Current()->GetInstructionSet());
-  }
-
-  ~BinaryAnalyzer() {
-    delete cfg_;
-    delete disassembler_;
-  }
-
-  /**
-   * @brief Analyze a method and determine whether it can be marked fast or not.
-   * @param method_idx - dex method Index.
-   * @param dex_file - dex File.
-   * @param fnPtr - Function pointer of method to be analyzed.
-   * @return true if fast; false otherwise.
-   */
-  bool AnalyzeMethod(uint32_t method_idx, const DexFile& dex_file, const void* fnPtr);
-
-  /**
-   * @brief Binary Analyze an x86 Instruction using Capstone Disassembler.
-   * @param instr - Instruction Pointer.
-   * @param curr_bb - Current Basic Block.
-   * @param is_bb_end - Pointer to whether this instruction marks the end of a Basic Block.
-   * @param target_disp - Displacement in case of jump/call.
-   * @param cfg - The CFG.
-   * @return the number of bytes the x86 instruction occupies.
-   */
-  size_t AnalyzeInstruction(const uint8_t* instr,
-                            MachineBlock* curr_bb,
-                            int32_t* is_bb_end,
-                            int32_t* target_disp,
-                            CFGraph* cfg);
-
-  /**
-   * @brief The Helper function to build CFG for the given method.
-   * @param cfg - The CFG.
-   * @param ptr - Instruction Pointer.
-   * @param curr_bb - Current Basic Block.
-   * @param backlog - Backlog List.
-   * @param depth - Call depth/ levels of call nesting.
-   * @param dummy_end - Dummy basic block.
-   */
-  void CFGHelper(CFGraph* cfg,
-                 const uint8_t* ptr,
-                 MachineBlock* curr_bb,
-                 std::list<BackLogDs*>* backlog,
-                 uint32_t depth,
-                 MachineBlock* dummy_end);
-
-  /**
-   * @brief Constructs the CFG for the method by binary analysis.
-   * @param ptr - the method function pointer.
-   * @param method_name - Pretty Name of method.
-   * @return the CFG for the analyzed method.
-   */
-  CFGraph* BuildCFG(const uint8_t* ptr, std::string method_name);
-
- private:
-  CFGraph* cfg_;
-  Disassembler* disassembler_;
-};
+AnalysisResult AnalyzeMethod(uint32_t method_idx, const DexFile& dex_file, const void* fn_ptr);
 
 }  // namespace x86
 }  // namespace art

@@ -327,9 +327,6 @@ class AutoFastJniDetectTask FINAL : public jit::JniTask {
     bool is_fast = IsFastJNI(method_->GetDexMethodIndex(), *method_->GetDexFile(), native_method_);
     if (is_fast) {
       method_->SetAccessFlags(method_->GetAccessFlags() | kAccFastNative);
-      VLOG(autofast_jni) << PrettyMethod(method_) << " is a fast JNI Method (async)";
-    } else {
-      VLOG(autofast_jni) << PrettyMethod(method_) << " is not a fast JNI Method (async)";
     }
   }
 

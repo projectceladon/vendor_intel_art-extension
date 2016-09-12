@@ -31,8 +31,14 @@ static bool IsFastJNI(uint32_t method_idx, const DexFile& dex_file, const void* 
   switch (instruction_set) {
     case InstructionSet::kX86:
     case InstructionSet::kX86_64: {
-      x86::BinaryAnalyzer binary_analyzer;
-      is_fast = binary_analyzer.AnalyzeMethod(method_idx, dex_file, fn_ptr);
+      x86::AnalysisResult result = x86::AnalyzeMethod(method_idx, dex_file, fn_ptr);
+      if (result == x86::AnalysisResult::kFast) {
+        is_fast = true;
+        VLOG(autofast_jni) << PrettyMethod(method_idx, dex_file) << " is a fast JNI Method";
+      } else {
+        VLOG(autofast_jni) << PrettyMethod(method_idx, dex_file) << " is not a fast JNI Method: "
+                           << x86::AnalysisResultToStr(result);
+      }
       break;
     }
     case InstructionSet::kArm:

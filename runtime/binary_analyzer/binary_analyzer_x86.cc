@@ -33,43 +33,40 @@ static constexpr size_t kCallDepthLimit = 3;
 static constexpr size_t kBasicBlockLimit = 20;
 static constexpr size_t kInstructionLimit = 100;
 
-enum ctrl_transfer_type {
+enum ControlTransferType {
   kNone,                 // Instructions with no control flow transfer.
   kConditionalBranch,    // Conditional branch.
   kUnconditionalBranch,  // Unconditional branch.
   kInterrupt,            // Software Interrupt.
   kCall,                 // Direct call.
   kUnknown,              // Unsupported instruction.
-  kIndirect,             // Indirect call.
-  kReturn                // Return instruction.
+  kIndirectCall,         // Indirect call.
+  kIndirectJump,         // Indirect jump.
+  kReturn,               // Return instruction.
+  kLock,                 // Lock prefix.
+  kCycle,                // Cycling prefix/instruction.
 };
 
 /**
- * @brief Analyze the instruction & update the characteristics of the method.
- * CFG for a given method is not simple if one or more instructions have -
- * 1. Unknown opcode.
- * 2. Indirect call/jmp.
- * 3. Interrupt.
- * 4. rep, repne and lock prefix.
- * 5. Loops (Any cycle in the CFG).
+ * @brief Analyze how instruction affects control flow (see ControlTransferType)
  * @param instr - The instruction pointer.
  * @param curr_bb - Pointer to the Current Basic Block.
  * @param is_bb_end - Does the instruction mark the end of Basic Block.
  * @param target_disp - Relative target of a branch.
- * @param cfg - Pointer to the CFG.
+ * @param disassembler - Disassembler to be used for instruction decoding.
  * @return Size of analyzed instruction in bytes. -1 in case of error.
  */
-size_t BinaryAnalyzer::AnalyzeInstruction(const uint8_t* instr,
-                                          MachineBlock* curr_bb,
-                                          int32_t* is_bb_end,
-                                          int32_t* target_disp,
-                                          CFGraph* cfg) {
+ptrdiff_t AnalyzeInstruction(const uint8_t* instr,
+                             MachineBlock* curr_bb,
+                             int32_t* is_bb_end,
+                             int32_t* target_disp,
+                             Disassembler* disassembler) {
   *is_bb_end = kNone;
-  if (!disassembler_->IsDisassemblerValid()) {
+  if (!disassembler->IsDisassemblerValid()) {
     return -1;
   }
-  disassembler_->Seek(instr);
-  const cs_insn* insn = disassembler_->Next();
+  disassembler->Seek(instr);
+  const cs_insn* insn = disassembler->Next();
   if (insn == nullptr) {
     return -1;
   }
@@ -77,20 +74,26 @@ size_t BinaryAnalyzer::AnalyzeInstruction(const uint8_t* instr,
   switch(insn->id) {
   case X86_PREFIX_REP:
   case X86_PREFIX_REPNE:
+  case X86_INS_LOOP:
+  case X86_INS_LOOPE:
+  case X86_INS_LOOPNE:
+    *is_bb_end = kCycle;
+    break;
   case X86_PREFIX_LOCK:
+    *is_bb_end = kLock;
+    break;
   case X86_INS_INVALID:
-    cfg->SetNotSimple();
+    *is_bb_end = kUnknown;
     break;
   case X86_INS_INT:
   case X86_INS_INT1:
   case X86_INS_INT3:
-    cfg->SetNotSimple();
     *is_bb_end = kInterrupt;
     break;
   case X86_INS_JMP:
     *is_bb_end = kUnconditionalBranch;
     if (insn_x86.operands[0].type != X86_OP_IMM) {
-      *is_bb_end = kIndirect;
+      *is_bb_end = kIndirectJump;
     }
     break;
   case X86_INS_JA:
@@ -114,7 +117,7 @@ size_t BinaryAnalyzer::AnalyzeInstruction(const uint8_t* instr,
   case X86_INS_JS:
     *is_bb_end = kConditionalBranch;
     if (insn_x86.operands[0].type != X86_OP_IMM) {
-      *is_bb_end = kIndirect;
+      *is_bb_end = kIndirectJump;
     }
     break;
   case X86_INS_RET:
@@ -123,12 +126,13 @@ size_t BinaryAnalyzer::AnalyzeInstruction(const uint8_t* instr,
   case X86_INS_CALL:
     *is_bb_end = kCall;
     if (insn_x86.operands[0].type != X86_OP_IMM) {
-      *is_bb_end = kIndirect;
+      *is_bb_end = kIndirectCall;
     }
     break;
   }
   *target_disp = insn_x86.disp;
-  MachineInstruction* ir = new MachineInstruction(insn->op_str, (uint8_t) (insn->size),
+  MachineInstruction* ir = new MachineInstruction(insn->op_str,
+                                                  static_cast<uint8_t>(insn->size),
                                                   reinterpret_cast<const uint8_t*>(instr));
   MachineInstruction* prev_ir = curr_bb->GetLastInstruction();
   ir->SetPrevInstruction(prev_ir);
@@ -154,18 +158,16 @@ MachineBlock* CFGraph::GetCorrectBB(MachineBlock* bblock) {
 bool CFGraph::IsVisited(const uint8_t* addr,
                         MachineBlock* prev_bblock,
                         MachineBlock* succ_bblock,
-                        std::list<BackLogDs*>* backlog) {
-  for (std::list<MachineBlock*>::iterator it = visited_bblock_list_.begin();
-      (it != visited_bblock_list_.end());
-      it++) {
-    if (!(*it)->IsDummy()) {
-      const uint8_t* start = (*it)->GetStartAddr();
-      const uint8_t* end = (*it)->GetEndAddr();
+                        std::vector<BackLogDs*>* backlog) {
+  for (const auto current_bb : visited_bblock_list_) {
+    if (!current_bb->IsDummy()) {
+      const uint8_t* start = current_bb->GetStartAddr();
+      const uint8_t* end = current_bb->GetEndAddr();
 
       // In case we are branching to the beginning of an existing Basic Block,
       // it is already visited.
       if (addr == start) {
-        MachineBlock* bb_existing = (*it);
+        MachineBlock* bb_existing = current_bb;
         if (prev_bblock->IsDummy()) {
           prev_bblock->AddSuccBBlock(bb_existing);
           bb_existing->AddPredBBlock(prev_bblock);
@@ -175,33 +177,31 @@ bool CFGraph::IsVisited(const uint8_t* addr,
           prev_bblock->AddSuccBBlock(bb_existing);
           bb_existing->AddPredBBlock(prev_bblock);
         }
-        this->SetNotSimple();
+        this->SetHasCycles();
         return true;
       }
 
       // In case we are branching to some address in the middle of an existing Basic Block,
       // then that Basic Block needs to be split.
       if ((addr > start) && (addr < end)) {
-        MachineBlock* bb_to_be_split = (*it);
+        MachineBlock* bb_to_be_split = current_bb;
 
         const uint8_t* prev_instr = nullptr;
         const uint8_t* curr_instr = start;
 
         // Scan the bblock that is being split to identify the end instruction.
-        std::list<MachineInstruction*> instructions = bb_to_be_split->GetInstructions();
+        const auto& instructions = bb_to_be_split->GetInstructions();
 
-        for (std::list<MachineInstruction*>::iterator it_instr = instructions.begin();
-            it_instr != instructions.end();
-            it_instr++) {
+        for (auto it_instr : instructions) {
           prev_instr = curr_instr;
-          curr_instr = reinterpret_cast<const uint8_t*>(curr_instr + (*it_instr)->GetLength());
+          curr_instr = reinterpret_cast<const uint8_t*>(curr_instr + it_instr->GetLength());
 
           // The previous instruction is the last instruction of the Basic Block being split.
           if (curr_instr == addr) {
             // Change the last instruction.
             bb_to_be_split->SetEndAddr(prev_instr);
             MachineBlock* new_bb = CreateBBlock(nullptr);
-            std::list<MachineBlock*> succ_list = bb_to_be_split->GetSuccBBlockList();
+            const auto& succ_list = bb_to_be_split->GetSuccBBlockList();
             bb_to_be_split->ClearSuccBBlockList();
             bb_to_be_split->AddSuccBBlock(new_bb);
             new_bb->AddPredBBlock(bb_to_be_split);
@@ -235,10 +235,10 @@ bool CFGraph::IsVisited(const uint8_t* addr,
   return false;
 }
 
-void CFGraph::ChangePredecessors(std::list<MachineBlock*> bblock_list,
+void CFGraph::ChangePredecessors(const std::vector<MachineBlock*>& bblock_list,
                                  MachineBlock* bblock_to_be_deleted,
                                  MachineBlock* bblock_to_be_added) {
-  for (const auto& it : bblock_list) {
+  for (const auto it : bblock_list) {
     it->DeletePredBBlock(bblock_to_be_deleted);
     it->AddPredBBlock(bblock_to_be_added);
   }
@@ -246,12 +246,10 @@ void CFGraph::ChangePredecessors(std::list<MachineBlock*> bblock_list,
 
 void CFGraph::ChangePredForBacklog(MachineBlock* old_pred,
                                    MachineBlock* new_pred,
-                                   std::list<BackLogDs*>* backlog) {
-  for (std::list<BackLogDs*>::iterator it = backlog->begin();
-      it != backlog->end();
-      it++) {
-    if ((*it)->pred_bb->GetId() == old_pred->GetId()) {
-      (*it)->pred_bb = new_pred;
+                                   std::vector<BackLogDs*>* backlog) {
+  for (const auto bb : *backlog) {
+    if (bb->pred_bb->GetId() == old_pred->GetId()) {
+      bb->pred_bb = new_pred;
       return;
     }
   }
@@ -259,7 +257,7 @@ void CFGraph::ChangePredForBacklog(MachineBlock* old_pred,
 
 void MachineBlock::CopyInstruction(MachineBlock* from_bblock, const uint8_t* start) {
   const uint8_t* ptr = from_bblock->GetStartAddr();
-  std::list<MachineInstruction*>::iterator it_bb = from_bblock->instrs_.begin();
+  std::vector<MachineInstruction*>::iterator it_bb = from_bblock->instrs_.begin();
   while (it_bb != from_bblock->instrs_.end()) {
     if (ptr >= start) {
       AddInstruction((*it_bb));
@@ -272,12 +270,12 @@ void MachineBlock::CopyInstruction(MachineBlock* from_bblock, const uint8_t* sta
   }
 }
 
-void MachineBlock::DeleteInstruction(std::list<MachineInstruction*>::iterator it) {
+void MachineBlock::DeleteInstruction(std::vector<MachineInstruction*>::iterator it) {
   instrs_.erase(it);
   --num_of_instrs_;
 }
 
-bool CFGraph::IsVisitedForBacklog(struct BackLogDs* entry, std::list<BackLogDs*>* backlog) {
+bool CFGraph::IsVisitedForBacklog(BackLogDs* entry, std::vector<BackLogDs*>* backlog) {
   if (entry != nullptr) {
     MachineBlock* prev_bb = entry->pred_bb;
     const uint8_t* addr = entry->ptr;
@@ -298,23 +296,34 @@ MachineBlock* GetTailBB(MachineBlock* bblock) {
   }
 }
 
-void BinaryAnalyzer::CFGHelper(CFGraph* cfg,
-                               const uint8_t* instr_ptr,
-                               MachineBlock* curr_bblock,
-                               std::list<BackLogDs*>* backlog,
-                               uint32_t depth,
-                               MachineBlock* dummy_end) {
-  size_t len = 0;
+/**
+ * @brief The Helper function to build CFG for the given method.
+ * @param cfg - The CFG.
+ * @param ptr - Instruction Pointer.
+ * @param curr_bb - Current Basic Block.
+ * @param backlog - Backlog array.
+ * @param depth - Call depth/levels of call nesting.
+ * @param dummy_end - Dummy basic block.
+ * @param disasm - Disassembler to be used for instructions decoding.
+ */
+void CFGHelper(CFGraph* cfg,
+               const uint8_t* instr_ptr,
+               MachineBlock* curr_bblock,
+               std::vector<BackLogDs*>* backlog,
+               uint32_t depth,
+               MachineBlock* dummy_end,
+               Disassembler* disasm) {
+  ptrdiff_t len = 0;
   int32_t is_bb_end = kNone;
   int32_t displacement = 0;
   const uint8_t* ptr = reinterpret_cast<const uint8_t*>(instr_ptr);
   const uint8_t* start_ptr = reinterpret_cast<const uint8_t*>(ptr);
 
-  while ((len = BinaryAnalyzer::AnalyzeInstruction(ptr, curr_bblock, &is_bb_end, &displacement, cfg)) > 0) {
+  while ((len = AnalyzeInstruction(ptr, curr_bblock, &is_bb_end, &displacement, disasm)) > 0) {
     switch (is_bb_end) {
     case kUnconditionalBranch: {
       // Push the jmp target to backlog.
-      struct BackLogDs* uncond_jmp = new BackLogDs();
+      BackLogDs* uncond_jmp = new BackLogDs();
       uncond_jmp->pred_bb = curr_bblock;
       if (depth > 0) {
         uncond_jmp->succ_bb = dummy_end;
@@ -330,7 +339,7 @@ void BinaryAnalyzer::CFGHelper(CFGraph* cfg,
     }
     case kConditionalBranch: {
       // Push the conditional (if) jmp target to backlog.
-      struct BackLogDs* cond_if_jmp = new BackLogDs();
+      BackLogDs* cond_if_jmp = new BackLogDs();
       cond_if_jmp->pred_bb = curr_bblock;
       if (depth > 0) {
         cond_if_jmp->succ_bb = dummy_end;
@@ -341,7 +350,7 @@ void BinaryAnalyzer::CFGHelper(CFGraph* cfg,
       cond_if_jmp->call_depth = 0;
       backlog->push_back(cond_if_jmp);
       // Push the else (subsequent instruction) to the backlog.
-      struct BackLogDs* cond_else_jmp = new BackLogDs();
+      BackLogDs* cond_else_jmp = new BackLogDs();
       cond_else_jmp->pred_bb = curr_bblock;
       if (depth > 0) {
         cond_else_jmp->succ_bb = dummy_end;
@@ -362,7 +371,7 @@ void BinaryAnalyzer::CFGHelper(CFGraph* cfg,
       MachineBlock* end_bb = cfg->CreateBBlock(nullptr);
       start_bb->SetDummy();
       end_bb->SetDummy();
-      struct BackLogDs* call_entry = new BackLogDs();
+      BackLogDs* call_entry = new BackLogDs();
       call_entry->pred_bb = start_bb;
       call_entry->ptr = reinterpret_cast<const uint8_t*>(ptr + displacement + len);
       call_entry->succ_bb = end_bb;
@@ -389,69 +398,88 @@ void BinaryAnalyzer::CFGHelper(CFGraph* cfg,
       break;
     }
     case kInterrupt: {
+      cfg->SetHasInterrupts();
       cfg->AddTuple(curr_bblock, start_ptr, reinterpret_cast<const uint8_t*>(ptr));
       break;
     }
-    case kNone:
+    case kIndirectCall: {
+      cfg->SetHasIndirectCalls();
+      cfg->AddTuple(curr_bblock, start_ptr, reinterpret_cast<const uint8_t*>(ptr));
       break;
-    default:
+    }
+    case kIndirectJump: {
+      cfg->SetHasIndirectJumps();
+      cfg->AddTuple(curr_bblock, start_ptr, reinterpret_cast<const uint8_t*>(ptr));
+      break;
+    }
+    case kUnknown: {
       cfg->SetHasUnknownInstructions();
       cfg->AddTuple(curr_bblock, start_ptr, reinterpret_cast<const uint8_t*>(ptr));
       break;
     }
+    case kLock: {
+      cfg->SetHasLocks();
+      cfg->AddTuple(curr_bblock, start_ptr, reinterpret_cast<const uint8_t*>(ptr));
+      break;
+    }
+    case kCycle: {
+      cfg->SetHasCycles();
+      cfg->AddTuple(curr_bblock, start_ptr, reinterpret_cast<const uint8_t*>(ptr));
+      break;
+    }
+    }
 
     ptr += len;
-    if (is_bb_end == kNone || is_bb_end == kCall) {
-      continue;
-    } else {
+    if (is_bb_end != kNone && is_bb_end != kCall) {
       break;
     }
   }
 }
 
-CFGraph* BinaryAnalyzer::BuildCFG(const uint8_t* ptr, std::string method_name) {
-  CFGraph* cfg = new CFGraph(method_name);
+/**
+ * @brief Constructs the CFG for the method by binary analysis.
+ * @param ptr - the method function pointer.
+ * @param method_name - Pretty Name of method.
+ * @return the CFG for the analyzed method.
+ */
+AnalysisResult AnalyzeCFG(const uint8_t* ptr, const std::string& method_name) {
+  CFGraph cfg(method_name);
+  Disassembler disassembler(Runtime::Current()->GetInstructionSet());
   MachineBlock* predecessor_bb = nullptr;
-  MachineBlock* start_bb = cfg->CreateBBlock(predecessor_bb);
+  MachineBlock* start_bb = cfg.CreateBBlock(predecessor_bb);
   MachineBlock* curr_bb = start_bb;
-  cfg->AddStartBBlock(start_bb);
+  cfg.AddStartBBlock(start_bb);
   MachineBlock* dummy_end = nullptr;
   uint32_t depth = 0;
-  std::list<BackLogDs*> backlog;
-  CFGHelper(cfg, ptr, curr_bb, &backlog, depth, dummy_end);
+  std::vector<BackLogDs*> backlog;
+  CFGHelper(&cfg, ptr, curr_bb, &backlog, depth, dummy_end, &disassembler);
   do {
     BackLogDs* entry = nullptr;
     if (!backlog.empty()) {
       entry = backlog.back();
       backlog.pop_back();
-      if (!cfg->IsVisitedForBacklog(entry, &backlog)) {
+      if (!cfg.IsVisitedForBacklog(entry, &backlog)) {
         ptr = entry->ptr;
         predecessor_bb  = entry->pred_bb;
-        curr_bb = cfg->CreateBBlock(predecessor_bb);
+        curr_bb = cfg.CreateBBlock(predecessor_bb);
         dummy_end = entry->succ_bb;
         depth = entry->call_depth;
-        CFGHelper(cfg, ptr, curr_bb, &backlog, depth, dummy_end);
+        CFGHelper(&cfg, ptr, curr_bb, &backlog, depth, dummy_end, &disassembler);
       }
     }
     delete entry;
-    if (!cfg->IsWithinBudget()) {
+    if (!cfg.IsStillFast()) {
       for (auto& e : backlog) {
         delete e;
       }
-      delete cfg;
-      return nullptr;
+      return cfg.GetAnalysisState();
     }
   } while ((!backlog.empty()));
-  cfg->AddEndBBlock(curr_bb);
-  return cfg;
+  return cfg.GetAnalysisState();
 }
 
-bool CFGraph::IsWithinBudget() {
-  return ((call_depth_ < kCallDepthLimit)
-      && (num_of_bblocks_ <= kBasicBlockLimit)
-      && (num_of_instrs_ <= kInstructionLimit)
-      && !has_unknown_instructions_
-      && !has_indirect_calls_);
+bool CFGraph::IsStillFast() const {
+  return state_ == AnalysisResult::kFast;
 }
 
 void MachineInstruction::Print(std::ostream& os, bool is_dot) {
@@ -497,10 +525,8 @@ std::ostringstream MachineBlock::Print(bool is_dot) {
       label = label + " (Dummy)";
     }
     os << StringPrintf("\nB_%d [shape=rectangle, label=\"%s\"];", id_, label.c_str());
-    for (std::list<MachineBlock*>::iterator it = succ_bblock_.begin();
-        it != succ_bblock_.end();
-        it++) {
-      os << StringPrintf("\nB_%d -> B_%d;", id_, (*it)->GetId());
+    for (MachineBlock* bb : succ_bblock_) {
+      os << StringPrintf("\nB_%d -> B_%d;", id_, bb->GetId());
     }
   } else {
     os << "   Basic Block Id : " << id_
@@ -526,7 +552,7 @@ std::ostringstream MachineBlock::Print(bool is_dot) {
   return os;
 }
 
-void CFGraph::Print(std::ostringstream& os, bool is_dot) {
+void CFGraph::Print(std::ostringstream& os, bool is_dot) const {
   if (is_dot) {
     std::string method_name = GetMethodName();
     ReplaceString(method_name, ".", "_");
@@ -538,10 +564,8 @@ void CFGraph::Print(std::ostringstream& os, bool is_dot) {
   } else {
     os << "--- CFG begins ---\nCFG -No. of instructions " << GetInstructionCnt();
   }
-  for (auto it = visited_bblock_list_.begin();
-      it != visited_bblock_list_.end();
-      it++) {
-    (*it)->Print(os, is_dot);
+  for (auto bb : visited_bblock_list_) {
+    bb->Print(os, is_dot);
   }
   if (is_dot) {
     os << std::endl << "}";
@@ -550,40 +574,14 @@ void CFGraph::Print(std::ostringstream& os, bool is_dot) {
   }
 }
 
-void MachineBlock::Visit(std::set<MachineBlock*>* bb_set, std::list<MachineBlock*>* bb_order) {
-  for (auto it = succ_bblock_.begin();
-      it != succ_bblock_.end();
-      it++) {
-    if (bb_set->find(*it) != bb_set->end()) {
-      (*it)->Visit(bb_set, bb_order);
-    }
-  }
-  for (auto it = pred_bblock_.begin(); it != pred_bblock_.end(); it++) {
-    if (*bb_set->find(*it) != *bb_set->end()) {
-      (*it)->Visit(bb_set, bb_order);
-    }
-  }
-  bb_set->insert(this);
-  bb_order->push_back(this);
-}
-
 MachineBlock::~MachineBlock() {
   for (auto it : instrs_) {
     delete it;
   }
 }
 
-bool BinaryAnalyzer::AnalyzeMethod(uint32_t method_idx, const DexFile& dex_file, const void* fnPtr) {
-  bool is_fast = false;
-  if (cfg_ != nullptr) {
-    delete cfg_;
-    cfg_ = nullptr;
-  }
-  cfg_ = BuildCFG((unsigned char*) fnPtr, PrettyMethod(method_idx, dex_file));
-  if (cfg_ != nullptr) {
-    is_fast = cfg_->IsSimple();
-  }
-  return is_fast;
+AnalysisResult AnalyzeMethod(uint32_t method_idx, const DexFile& dex_file, const void* fn_ptr) {
+  return AnalyzeCFG((unsigned char*) fn_ptr, PrettyMethod(method_idx, dex_file));
 }
 
 void MachineBlock::AddPredBBlock(MachineBlock* bblock) {
@@ -611,24 +609,45 @@ void MachineBlock::DeletePredBBlock(MachineBlock* bblock) {
   }
 }
 
-void MachineBlock::CopyPredBBlockList(std::list<MachineBlock*> copy_list) {
-  for (auto it : copy_list) {
+void MachineBlock::CopyPredBBlockList(const std::vector<MachineBlock*>& to_copy) {
+  for (auto it : to_copy) {
     pred_bblock_.push_back(it);
   }
 }
 
-void MachineBlock::CopySuccBBlockList(std::list<MachineBlock*> copy_list) {
-  for (auto it : copy_list) {
+void MachineBlock::CopySuccBBlockList(const std::vector<MachineBlock*>& to_copy) {
+  for (auto it : to_copy) {
     succ_bblock_.push_back(it);
+  }
+}
+
+void CFGraph::SetCallDepth(uint32_t depth) {
+  call_depth_ = depth;
+  if (call_depth_ >= kCallDepthLimit) {
+    state_ = AnalysisResult::kCallDepthLimitExceeded;
+  }
+}
+
+void CFGraph::IncBBlockCnt() {
+  ++num_of_bblocks_;
+  if (num_of_bblocks_ > kBasicBlockLimit) {
+    state_ = AnalysisResult::kBasicBlockLimitExceeded;
+  }
+}
+
+void CFGraph::IncreaseInstructionCnt(uint32_t amount) {
+  num_of_instrs_ += amount;
+  if (num_of_instrs_ > kInstructionLimit) {
+    state_ = AnalysisResult::kInstructionLimitExceeded;
   }
 }
 
 MachineBlock* CFGraph::CreateBBlock(MachineBlock* predecessor_bb) {
   MachineBlock* new_bb = new MachineBlock(predecessor_bb);
-  new_bb->SetId(num_of_bblocks_);
+  new_bb->SetId(GetBBlockCnt());
   new_bb->SetStartAddr(nullptr);
   new_bb->SetEndAddr(nullptr);
-  ++num_of_bblocks_;
+  IncBBlockCnt();
   cfg_bblock_list_.push_back(new_bb);
   return new_bb;
 }
@@ -637,7 +656,7 @@ void CFGraph::AddTuple(MachineBlock* bblock, const uint8_t* start, const uint8_t
   bblock->SetStartAddr(start);
   bblock->SetEndAddr(end);
   visited_bblock_list_.push_back(bblock);
-  num_of_instrs_ += bblock->GetInstrCnt();
+  IncreaseInstructionCnt(bblock->GetInstrCnt());
 }
 
 }  // namespace x86
