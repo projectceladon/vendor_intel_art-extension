@@ -97,8 +97,12 @@ void HFormBottomLoops::Run() {
 
   PRINT_PASS_OSTREAM_MESSAGE(this, "Begin: " << GetMethodName(graph));
 
-  // Walk all the inner loops in the graph.
+  // Store the loops we have formed for debug purposes only.
+  std::vector<HLoopInformation_X86*> bottom_formed_loops;
+  // Whether we have changed something.
   bool changed = false;
+
+  // Walk all the inner loops in the graph.
   for (HOnlyInnerLoopIterator it(graph_loop); !it.Done(); it.Advance()) {
     HLoopInformation_X86* loop = it.Current();
     HBasicBlock* pre_header = loop->GetPreHeader();
@@ -117,6 +121,9 @@ void HFormBottomLoops::Run() {
     RewriteLoop(loop, loop_header, exit_block);
     MaybeRecordStat(MethodCompilationStat::kIntelFormBottomLoop);
     changed = true;
+    if (IsVerbose()) {
+      bottom_formed_loops.push_back(loop);
+    }
   }
 
   if (changed) {
@@ -127,6 +134,13 @@ void HFormBottomLoops::Run() {
                                dex_compilation_unit_.GetDexCache(),
                                handles_,
                                /* is_first_run */ false).Run();
+    }
+  }
+
+  if (IsVerbose()) {
+    // Can dump loops only after domination info is valid.
+    for (auto loop : bottom_formed_loops) {
+      loop->Dump(LOG(INFO));
     }
   }
   PRINT_PASS_OSTREAM_MESSAGE(this, "End: " << GetMethodName(graph));
@@ -326,9 +340,6 @@ void HFormBottomLoops::RewriteLoop(HLoopInformation_X86* loop,
   // Here H denotes former Header,
   //      B denotes former Back Edge,
   //      C denotes Clone of Header.
-  if (IsVerbose()) {
-    loop->Dump(LOG(INFO));
-  }
 }
 
 
