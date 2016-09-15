@@ -55,17 +55,21 @@ void HPhiCleanup::CleanUpPhis() {
     for (HInstructionIterator phi_it(block->GetPhis());
                               !phi_it.Done(); phi_it.Advance()) {
       HPhi* phi = phi_it.Current()->AsPhi();
+      DCHECK(phi != nullptr);
+      if (phi->GetBlock() == nullptr) {
+        // Has already been removed while removing another Phi.
+        continue;
+      }
       if (AllInputsSame(phi)) {
         PRINT_PASS_OSTREAM_MESSAGE(this, "Removing " << phi << " because all"
                                          << " its inputs are the same.");
         DCHECK(phi->InputAt(0)->GetBlock()->Dominates(block));
         if (phi->HasUses()) {
           phi->ReplaceWith(phi->InputAt(0));
-          block->RemovePhi(phi);
-        } else {
-          TryKillUseTree(this, phi);
-          DCHECK(phi->GetBlock() == nullptr) << phi << " was not removed as expected!";
         }
+        DCHECK(!phi->HasUses());
+        TryKillUseTree(this, phi);
+        DCHECK(phi->GetBlock() == nullptr) << phi << " was not removed as expected!";
         MaybeRecordStat(MethodCompilationStat::kIntelPhiNodeEliminated);
       } else if (RemoveClique(phi, seen_insns)) {
         PRINT_PASS_OSTREAM_MESSAGE(this, "Clique removed successfully");
@@ -131,14 +135,33 @@ bool HPhiCleanup::RemoveClique(HPhi* phi,
   if (RemoveCliqueHelper(phi, seen_insns, candidates)) {
     PRINT_PASS_OSTREAM_MESSAGE(this, "Found a clique of: " << candidates.size() << " elements");
 
-    // Delete unsafely.
+    std::unordered_set<HInstruction*> inputs_of_removed_phis;
+
     for (auto to_remove : candidates) {
+      DCHECK(to_remove->GetBlock() != nullptr);
+      // Consider all inputs of removed Phis for removal.
+      for (HInputIterator it(to_remove); !it.Done(); it.Advance()) {
+        auto input = it.Current();
+        // This can be null due to unsafe removal.
+        if (input != nullptr) {
+          inputs_of_removed_phis.insert(input);
+        }
+      }
+
+      // Remove the instruction unsafely.
       if (to_remove->IsPhi()) {
         to_remove->GetBlock()->RemovePhi(to_remove->AsPhi(), false);
       } else {
         to_remove->GetBlock()->RemoveInstruction(to_remove, false);
       }
       RemoveAsUser(to_remove);
+    }
+
+    for (auto input : inputs_of_removed_phis) {
+      DCHECK(input != nullptr);
+      if (input->GetBlock() != nullptr) {
+        TryKillUseTree(this, input);
+      }
     }
 
     return true;
