@@ -315,6 +315,8 @@ void ArtMethod::Invoke(Thread* self, uint32_t* args, uint32_t args_size, JValue*
   self->PopManagedStackFragment(fragment);
 }
 
+#ifdef CAPSTONE
+
 class AutoFastJniDetectTask FINAL : public jit::JniTask {
  public:
   AutoFastJniDetectTask(ArtMethod* method, const void* native_method)
@@ -340,6 +342,8 @@ class AutoFastJniDetectTask FINAL : public jit::JniTask {
 
   DISALLOW_IMPLICIT_CONSTRUCTORS(AutoFastJniDetectTask);
 };
+
+#endif // #ifdef CAPSTONE
 
 void ArtMethod::RegisterNative(const void* native_method, bool is_fast) {
   CHECK(IsNative()) << PrettyMethod(this);
