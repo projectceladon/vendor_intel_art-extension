@@ -386,7 +386,7 @@ enum class AnalysisResult {
   kInstructionLimitExceeded,
 };
 
-constexpr const char* AnalysisResultToStr(AnalysisResult res) {
+inline const char* AnalysisResultToStr(AnalysisResult res) {
   switch (res) {
     case AnalysisResult::kFast:
       return "fast";
@@ -408,6 +408,9 @@ constexpr const char* AnalysisResultToStr(AnalysisResult res) {
       return "exceeds basic block limit";
     case AnalysisResult::kInstructionLimitExceeded:
       return "exceeds instruction limit";
+    default:
+      LOG(ERROR) << "Unknown auto fast JNI analysis result!";
+      return "";
   }
 }
 
