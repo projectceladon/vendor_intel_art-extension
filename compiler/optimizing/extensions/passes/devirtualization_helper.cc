@@ -102,17 +102,20 @@ uint32_t HDevirtualization::FindClassIndexIn(mirror::Class* cls, const DexFile& 
     // TODO: deal with proxy classes.
   } else if (IsSameDexFile(cls->GetDexFile(), dex_file)) {
     index = cls->GetDexTypeIndex();
-  } else {
-    index = cls->FindTypeIndexInOtherDexFile(dex_file);
-  }
-
-  if (index != DexFile::kDexNoIndex) {
     // Update the dex cache to ensure the class is in. The generated code will
     // consider it is. We make it safe by updating the dex cache, as other
     // dex files might also load the class, and there is no guarantee the dex
     // cache of the dex file of the class will be updated.
     if (dex_cache->GetResolvedType(index) == nullptr) {
       dex_cache->SetResolvedType(index, cls);
+    }
+  } else {
+    index = cls->FindTypeIndexInOtherDexFile(dex_file);
+    // We cannot guarantee the entry in the dex cache will resolve to the same class,
+    // as there may be different class loaders. So only return the index if it's
+    // the right class in the dex cache already.
+    if (index != DexFile::kDexNoIndex && dex_cache->GetResolvedType(index) != cls) {
+      index = DexFile::kDexNoIndex;
     }
   }
 
