@@ -141,6 +141,9 @@ class BumpPointerSpace FINAL : public ContinuousMemMapAllocSpace {
   // Allocate a new TLAB, returns false if the allocation failed.
   bool AllocNewTlab(Thread* self, size_t bytes) REQUIRES(!block_lock_);
 
+  // Allocate a new TLAB, returns false if the allocation failed.
+  mirror::Object* AllocWithoutTlab(size_t bytes) REQUIRES(!block_lock_);
+
   BumpPointerSpace* AsBumpPointerSpace() OVERRIDE {
     return this;
   }

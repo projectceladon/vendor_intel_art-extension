@@ -328,9 +328,22 @@ inline mirror::Object* Heap::TryToAllocate(Thread* self,
     case kAllocatorTypeTLAB: {
       DCHECK_ALIGNED(alloc_size, space::BumpPointerSpace::kAlignment);
       if (UNLIKELY(self->TlabSize() < alloc_size)) {
-        const size_t new_tlab_size = alloc_size + kDefaultTLABSize;
+        size_t tail = bump_pointer_space_->GetHeaderSize();
+        const bool bypass_tlab = kTLABAllocThreshold < alloc_size;
+        const size_t new_tlab_size = alloc_size + (bypass_tlab ? tail : kDefaultTLABSize);
         if (UNLIKELY(IsOutOfMemoryOnAllocation<kGrow>(allocator_type, new_tlab_size))) {
           return nullptr;
+        }
+        // Try to allocate without TLAB.
+        if (bypass_tlab) {
+          ret = bump_pointer_space_->AllocWithoutTlab(alloc_size);
+          if (ret == nullptr) {
+            return nullptr;
+          }
+          *bytes_tl_bulk_allocated = new_tlab_size;
+          *bytes_allocated = alloc_size;
+          *usable_size = alloc_size;
+          break;
         }
         // Try allocating a new thread local buffer, if the allocaiton fails the space must be
         // full so return null.
@@ -338,7 +351,6 @@ inline mirror::Object* Heap::TryToAllocate(Thread* self,
           // Retry the allocation to reuse the left space at the end of bump pointer space.
           // This happen only when kGrow is true in order to avoid performance impact.
           size_t max_contiguous_bytes = bump_pointer_space_->GetMaxContiguousBytes();
-          size_t tail = bump_pointer_space_->GetHeaderSize();
           if (max_contiguous_bytes < alloc_size || max_contiguous_bytes < tail) {
             return nullptr;
           }

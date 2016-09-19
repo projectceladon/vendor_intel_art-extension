@@ -276,6 +276,17 @@ bool BumpPointerSpace::AllocNewTlab(Thread* self, size_t bytes) {
   return true;
 }
 
+mirror::Object* BumpPointerSpace::AllocWithoutTlab(size_t bytes) {
+  MutexLock mu(Thread::Current(), block_lock_);
+  mirror::Object* ret = reinterpret_cast<mirror::Object*>(AllocBlock(bytes));
+  if (ret != nullptr) {
+    objects_allocated_.FetchAndAddSequentiallyConsistent(1);
+    bytes_allocated_.FetchAndAddSequentiallyConsistent(bytes);
+  }
+  return ret;
+}
+
+
 void BumpPointerSpace::LogFragmentationAllocFailure(std::ostream& os,
                                                     size_t /* failed_alloc_bytes */) {
   size_t max_contiguous_allocation = Limit() - End();
