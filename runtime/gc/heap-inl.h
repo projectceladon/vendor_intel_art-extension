@@ -330,7 +330,15 @@ inline mirror::Object* Heap::TryToAllocate(Thread* self,
       if (UNLIKELY(self->TlabSize() < alloc_size)) {
         size_t tail = bump_pointer_space_->GetHeaderSize();
         const bool bypass_tlab = tlab_alloc_threshold_ < alloc_size;
-        const size_t new_tlab_size = alloc_size + (bypass_tlab ? tail : tlab_size_);
+        size_t new_tlab_size = alloc_size + (bypass_tlab ? tail : tlab_size_);
+        if (UNLIKELY(GetBytesAllocated() + new_tlab_size > growth_limit_)) {
+          size_t max_bytes_available = GetFreeMemoryUntilOOME();
+          if (max_bytes_available >= alloc_size + tail) {
+            new_tlab_size = max_bytes_available;
+          } else {
+            return nullptr;
+          }
+        }
         if (UNLIKELY(IsOutOfMemoryOnAllocation<kGrow>(allocator_type, new_tlab_size))) {
           return nullptr;
         }
@@ -360,6 +368,7 @@ inline mirror::Object* Heap::TryToAllocate(Thread* self,
             if (!bump_pointer_space_->AllocNewTlab(self, adjusted_tlab_size)) {
               return nullptr;
             }
+            new_tlab_size = adjusted_tlab_size;
           } else {
             return nullptr;
           }
@@ -459,7 +468,7 @@ inline bool Heap::IsOutOfMemoryOnAllocation(AllocatorType allocator_type, size_t
       // TODO: Grow for allocation is racy, fix it.
       VLOG(heap) << "Growing heap from " << PrettySize(max_allowed_footprint_) << " to "
           << PrettySize(new_footprint) << " for a " << PrettySize(alloc_size) << " allocation";
-      max_allowed_footprint_ = new_footprint;
+      SetIdealFootprint(new_footprint);
     }
   }
   return false;

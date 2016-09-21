@@ -1389,8 +1389,10 @@ void Heap::ThrowOutOfMemoryError(Thread* self, size_t byte_count, AllocatorType 
 
   std::ostringstream oss;
   size_t total_bytes_free = GetFreeMemory();
+
   oss << "Failed to allocate a " << byte_count << " byte allocation with " << total_bytes_free
-      << " free bytes and " << PrettySize(GetFreeMemoryUntilOOME()) << " until OOM";
+      << " free bytes and " << PrettySize(GetFreeMemoryUntilOOME()) << " until OOM, "
+      << allocator_type;
   // If the allocation failed due to fragmentation, print out the largest continuous allocation.
   if (total_bytes_free >= byte_count) {
     space::AllocSpace* space = nullptr;
@@ -3886,7 +3888,7 @@ void Heap::GrowForUtilizationGenCopying(collector::GarbageCollector* collector_r
     target_size = std::max(target_size, bytes_allocated + adjusted_min_free);
   }
   if (!ignore_max_footprint_) {
-      SetIdealFootprint(target_size);
+    SetIdealFootprint(target_size);
     if (IsGcConcurrent()) {
       if (next_gc_type_ == collector::kGcTypeYoung) {
         concurrent_start_bytes_ = std::numeric_limits<size_t>::max();

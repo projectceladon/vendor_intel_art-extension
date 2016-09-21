@@ -529,7 +529,8 @@ class Heap {
 
   // Returns approximately how much free memory we have until the next OOME happens.
   size_t GetFreeMemoryUntilOOME() const {
-    return growth_limit_ - GetBytesAllocated();
+    size_t byte_allocated = num_bytes_allocated_.LoadSequentiallyConsistent();
+    return growth_limit_ - std::min(growth_limit_, byte_allocated);
   }
 
   // Returns how much free memory we have until we need to grow the heap to perform an allocation.
