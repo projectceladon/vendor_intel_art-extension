@@ -101,7 +101,6 @@ static const char* kRosAllocSpaceName[2] = {"main rosalloc space", "main rosallo
 static const char* kMemMapSpaceName[2] = {"main space", "main space 1"};
 static const char* kNonMovingSpaceName = "non moving space";
 static const char* kZygoteSpaceName = "zygote space";
-static constexpr size_t kGSSBumpPointerSpaceCapacity = 32 * MB;
 static constexpr bool kGCALotMode = false;
 // GC alot mode uses a small allocation stack to stress test a lot of GC.
 static constexpr size_t kGcAlotAllocationStackSize = 4 * KB /
@@ -154,6 +153,10 @@ Heap::Heap(size_t initial_size,
            bool verify_pre_sweeping_rosalloc,
            bool verify_post_gc_rosalloc,
            bool gc_stress_mode,
+           size_t tlab_size,
+           size_t tlab_alloc_threshold,
+           size_t tenure_threshold,
+           size_t bump_space_capacity,
            bool use_homogeneous_space_compaction_for_oom,
            uint64_t min_interval_homogeneous_space_compaction_by_oom,
            unsigned int concurrent_gc_cycle_start,
@@ -233,6 +236,9 @@ Heap::Heap(size_t initial_size,
       total_wait_time_(0),
       verify_object_mode_(kVerifyObjectModeDisabled),
       disable_moving_gc_count_(0),
+      tlab_size_(tlab_size),
+      tlab_alloc_threshold_(tlab_alloc_threshold),
+      bump_space_capacity_(bump_space_capacity),
       moving_gc_count_(0),
       is_running_on_memory_tool_(Runtime::Current()->IsRunningOnMemoryTool()),
       use_tlab_(use_tlab),
@@ -489,11 +495,11 @@ Heap::Heap(size_t initial_size,
       main_mem_map_2.release();
       // TODO: make sure the two bps are adjacent to the ros.
       bump_pointer_space_ = space::BumpPointerSpace::Create("Bump pointer space 1",
-                                                            kGSSBumpPointerSpaceCapacity, nullptr);
+                                                            bump_space_capacity_, nullptr);
       CHECK(bump_pointer_space_ != nullptr);
       AddSpace(bump_pointer_space_);
       temp_space_ = space::BumpPointerSpace::Create("Bump pointer space 2",
-                                                    kGSSBumpPointerSpaceCapacity, nullptr);
+                                                    bump_space_capacity_, nullptr);
       CHECK(temp_space_ != nullptr);
       AddSpace(temp_space_);
     } else if (main_mem_map_2.get() != nullptr) {
@@ -666,7 +672,7 @@ Heap::Heap(size_t initial_size,
   }
   // For GSS and Generational Copying collector.
   // It won't impact other collectors.
-  SetThresholdAge(kTenureThreshold);
+  SetThresholdAge(tenure_threshold);
 }
 
 MemMap* Heap::MapAnonymousPreferredAddress(const char* name,
@@ -3867,7 +3873,7 @@ void Heap::GrowForUtilizationGenCopying(collector::GarbageCollector* collector_r
     } else {
       next_gc_type_ = old_gc_type;
       // Make at lease Young space size avaiable for Concurrent Old GC.
-      target_size = max_allowed_footprint_ + kGSSBumpPointerSpaceCapacity;
+      target_size = max_allowed_footprint_ + bump_space_capacity_;
       need_grow = false;
     }
   }

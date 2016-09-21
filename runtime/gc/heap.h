@@ -116,9 +116,6 @@ static constexpr bool kUseRosAlloc = true;
 
 // If true, use thread-local allocation stack.
 static constexpr bool kUseThreadLocalAllocationStack = true;
-// This is used for Generational Copying collector.
-// TODO: make this configurable.
-static constexpr size_t kTenureThreshold = 6;
 
 class Heap {
  public:
@@ -132,7 +129,9 @@ class Heap {
   static constexpr size_t kDefaultLongPauseLogThreshold = MsToNs(5);
   static constexpr size_t kDefaultLongGCLogThreshold = MsToNs(100);
   static constexpr size_t kDefaultTLABSize = 256 * KB;
-  static constexpr size_t kTLABAllocThreshold = 128 * KB;
+  static constexpr size_t kDefaultTLABAllocThreshold = kDefaultTLABSize / 2;
+  static constexpr size_t kDefaultTenureThreshold = 6;
+  static constexpr size_t kDefaultGSSBumpPointerSpaceCapacity = 32 * MB;
   static constexpr double kDefaultTargetUtilization = 0.5;
   static constexpr double kDefaultHeapGrowthMultiplier = 2.0;
   // Primitive arrays larger than this size are put in the large object space.
@@ -190,6 +189,10 @@ class Heap {
        bool verify_pre_sweeping_rosalloc,
        bool verify_post_gc_rosalloc,
        bool gc_stress_mode,
+       size_t tlab_size,
+       size_t tlab_alloc_threshold,
+       size_t tenure_threshold,
+       size_t bump_space_capacity,
        bool use_homogeneous_space_compaction,
        uint64_t min_interval_homogeneous_space_compaction_by_oom,
                 unsigned int concurrent_gc_cycle_start = 0,
@@ -1344,6 +1347,15 @@ class Heap {
 
   // Compacting GC disable count, prevents compacting GC from running iff > 0.
   size_t disable_moving_gc_count_ GUARDED_BY(gc_complete_lock_);
+
+  // Size of TLAB
+  const size_t tlab_size_;
+
+  // If object size is greater then threshold and there is no space in tlab, allocate w/o tlab.
+  const size_t tlab_alloc_threshold_;
+
+  // Bump Pointer Space Capacity.
+  const size_t bump_space_capacity_;
 
   // Accumulative count increase on both begin and finish of a moving gc
   // if it is odd, means a moving gc is going on.

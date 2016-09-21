@@ -329,8 +329,8 @@ inline mirror::Object* Heap::TryToAllocate(Thread* self,
       DCHECK_ALIGNED(alloc_size, space::BumpPointerSpace::kAlignment);
       if (UNLIKELY(self->TlabSize() < alloc_size)) {
         size_t tail = bump_pointer_space_->GetHeaderSize();
-        const bool bypass_tlab = kTLABAllocThreshold < alloc_size;
-        const size_t new_tlab_size = alloc_size + (bypass_tlab ? tail : kDefaultTLABSize);
+        const bool bypass_tlab = tlab_alloc_threshold_ < alloc_size;
+        const size_t new_tlab_size = alloc_size + (bypass_tlab ? tail : tlab_size_);
         if (UNLIKELY(IsOutOfMemoryOnAllocation<kGrow>(allocator_type, new_tlab_size))) {
           return nullptr;
         }
