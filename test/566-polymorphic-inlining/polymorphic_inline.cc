@@ -33,8 +33,9 @@ static void do_checks(jclass cls, const char* method_name) {
   OatQuickMethodHeader* header = nullptr;
   // Infinite loop... Test harness will have its own timeout.
   while (true) {
-    header = OatQuickMethodHeader::FromEntryPoint(method->GetEntryPointFromQuickCompiledCode());
-    if (code_cache->ContainsPc(header->GetCode())) {
+    auto pc = method->GetEntryPointFromQuickCompiledCode();
+    if (code_cache->ContainsPc(pc)) {
+      header = OatQuickMethodHeader::FromEntryPoint(pc);
       break;
     } else {
       // sleep one second to give time to the JIT compiler.

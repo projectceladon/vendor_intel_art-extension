@@ -138,12 +138,11 @@ extern "C" JNIEXPORT void JNICALL Java_Main_ensureJitCompiled(JNIEnv* env,
   ArtMethod* method = klass->FindDeclaredDirectMethodByName(chars.c_str(), sizeof(void*));
 
   jit::JitCodeCache* code_cache = jit->GetCodeCache();
-  OatQuickMethodHeader* header = nullptr;
   // Make sure there is a profiling info, required by the compiler.
   ProfilingInfo::Create(soa.Self(), method, /* retry_allocation */ true);
   while (true) {
-    header = OatQuickMethodHeader::FromEntryPoint(method->GetEntryPointFromQuickCompiledCode());
-    if (code_cache->ContainsPc(header->GetCode())) {
+    auto pc = method->GetEntryPointFromQuickCompiledCode();
+    if (code_cache->ContainsPc(pc)) {
       break;
     } else {
       // Sleep to yield to the compiler thread.
