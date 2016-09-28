@@ -52,14 +52,14 @@ enum ControlTransferType {
  * @param instr - The instruction pointer.
  * @param curr_bb - Pointer to the Current Basic Block.
  * @param is_bb_end - Does the instruction mark the end of Basic Block.
- * @param target_disp - Relative target of a branch.
+ * @param target - Adress for direct jump/call.
  * @param disassembler - Disassembler to be used for instruction decoding.
  * @return Size of analyzed instruction in bytes. -1 in case of error.
  */
 ptrdiff_t AnalyzeInstruction(const uint8_t* instr,
                              MachineBlock* curr_bb,
                              int32_t* is_bb_end,
-                             int32_t* target_disp,
+                             const uint8_t** target,
                              Disassembler* disassembler) {
   *is_bb_end = kNone;
   if (!disassembler->IsDisassemblerValid()) {
@@ -70,6 +70,7 @@ ptrdiff_t AnalyzeInstruction(const uint8_t* instr,
   if (insn == nullptr) {
     return -1;
   }
+  *target = instr + insn->size;
   const cs_x86& insn_x86 = insn->detail->x86;
 
   switch(insn_x86.prefix[0]) {
@@ -97,9 +98,12 @@ ptrdiff_t AnalyzeInstruction(const uint8_t* instr,
     *is_bb_end = kInterrupt;
     break;
   case X86_INS_JMP:
-    *is_bb_end = kUnconditionalBranch;
+    DCHECK_GE(insn_x86.op_count, 1);
     if (insn_x86.operands[0].type != X86_OP_IMM) {
       *is_bb_end = kIndirectJump;
+    } else {
+      *is_bb_end = kUnconditionalBranch;
+      *target = reinterpret_cast<uint8_t*>(insn_x86.operands[0].imm);
     }
     break;
   case X86_INS_JA:
@@ -121,22 +125,27 @@ ptrdiff_t AnalyzeInstruction(const uint8_t* instr,
   case X86_INS_JP:
   case X86_INS_JRCXZ:
   case X86_INS_JS:
-    *is_bb_end = kConditionalBranch;
+    DCHECK_GE(insn_x86.op_count, 1);
     if (insn_x86.operands[0].type != X86_OP_IMM) {
       *is_bb_end = kIndirectJump;
+    } else {
+      *is_bb_end = kConditionalBranch;
+      *target = reinterpret_cast<uint8_t*>(insn_x86.operands[0].imm);
     }
     break;
   case X86_INS_RET:
     *is_bb_end = kReturn;
     break;
   case X86_INS_CALL:
-    *is_bb_end = kCall;
+    DCHECK_GE(insn_x86.op_count, 1);
     if (insn_x86.operands[0].type != X86_OP_IMM) {
       *is_bb_end = kIndirectCall;
+    } else {
+      *is_bb_end = kCall;
+      *target = reinterpret_cast<uint8_t*>(insn_x86.operands[0].imm);
     }
     break;
   }
-  *target_disp = insn_x86.disp;
   MachineInstruction* ir = new MachineInstruction(insn->op_str,
                                                   static_cast<uint8_t>(insn->size),
                                                   reinterpret_cast<const uint8_t*>(instr));
@@ -263,7 +272,7 @@ void CFGraph::ChangePredForBacklog(MachineBlock* old_pred,
 
 void MachineBlock::CopyInstruction(MachineBlock* from_bblock, const uint8_t* start) {
   const uint8_t* ptr = from_bblock->GetStartAddr();
-  std::vector<MachineInstruction*>::iterator it_bb = from_bblock->instrs_.begin();
+  std::list<MachineInstruction*>::iterator it_bb = from_bblock->instrs_.begin();
   while (it_bb != from_bblock->instrs_.end()) {
     if (ptr >= start) {
       AddInstruction((*it_bb));
@@ -276,7 +285,7 @@ void MachineBlock::CopyInstruction(MachineBlock* from_bblock, const uint8_t* sta
   }
 }
 
-void MachineBlock::DeleteInstruction(std::vector<MachineInstruction*>::iterator it) {
+void MachineBlock::DeleteInstruction(std::list<MachineInstruction*>::iterator it) {
   instrs_.erase(it);
   --num_of_instrs_;
 }
@@ -321,11 +330,11 @@ void CFGHelper(CFGraph* cfg,
                Disassembler* disasm) {
   ptrdiff_t len = 0;
   int32_t is_bb_end = kNone;
-  int32_t displacement = 0;
+  const uint8_t* target = nullptr;
   const uint8_t* ptr = reinterpret_cast<const uint8_t*>(instr_ptr);
   const uint8_t* start_ptr = reinterpret_cast<const uint8_t*>(ptr);
 
-  while ((len = AnalyzeInstruction(ptr, curr_bblock, &is_bb_end, &displacement, disasm)) > 0) {
+  while ((len = AnalyzeInstruction(ptr, curr_bblock, &is_bb_end, &target, disasm)) > 0) {
     switch (is_bb_end) {
     case kUnconditionalBranch: {
       // Push the jmp target to backlog.
@@ -336,7 +345,7 @@ void CFGHelper(CFGraph* cfg,
       } else {
         uncond_jmp->succ_bb = nullptr;
       }
-      uncond_jmp->ptr = reinterpret_cast<const uint8_t*>(ptr + displacement + len);
+      uncond_jmp->ptr = target;
       uncond_jmp->call_depth = 0;
       backlog->push_back(uncond_jmp);
       // Add the current BB to CFG.
@@ -352,7 +361,7 @@ void CFGHelper(CFGraph* cfg,
       } else {
         cond_if_jmp->succ_bb = nullptr;
       }
-      cond_if_jmp->ptr = reinterpret_cast<const uint8_t*>(ptr + displacement + len);
+      cond_if_jmp->ptr = target;
       cond_if_jmp->call_depth = 0;
       backlog->push_back(cond_if_jmp);
       // Push the else (subsequent instruction) to the backlog.
@@ -379,7 +388,7 @@ void CFGHelper(CFGraph* cfg,
       end_bb->SetDummy();
       BackLogDs* call_entry = new BackLogDs();
       call_entry->pred_bb = start_bb;
-      call_entry->ptr = reinterpret_cast<const uint8_t*>(ptr + displacement + len);
+      call_entry->ptr = target;
       call_entry->succ_bb = end_bb;
       call_entry->call_depth = depth + 1;
       if (call_entry->call_depth > cfg->GetCallDepth()) {
@@ -390,7 +399,6 @@ void CFGHelper(CFGraph* cfg,
       curr_bblock = bb_after_call;
       is_bb_end = kNone;
       start_ptr = ptr + len;
-      displacement = 0;
       cfg->AddTuple(start_bb, nullptr, nullptr);
       cfg->AddTuple(end_bb, nullptr, nullptr);
       break;

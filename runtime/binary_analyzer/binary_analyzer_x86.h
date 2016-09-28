@@ -308,7 +308,7 @@ class MachineBlock {
    * @brief Get the Instruction Class Pointer List for the Basic Block.
    * @return The Instruction class pointer list.
    */
-  const std::vector<MachineInstruction*>& GetInstructions() const {
+  const std::list<MachineInstruction*>& GetInstructions() const {
     return instrs_;
   }
 
@@ -337,7 +337,7 @@ class MachineBlock {
    * @brief Deletes a certain Instruction from the Basic Block.
    * @param it - iterator for the Instruction List.
    */
-  void DeleteInstruction(std::vector<MachineInstruction*>::iterator it);
+  void DeleteInstruction(std::list<MachineInstruction*>::iterator it);
 
  private:
   uint32_t id_;
@@ -346,7 +346,7 @@ class MachineBlock {
   uint32_t num_of_instrs_;
   std::vector<MachineBlock*> pred_bblock_;
   std::vector<MachineBlock*> succ_bblock_;
-  std::vector<MachineInstruction*> instrs_;
+  std::list<MachineInstruction*> instrs_;
   bool is_dummy_;
 };
 
