@@ -71,16 +71,22 @@ ptrdiff_t AnalyzeInstruction(const uint8_t* instr,
     return -1;
   }
   const cs_x86& insn_x86 = insn->detail->x86;
-  switch(insn->id) {
+
+  switch(insn_x86.prefix[0]) {
   case X86_PREFIX_REP:
   case X86_PREFIX_REPNE:
-  case X86_INS_LOOP:
-  case X86_INS_LOOPE:
-  case X86_INS_LOOPNE:
     *is_bb_end = kCycle;
     break;
   case X86_PREFIX_LOCK:
     *is_bb_end = kLock;
+    break;
+  }
+
+  switch(insn->id) {
+  case X86_INS_LOOP:
+  case X86_INS_LOOPE:
+  case X86_INS_LOOPNE:
+    *is_bb_end = kCycle;
     break;
   case X86_INS_INVALID:
     *is_bb_end = kUnknown;
