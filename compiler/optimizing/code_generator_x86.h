@@ -558,6 +558,8 @@ class CodeGeneratorX86 : public CodeGenerator {
   // The correct value will be inserted when processing Assembler fixups.
   static constexpr int32_t kDummy32BitOffset = 256;
 
+  static constexpr int kConstantAreaAlignment = 4;
+
  private:
   // Factored implementation of GenerateFieldLoadWithBakerReadBarrier
   // and GenerateArrayLoadWithBakerReadBarrier.

@@ -8036,9 +8036,11 @@ void CodeGeneratorX86::Finalize(CodeAllocator* allocator) {
   // Generate the constant area if needed.
   X86Assembler* assembler = GetAssembler();
   if (!assembler->IsConstantAreaEmpty() || !fixups_to_jump_tables_.empty()) {
-    // Align to 4 byte boundary to reduce cache misses, as the data is 4 and 8
-    // byte values.
-    assembler->Align(4, 0);
+    // Align to 4 byte boundary to reduce cache misses, as the data is 4 and 8 byte values.
+    // We take into account the method's offset.
+    Alignment method_alignment = GetInstructionSetAlignment(kX86);
+    DCHECK_LE(kConstantAreaAlignment, method_alignment.mod);
+    assembler->Align(kConstantAreaAlignment, method_alignment.offset);
     constant_area_start_ = assembler->CodeSize();
 
     // Populate any jump tables.
