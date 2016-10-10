@@ -146,7 +146,7 @@ ptrdiff_t AnalyzeInstruction(const uint8_t* instr,
     }
     break;
   }
-  MachineInstruction* ir = new MachineInstruction(insn->op_str,
+  MachineInstruction* ir = new MachineInstruction(std::string(insn->mnemonic) + " " + insn->op_str,
                                                   static_cast<uint8_t>(insn->size),
                                                   reinterpret_cast<const uint8_t*>(instr));
   MachineInstruction* prev_ir = curr_bb->GetLastInstruction();
@@ -192,7 +192,10 @@ bool CFGraph::IsVisited(const uint8_t* addr,
           prev_bblock->AddSuccBBlock(bb_existing);
           bb_existing->AddPredBBlock(prev_bblock);
         }
-        this->SetHasCycles();
+        // Recognize it as a cycle only if a back-branch found.
+        if (addr <= prev_bblock->GetEndAddr()) {
+          this->SetHasCycles();
+        }
         return true;
       }
 
