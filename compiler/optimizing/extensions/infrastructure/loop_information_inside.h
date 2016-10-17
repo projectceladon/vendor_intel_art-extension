@@ -424,7 +424,7 @@ class HLoopInformation_X86 : public HLoopInformation {
 
   /**
    * @brief Used to check if loop has a try block or a catch handler block.
-   * @return Returns true if loop has catch block.
+   * @return Returns true if loop has a try block or a catch handler block.
    */
   bool HasTryCatchHandler() const;
 

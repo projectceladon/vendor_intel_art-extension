@@ -831,12 +831,10 @@ void HLoopInformation_X86::AddToAll(HBasicBlock* block) {
 }
 
 bool HLoopInformation_X86::HasTryCatchHandler() const {
-  // Walk through the loop's blocks to find either try blocks or catch blocks.
+  // Walk through the loop's blocks to find either try or catch boundaries.
   for (HBlocksInLoopIterator it_loop(*this); !it_loop.Done(); it_loop.Advance()) {
     HBasicBlock* block = it_loop.Current();
     if (block->IsCatchBlock()) {
-      return true;
-    } else if (block->IsTryBlock()) {
       return true;
     } else if (block->IsSingleTryBoundary()) {
       return true;
