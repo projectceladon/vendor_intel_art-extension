@@ -2448,24 +2448,32 @@ void X86ExceptionSlowPath::Emit(Assembler *sasm) {
 }
 
 void X86Assembler::AddConstantArea() {
-  ArrayRef<const int32_t> area = constant_area_.GetBuffer();
   // Generate the data for the literal area.
-  for (size_t i = 0, e = area.size(); i < e; i++) {
+  // Emit 64-bit values first
+  ArrayRef<const int64_t> area64 = constant_area_.GetBuffer64();
+  for (int64_t v : area64) {
     AssemblerBuffer::EnsureCapacity ensured(&buffer_);
-    EmitInt32(area[i]);
+    EmitInt64(v);
+  }
+  // Emit 32-bit values
+  ArrayRef<const int32_t> area32 = constant_area_.GetBuffer32();
+  for (int32_t v : area32) {
+    AssemblerBuffer::EnsureCapacity ensured(&buffer_);
+    EmitInt32(v);
   }
 }
 
-size_t ConstantArea::AppendInt32(int32_t v) {
-  size_t result = buffer_.size() * elem_size_;
-  buffer_.push_back(v);
+X86ConstantAreaReference ConstantArea::AppendInt32(int32_t v) {
+  X86ConstantAreaReference result(X86ConstantAreaReference::kBuffer32,
+      buffer32_.size() * elem_size_32_);
+  buffer32_.push_back(v);
   return result;
 }
 
-size_t ConstantArea::AddInt32(int32_t v) {
-  for (size_t i = 0, e = buffer_.size(); i < e; i++) {
-    if (v == buffer_[i]) {
-      return i * elem_size_;
+X86ConstantAreaReference ConstantArea::AddInt32(int32_t v) {
+  for (size_t i = 0, e = buffer32_.size(); i < e; i++) {
+    if (v == buffer32_[i]) {
+      return X86ConstantAreaReference(X86ConstantAreaReference::kBuffer32, i * elem_size_32_);
     }
   }
 
@@ -2473,31 +2481,26 @@ size_t ConstantArea::AddInt32(int32_t v) {
   return AppendInt32(v);
 }
 
-size_t ConstantArea::AddInt64(int64_t v) {
-  int32_t v_low = Low32Bits(v);
-  int32_t v_high = High32Bits(v);
-  if (buffer_.size() > 1) {
-    // Ensure we don't pass the end of the buffer.
-    for (size_t i = 0, e = buffer_.size() - 1; i < e; i++) {
-      if (v_low == buffer_[i] && v_high == buffer_[i + 1]) {
-        return i * elem_size_;
-      }
+X86ConstantAreaReference ConstantArea::AddInt64(int64_t v) {
+  for (size_t i = 0, e = buffer64_.size(); i < e; i++) {
+    if (v == buffer64_[i]) {
+      return X86ConstantAreaReference(X86ConstantAreaReference::kBuffer64, i * elem_size_64_);
     }
   }
 
   // Didn't match anything.
-  size_t result = buffer_.size() * elem_size_;
-  buffer_.push_back(v_low);
-  buffer_.push_back(v_high);
+  X86ConstantAreaReference result(X86ConstantAreaReference::kBuffer64,
+      buffer64_.size() * elem_size_64_);
+  buffer64_.push_back(v);
   return result;
 }
 
-size_t ConstantArea::AddDouble(double v) {
+X86ConstantAreaReference ConstantArea::AddDouble(double v) {
   // Treat the value as a 64-bit integer value.
   return AddInt64(bit_cast<int64_t, double>(v));
 }
 
-size_t ConstantArea::AddFloat(float v) {
+X86ConstantAreaReference ConstantArea::AddFloat(float v) {
   // Treat the value as a 32-bit integer value.
   return AddInt32(bit_cast<int32_t, float>(v));
 }

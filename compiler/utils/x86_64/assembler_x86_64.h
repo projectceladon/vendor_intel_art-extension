@@ -268,43 +268,77 @@ class Address : public Operand {
 
 
 /**
- * Class to handle constant area values.
+ * Classes to handle constant area values.
  */
+struct X86_64ConstantAreaReference {
+  // We use 2 buffers: one for 64-bit values and one for 32-bit values
+  enum BufferType {
+    kBuffer64,
+    kBuffer32
+  };
+
+  BufferType buffer;
+  size_t offset;
+
+  X86_64ConstantAreaReference(const BufferType buf, const size_t constant_offset)
+      : buffer(buf), offset(constant_offset) {}
+};
+
 class ConstantArea {
  public:
-  explicit ConstantArea(ArenaAllocator* arena) : buffer_(arena->Adapter(kArenaAllocAssembler)) {}
+  explicit ConstantArea(ArenaAllocator* arena)
+      : buffer64_(arena->Adapter(kArenaAllocAssembler)),
+        buffer32_(arena->Adapter(kArenaAllocAssembler)) {}
 
-  // Add a double to the constant area, returning the offset into
-  // the constant area where the literal resides.
-  size_t AddDouble(double v);
+  // Add a double to the constant area, returning the constant
+  // area reference (buffer and index in it) where the literal resides.
+  X86_64ConstantAreaReference AddDouble(double v);
 
-  // Add a float to the constant area, returning the offset into
-  // the constant area where the literal resides.
-  size_t AddFloat(float v);
+  // Add a float to the constant area, returning the constant
+  // area reference (buffer and index in it) where the literal resides.
+  X86_64ConstantAreaReference AddFloat(float v);
 
-  // Add an int32_t to the constant area, returning the offset into
-  // the constant area where the literal resides.
-  size_t AddInt32(int32_t v);
+  // Add an int32_t to the constant area, returning the constant
+  // area reference (buffer and index in it) where the literal resides.
+  X86_64ConstantAreaReference AddInt32(int32_t v);
 
-  // Add an int32_t to the end of the constant area, returning the offset into
-  // the constant area where the literal resides.
-  size_t AppendInt32(int32_t v);
+  // Add an int32_t to the end of the constant area, returning the constant
+  // area reference (buffer and index in it) where the literal resides.
+  X86_64ConstantAreaReference AppendInt32(int32_t v);
 
-  // Add an int64_t to the constant area, returning the offset into
-  // the constant area where the literal resides.
-  size_t AddInt64(int64_t v);
+  // Add an int64_t to the constant area, returning the constant
+  // area reference (buffer and index in it) where the literal resides.
+  X86_64ConstantAreaReference AddInt64(int64_t v);
 
-  size_t GetSize() const {
-    return buffer_.size() * elem_size_;
+  bool IsEmpty() const {
+    return buffer64_.empty() && buffer32_.empty();
   }
 
-  ArrayRef<const int32_t> GetBuffer() const {
-    return ArrayRef<const int32_t>(buffer_);
+  size_t GetTotalSize() const {
+   return GetSize64() + GetSize32();
+  }
+
+  size_t GetSize64() const {
+    return buffer64_.size() * elem_size_64_;
+  }
+
+  size_t GetSize32() const {
+    return buffer32_.size() * elem_size_32_;
+  }
+
+  ArrayRef<const int64_t> GetBuffer64() const {
+    return ArrayRef<const int64_t>(buffer64_);
+  }
+
+  ArrayRef<const int32_t> GetBuffer32() const {
+    return ArrayRef<const int32_t>(buffer32_);
   }
 
  private:
-  static constexpr size_t elem_size_ = sizeof(int32_t);
-  ArenaVector<int32_t> buffer_;
+  ArenaVector<int64_t> buffer64_;
+  ArenaVector<int32_t> buffer32_;
+  static constexpr size_t elem_size_64_ = sizeof(int64_t);
+  static constexpr size_t elem_size_32_ = sizeof(int32_t);
 };
 
 
@@ -826,38 +860,51 @@ class X86_64Assembler FINAL : public Assembler {
   // Generate code to increment the Exact Profiling counter for the method.
   virtual void IncrementMethodCounter() OVERRIDE;
 
-  // Add a double to the constant area, returning the offset into
-  // the constant area where the literal resides.
-  size_t AddDouble(double v) { return constant_area_.AddDouble(v); }
+  // Add a double to the constant area, returning the constant
+  // area reference (buffer and index in it) where the literal resides.
+  X86_64ConstantAreaReference AddDouble(double v) { return constant_area_.AddDouble(v); }
 
-  // Add a float to the constant area, returning the offset into
-  // the constant area where the literal resides.
-  size_t AddFloat(float v)   { return constant_area_.AddFloat(v); }
+  // Add a float to the constant area, returning the constant
+  // area reference (buffer and index in it) where the literal resides.
+  X86_64ConstantAreaReference AddFloat(float v)   { return constant_area_.AddFloat(v); }
 
-  // Add an int32_t to the constant area, returning the offset into
-  // the constant area where the literal resides.
-  size_t AddInt32(int32_t v) {
+  // Add an int32_t to the constant area, returning the constant
+  // area reference (buffer and index in it) where the literal resides.
+  X86_64ConstantAreaReference AddInt32(int32_t v) {
     return constant_area_.AddInt32(v);
   }
 
-  // Add an int32_t to the end of the constant area, returning the offset into
-  // the constant area where the literal resides.
-  size_t AppendInt32(int32_t v) {
+  // Add an int32_t to the end of the constant area, returning the constant
+  // area reference (buffer and index in it) where the literal resides.
+  X86_64ConstantAreaReference AppendInt32(int32_t v) {
     return constant_area_.AppendInt32(v);
   }
 
-  // Add an int64_t to the constant area, returning the offset into
-  // the constant area where the literal resides.
-  size_t AddInt64(int64_t v) { return constant_area_.AddInt64(v); }
+  // Add an int64_t to the constant area, returning the constant
+  // area reference (buffer and index in it) where the literal resides.
+  X86_64ConstantAreaReference AddInt64(int64_t v) { return constant_area_.AddInt64(v); }
 
   // Add the contents of the constant area to the assembler buffer.
   void AddConstantArea();
 
   // Is the constant area empty? Return true if there are no literals in the constant area.
-  bool IsConstantAreaEmpty() const { return constant_area_.GetSize() == 0; }
+  bool IsConstantAreaEmpty() const { return constant_area_.IsEmpty(); }
 
   // Return the current size of the constant area.
-  size_t ConstantAreaSize() const { return constant_area_.GetSize(); }
+  size_t ConstantAreaSize() const { return constant_area_.GetTotalSize(); }
+
+  // Calculates an actual offset in the constant area by a reference
+  size_t CalculateOffsetIntoConstantArea(X86_64ConstantAreaReference ref) const {
+    switch (ref.buffer) {
+      case X86_64ConstantAreaReference::kBuffer64:
+        return ref.offset;
+      case X86_64ConstantAreaReference::kBuffer32:
+        return constant_area_.GetSize64() + ref.offset;
+      default:
+        LOG(FATAL) << "Unknown constant area buffer type: " << ref.buffer;
+        UNREACHABLE();
+     }
+  }
 
   //
   // Heap poisoning.

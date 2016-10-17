@@ -7965,7 +7965,7 @@ void InstructionCodeGeneratorX86::VisitX86ProfileInvoke(HX86ProfileInvoke* instr
 }
 
 /**
- * Class to handle late fixup of offsets into constant area.
+ * Base class to handle late fixup of offsets in constant area and jump table.
  */
 class RIPFixup : public AssemblerFixup, public ArenaObject<kArenaAllocCodeGenerator> {
  public:
@@ -7975,9 +7975,6 @@ class RIPFixup : public AssemblerFixup, public ArenaObject<kArenaAllocCodeGenera
  protected:
   void SetOffset(size_t offset) { offset_into_constant_area_ = offset; }
 
-  CodeGeneratorX86* codegen_;
-
- private:
   void Process(const MemoryRegion& region, int pos) OVERRIDE {
     // Patch the correct offset for the instruction.  The place to patch is the
     // last 4 bytes of the instruction.
@@ -7990,8 +7987,31 @@ class RIPFixup : public AssemblerFixup, public ArenaObject<kArenaAllocCodeGenera
     region.StoreUnaligned<int32_t>(pos - 4, relative_position);
   }
 
+  CodeGeneratorX86* codegen_;
+
+ private:
   // Location in constant area that the fixup refers to.
   int32_t offset_into_constant_area_;
+};
+
+/**
+ * Class to handle late fixup of offsets into constant area
+ */
+class ConstantAreaRIPFixup : public RIPFixup {
+ public:
+  ConstantAreaRIPFixup(CodeGeneratorX86& codegen, X86ConstantAreaReference reference)
+     : RIPFixup(codegen, static_cast<size_t>(-1)), reference_(reference) {}
+
+ protected:
+  void Process(const MemoryRegion& region, int pos) OVERRIDE {
+    X86Assembler* assembler = codegen_->GetAssembler();
+    size_t offset_in_constant_table = assembler->CalculateOffsetIntoConstantArea(reference_);
+    SetOffset(offset_in_constant_table);
+    RIPFixup::Process(region, pos);
+  }
+
+ private:
+  X86ConstantAreaReference reference_;
 };
 
 /**
@@ -8057,22 +8077,22 @@ void CodeGeneratorX86::Finalize(CodeAllocator* allocator) {
 }
 
 Address CodeGeneratorX86::LiteralDoubleAddress(double v, Register reg) {
-  AssemblerFixup* fixup = new (GetGraph()->GetArena()) RIPFixup(*this, __ AddDouble(v));
+  AssemblerFixup* fixup = new (GetGraph()->GetArena()) ConstantAreaRIPFixup(*this, __ AddDouble(v));
   return Address(reg, kDummy32BitOffset, fixup);
 }
 
 Address CodeGeneratorX86::LiteralFloatAddress(float v, Register reg) {
-  AssemblerFixup* fixup = new (GetGraph()->GetArena()) RIPFixup(*this, __ AddFloat(v));
+  AssemblerFixup* fixup = new (GetGraph()->GetArena()) ConstantAreaRIPFixup(*this, __ AddFloat(v));
   return Address(reg, kDummy32BitOffset, fixup);
 }
 
 Address CodeGeneratorX86::LiteralInt32Address(int32_t v, Register reg) {
-  AssemblerFixup* fixup = new (GetGraph()->GetArena()) RIPFixup(*this, __ AddInt32(v));
+  AssemblerFixup* fixup = new (GetGraph()->GetArena()) ConstantAreaRIPFixup(*this, __ AddInt32(v));
   return Address(reg, kDummy32BitOffset, fixup);
 }
 
 Address CodeGeneratorX86::LiteralInt64Address(int64_t v, Register reg) {
-  AssemblerFixup* fixup = new (GetGraph()->GetArena()) RIPFixup(*this, __ AddInt64(v));
+  AssemblerFixup* fixup = new (GetGraph()->GetArena()) ConstantAreaRIPFixup(*this, __ AddInt64(v));
   return Address(reg, kDummy32BitOffset, fixup);
 }
 
