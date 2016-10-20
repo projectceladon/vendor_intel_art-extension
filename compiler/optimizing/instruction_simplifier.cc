@@ -915,6 +915,32 @@ void InstructionSimplifierVisitor::VisitTypeConversion(HTypeConversion* instruct
         return;
       }
     }
+
+    // Consider the situation if we have a value x of type A, and there is a chain
+    // of casts between types A and B that looks like:
+    //   A x = ...;
+    //   A y = (A) (B) (A) (B) x;
+    // In this case we can simplify calculations into the following sequence:
+    //   A x = ...;
+    //   A y = (A) (B) x;
+    // This sequence produces the same result for any two types A and B.
+    auto input_1 = input_conversion->GetInput()->AsTypeConversion();
+    if (input_1 != nullptr && input_1->GetType() == result_type) {
+      auto input_2 = input_1->GetInput()->AsTypeConversion();
+      if (input_2 != nullptr && input_2->GetType() == input_type) {
+        auto input_3 = input_2->GetInput();
+        if (input_3->GetType() == result_type) {
+          // We have recognized the pattern described above.
+          instruction->ReplaceWith(input_1);
+          instruction->GetBlock()->RemoveInstruction(instruction);
+          if (!input_conversion->HasUses()) {
+            input_conversion->GetBlock()->RemoveInstruction(input_conversion);
+          }
+          RecordSimplification();
+          return;
+        }
+      }
+    }
   } else if (input->IsAnd() && Primitive::IsIntegralType(result_type)) {
     DCHECK(Primitive::IsIntegralType(input_type));
     HAnd* input_and = input->AsAnd();
