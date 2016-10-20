@@ -140,7 +140,7 @@ class AggressiveEnvUseRemover : public HGraphVisitor {
     }
   }
 
-  void RemoveEnvAsUser(HInstruction* candidate, bool remove_references) {
+  void RemoveEnvAsUser(HInstruction* candidate, bool remove_references, bool is_in_try_block) {
     // We will maybe remove these instructions from code.
     std::unordered_set<HInstruction*> to_remove;
 
@@ -152,7 +152,34 @@ class AggressiveEnvUseRemover : public HGraphVisitor {
         if (instruction != nullptr) {
           bool should_remove = true;
 
-          if (!remove_references) {
+          // If we are in try block, we should keep the values that have
+          // the Catch phis. Do not remove them from the env even if they
+          // are not references.
+          if (is_in_try_block &&
+              candidate->CanThrowIntoCatchBlock()) {
+            DCHECK(candidate->GetBlock()->GetTryCatchInformation() != nullptr);
+            // Make sure that this vreg does not have a catch phi.
+            auto& entry = candidate->GetBlock()->GetTryCatchInformation()->GetTryEntry();
+            for (HBasicBlock* catch_block : entry.GetExceptionHandlers()) {
+              for (HInstructionIterator phi_it(catch_block->GetPhis());
+                                               !phi_it.Done();
+                                               phi_it.Advance()) {
+                HPhi* catch_phi = phi_it.Current()->AsPhi();
+                DCHECK(catch_phi != nullptr);
+                if (catch_phi->GetRegNumber() == i) {
+                  // We need to keep this value because of catch phi.
+                  should_remove = false;
+                  break;
+                }
+              }
+
+              if (!should_remove) {
+                break;
+              }
+            }
+          }
+
+          if (!remove_references && should_remove) {
             if (instruction->GetType() == Primitive::kPrimNot) {
               if (!instruction->IsNullConstant()) {
                 // So the reference is not null. Well it might still be dead if this
@@ -182,15 +209,10 @@ class AggressiveEnvUseRemover : public HGraphVisitor {
   }
 
   void HandleCaller(HInstruction* instr, bool may_trigger_gc) {
-    if (IsInTryBlock(instr)) {
-      // We cannot remove environment uses because we are in try block - they
-      // may be live into catch block via runtime transition.
-      return;
-    }
     // Only remove references if we cannot trigger GC (or triggering GC
-    // does not affect current frame).
-    const bool remove_references = !may_trigger_gc;
-    RemoveEnvAsUser(instr, remove_references);
+    // does not affect current frame) and if we are not in the try block.
+    const bool remove_references = !may_trigger_gc && !IsInTryBlock(instr);
+    RemoveEnvAsUser(instr, remove_references, IsInTryBlock(instr));
   }
 
   void HandleThrower(HInstruction* instr) {
@@ -213,7 +235,7 @@ class AggressiveEnvUseRemover : public HGraphVisitor {
     DCHECK(suspend->HasEnvironment());
     // The whole point of suspend check is that we are not removing objects.
     const bool remove_references = false;
-    RemoveEnvAsUser(suspend, remove_references);
+    RemoveEnvAsUser(suspend, remove_references, IsInTryBlock(suspend));
   }
 
   OptimizingCompilerStats* const stats_;
