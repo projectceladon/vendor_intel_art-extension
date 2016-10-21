@@ -178,6 +178,10 @@ bool CFGraph::IsVisited(const uint8_t* addr,
     if (!current_bb->IsDummy()) {
       const uint8_t* start = current_bb->GetStartAddr();
       const uint8_t* end = current_bb->GetEndAddr();
+      // Recognize it as a cycle only if a back-branch found.
+      if (addr <= prev_bblock->GetEndAddr()) {
+        this->SetHasCycles();
+      }
 
       // In case we are branching to the beginning of an existing Basic Block,
       // it is already visited.
@@ -191,10 +195,6 @@ bool CFGraph::IsVisited(const uint8_t* addr,
         } else {
           prev_bblock->AddSuccBBlock(bb_existing);
           bb_existing->AddPredBBlock(prev_bblock);
-        }
-        // Recognize it as a cycle only if a back-branch found.
-        if (addr <= prev_bblock->GetEndAddr()) {
-          this->SetHasCycles();
         }
         return true;
       }
