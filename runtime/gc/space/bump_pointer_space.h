@@ -48,11 +48,12 @@ class BumpPointerSpace FINAL : public ContinuousMemMapAllocSpace {
 
   // Allocate num_bytes, returns null if the space is full.
   mirror::Object* Alloc(Thread* self, size_t num_bytes, size_t* bytes_allocated,
-                        size_t* usable_size, size_t* bytes_tl_bulk_allocated) OVERRIDE;
+                        size_t* usable_size,
+                        size_t* bytes_tl_bulk_allocated) REQUIRES(!block_lock_) OVERRIDE;
   // Thread-unsafe allocation for when mutators are suspended, used by the semispace collector.
   mirror::Object* AllocThreadUnsafe(Thread* self, size_t num_bytes, size_t* bytes_allocated,
                                     size_t* usable_size, size_t* bytes_tl_bulk_allocated)
-      OVERRIDE REQUIRES(Locks::mutator_lock_);
+      OVERRIDE REQUIRES(Locks::mutator_lock_) REQUIRES(!block_lock_);
 
   mirror::Object* AllocNonvirtual(size_t num_bytes);
   mirror::Object* AllocNonvirtualWithoutAccounting(size_t num_bytes);

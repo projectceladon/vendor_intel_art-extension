@@ -374,17 +374,6 @@ class MarkSweep : public GarbageCollector {
   inline void UpdateHeapReference(mirror::HeapReference<mirror::Object>* reference)
       SHARED_REQUIRES(Locks::heap_bitmap_lock_)
       SHARED_REQUIRES(Locks::mutator_lock_);
-  static bool UpdateHeapReferenceReferentCallback(mirror::HeapReference<mirror::Object>* reference,
-                                                  void* arg)
-      SHARED_REQUIRES(Locks::heap_bitmap_lock_)
-      SHARED_REQUIRES(Locks::mutator_lock_);
-  bool UpdateHeapReferenceReferent(mirror::HeapReference<mirror::Object>* reference)
-      SHARED_REQUIRES(Locks::heap_bitmap_lock_)
-      SHARED_REQUIRES(Locks::mutator_lock_);
-  static void UpdateHeapReferenceCallback(mirror::HeapReference<mirror::Object>* reference,
-                                          void* arg)
-      SHARED_REQUIRES(Locks::heap_bitmap_lock_)
-      SHARED_REQUIRES(Locks::mutator_lock_);
 
   // Update all of the references of a single object.
   void UpdateObjectReferences(mirror::Object* obj)

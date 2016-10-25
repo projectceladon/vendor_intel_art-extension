@@ -19,6 +19,7 @@
 
 #include "base/bit_utils.h"
 #include "bump_pointer_space.h"
+#include "thread.h"
 
 namespace art {
 namespace gc {
@@ -45,6 +46,25 @@ inline mirror::Object* BumpPointerSpace::AllocThreadUnsafe(Thread* self, size_t 
                                                            size_t* bytes_tl_bulk_allocated) {
   Locks::mutator_lock_->AssertExclusiveHeld(self);
   num_bytes = RoundUp(num_bytes, kAlignment);
+
+  {
+    MutexLock mu(self, block_lock_);
+    if (num_blocks_ > 0u) {
+      uint8_t* start = AllocBlock(num_bytes);
+      if (start == nullptr) {
+        return nullptr;
+      }
+      *bytes_allocated = num_bytes;
+      objects_allocated_.StoreRelaxed(objects_allocated_.LoadRelaxed() + 1);
+      bytes_allocated_.StoreRelaxed(bytes_allocated_.LoadRelaxed() + num_bytes);
+      if (UNLIKELY(usable_size != nullptr)) {
+        *usable_size = num_bytes;
+      }
+      *bytes_tl_bulk_allocated = num_bytes;
+      return reinterpret_cast<mirror::Object*>(start);
+    }
+  }
+
   uint8_t* end = end_.LoadRelaxed();
   if (end + num_bytes > growth_end_) {
     return nullptr;

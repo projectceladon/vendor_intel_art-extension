@@ -642,11 +642,6 @@ mirror::Object* MarkSweep::MarkedForwardingAddressCallback(mirror::Object* obj, 
   return reinterpret_cast<MarkSweep*>(arg)->GetMarkedForwardAddress(obj);
 }
 
-void MarkSweep::UpdateHeapReferenceCallback(mirror::HeapReference<mirror::Object>* reference,
-                                            void* arg) {
-  reinterpret_cast<MarkSweep*>(arg)->UpdateHeapReference(reference);
-}
-
 class MarkSweepUpdateReferenceVisitor {
  public:
   explicit MarkSweepUpdateReferenceVisitor(MarkSweep* collector) : collector_(collector) {
@@ -725,32 +720,6 @@ class RecursiveUpdateReferenceTask : public Task {
     bitmap_->VisitMarkedRange(begin_, end_, visitor);
   }
 };
-
-
-bool MarkSweep::UpdateHeapReferenceReferentCallback(mirror::HeapReference<mirror::Object>* object,
-                                                    void* arg) {
-  return reinterpret_cast<MarkSweep*>(arg)->UpdateHeapReferenceReferent(object);
-}
-
-bool MarkSweep::UpdateHeapReferenceReferent(mirror::HeapReference<mirror::Object>* object) {
-  const mirror::Object* obj = object->AsMirrorPtr();
-  if (immune_spaces_.ContainsObject(obj)) {
-    return true;
-  }
-  if (current_space_bitmap_->HasAddress(obj)) {
-    mirror::Object* new_obj = GetMarkedForwardAddress(const_cast<mirror::Object*>(obj));
-    if (new_obj == nullptr) {
-      return false;
-    }
-    if (new_obj != obj) {
-      // Write barrier is not necessary since it still points to the same object,
-      // just at a different address.
-      object->Assign(new_obj);
-    }
-    return true;
-  }
-  return mark_bitmap_->Test(obj) ? true : false;
-}
 
 // Process the "referent" field in a java.lang.ref.Reference.  If the referent has not yet been
 // marked, put it on the appropriate list in the heap for later processing.
@@ -998,8 +967,8 @@ void MarkSweep::PausePhase() {
 
 
     ForwardObjects();
-    // If the old enough objects are promoted to ros, update remember set of ros.
-    if (bytes_promoted_ > 0) {
+    // Update remember set of ros.
+    {
       space::RosAllocSpace* ros = heap_->GetRosAllocSpace();
       accounting::RememberedSet* rem_set = heap_->FindRememberedSetFromSpace(ros);
       // TODO: No need to change to dirty - 1 to avoid CAS.
