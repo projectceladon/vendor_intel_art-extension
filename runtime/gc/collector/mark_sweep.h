@@ -335,7 +335,7 @@ class MarkSweep : public GarbageCollector {
   void RevokeAllThreadLocalAllocationStacks(Thread* self) NO_THREAD_SAFETY_ANALYSIS;
 
   // Revoke all the thread-local buffers.
-  void RevokeAllThreadLocalBuffers();
+  void RevokeAllThreadLocalBuffers() SHARED_REQUIRES(Locks::mutator_lock_);
 
   // Added for copying between two bump pointer spaces.
   void ForwardObjects()
@@ -358,22 +358,23 @@ class MarkSweep : public GarbageCollector {
       SHARED_REQUIRES(Locks::heap_bitmap_lock_)
       REQUIRES(Locks::mutator_lock_);
 
-  uint8_t* ForwardObjectParallelAllocBuffer(Thread* self,
-                                            size_t buffer_size,
-                                            size_t count)
+  void ForwardObjectParallelAllocTLAB(Thread* self, size_t buffer_size)
+      SHARED_REQUIRES(Locks::heap_bitmap_lock_)
+      REQUIRES(Locks::mutator_lock_);
+
+  void ForwardObjectParallelRevokeTLAB(Thread* self)
       SHARED_REQUIRES(Locks::heap_bitmap_lock_)
       REQUIRES(Locks::mutator_lock_);
 
   bool ForwardObjectParallelPromo(Thread* self,
-                                  mirror::Object* obj,
-                                  size_t& req_space_size,
-                                  ParallelForwardTask* task)
+                                         mirror::Object* obj,
+                                         ParallelForwardTask* task)
       SHARED_REQUIRES(Locks::heap_bitmap_lock_)
       REQUIRES(Locks::mutator_lock_);
 
-  uint8_t* ForwardObjectParallelToBuffer(uint8_t* buffer,
-                                         mirror::Object* obj,
-                                         ParallelForwardTask* task)
+  void ForwardObjectParallelToTLAB(Thread* self,
+                                   mirror::Object* obj,
+                                   ParallelForwardTask* task)
       SHARED_REQUIRES(Locks::heap_bitmap_lock_)
       REQUIRES(Locks::mutator_lock_);
 

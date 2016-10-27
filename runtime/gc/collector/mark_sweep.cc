@@ -371,21 +371,6 @@ void MarkSweep::ForwardObject(mirror::Object* obj) {
       LockWord::FromForwardingAddress(reinterpret_cast<size_t>(forward_address)), false);
 }
 
-class ForwardObjectsVisitor {
- public:
-  explicit ForwardObjectsVisitor(MarkSweep* collector)
-      : collector_(collector) {}
-  void operator()(mirror::Object* obj) const REQUIRES(Locks::mutator_lock_,
-                                                                      Locks::heap_bitmap_lock_) {
-    DCHECK_ALIGNED(obj, space::BumpPointerSpace::kAlignment);
-    DCHECK(collector_->IsMarked(obj));
-    collector_->ForwardObject(obj);
-  }
-
- private:
-  MarkSweep* const collector_;
-};
-
 class ParallelForwardTask : public Task {
  public:
   ParallelForwardTask(MarkSweep* mark_sweep,
@@ -436,7 +421,6 @@ class ParallelForwardTask : public Task {
     mark_sweep_->saved_bytes_.FetchAndAddSequentiallyConsistent(saved_bytes_);
     delete this;
   }
-
   // Scans all of the objects
   virtual void Run(Thread* self) NO_THREAD_SAFETY_ANALYSIS {
     DCHECK_EQ(self, Thread::Current());
@@ -449,40 +433,53 @@ class ParallelForwardTask : public Task {
     BitVector handled(false, nullptr, kMaxGcParalelTaskSize / 32, storage);
     handled.ClearAllBits();
     size_t req_space_size = 0;
-    size_t count = 0;
     for (size_t i = begin_; i < end_; i++) {
       mirror::Object* obj = stack_[i].AsMirrorPtr();
-      if (mark_sweep_->ForwardObjectParallelPromo(self, obj, req_space_size, this)) {
+      if (mark_sweep_->ForwardObjectParallelPromo(self, obj, this)) {
         handled.SetBit(i - begin_);
       } else {
-        count++;
+        req_space_size += RoundUp(obj->SizeOf(), space::BumpPointerSpace::kAlignment);
       }
     }
-    if (LIKELY(count > 0)) {
-      // Now allocate the buffer in "to" space.
-      uint8_t* buffer = mark_sweep_->ForwardObjectParallelAllocBuffer(self, req_space_size, count);
-      const uint8_t* start_buffer = buffer;
+    if (LIKELY(req_space_size > 0)) {
+      // Now allocate the TLAB buffer in "to" space.
+      mark_sweep_->ForwardObjectParallelAllocTLAB(self, req_space_size);
       // Second pass, copy to "to".
       for (size_t i = begin_; i < end_; i++) {
         mirror::Object* obj = stack_[i].AsMirrorPtr();
         if (!handled.IsBitSet(i - begin_)) {
-          buffer = mark_sweep_->ForwardObjectParallelToBuffer(buffer, obj, this);
+          mark_sweep_->ForwardObjectParallelToTLAB(self, obj, this);
         }
       }
       // Ensure there is no gap.
-      CHECK_EQ(start_buffer + req_space_size, buffer);
+      mark_sweep_->ForwardObjectParallelRevokeTLAB(self);
     }
   }
 };
 
-inline uint8_t* MarkSweep::ForwardObjectParallelToBuffer(uint8_t* buffer,
-                                                         mirror::Object* obj,
-                                                         ParallelForwardTask* task) {
-  const size_t object_size = obj->SizeOf();
-  size_t bytes_allocated = RoundUp(object_size, space::BumpPointerSpace::kAlignment);
+class ForwardObjectsVisitor {
+ public:
+  explicit ForwardObjectsVisitor(MarkSweep* collector)
+      : collector_(collector) {}
+  void operator()(mirror::Object* obj) const REQUIRES(Locks::mutator_lock_,
+                                                                      Locks::heap_bitmap_lock_) {
+    DCHECK_ALIGNED(obj, space::BumpPointerSpace::kAlignment);
+    DCHECK(collector_->IsMarked(obj));
+    collector_->ForwardObject(obj);
+  }
 
-  mirror::Object* forward_address = reinterpret_cast<mirror::Object*>(buffer);
-  buffer += bytes_allocated;
+ private:
+  MarkSweep* const collector_;
+};
+
+inline void MarkSweep::ForwardObjectParallelToTLAB(Thread* self,
+                                                       mirror::Object* obj,
+                                                       ParallelForwardTask* task) {
+  const size_t object_size = obj->SizeOf();
+
+  size_t bytes_allocated = RoundUp(object_size, space::BumpPointerSpace::kAlignment);
+  mirror::Object* forward_address = self->AllocTlab(bytes_allocated);
+  DCHECK(forward_address != nullptr);
 
   uint8_t age = from_age_table_->GetObjectAge(obj);
   objects_after_forwarding_->AtomicTestAndSet(forward_address);
@@ -495,14 +492,11 @@ inline uint8_t* MarkSweep::ForwardObjectParallelToBuffer(uint8_t* buffer,
   obj->SetLockWord(
       LockWord::FromForwardingAddress(reinterpret_cast<size_t>(forward_address)), false);
   task->CountObjectsMoved(1, bytes_allocated, saved_bytes);
-
   CHECK(to_bps_->HasAddress(forward_address));
-  return buffer;
 }
 
 inline bool MarkSweep::ForwardObjectParallelPromo(Thread* self,
                                                   mirror::Object* obj,
-                                                  size_t& req_space_size,
                                                   ParallelForwardTask* task) {
   const size_t object_size = obj->SizeOf();
   uint8_t age = from_age_table_->GetObjectAge(obj);
@@ -545,29 +539,23 @@ inline bool MarkSweep::ForwardObjectParallelPromo(Thread* self,
       obj->SetLockWord(
           LockWord::FromForwardingAddress(reinterpret_cast<size_t>(forward_address)), false);
       task->CountObjectsMoved(1, bytes_allocated, saved_bytes);
-
       CHECK(promo_dest_space_->HasAddress(forward_address));
       return true;
     }
   }
-  // should be copied to "to" space.
-  req_space_size += RoundUp(object_size, space::BumpPointerSpace::kAlignment);
   return false;
 }
 
-inline uint8_t* MarkSweep::ForwardObjectParallelAllocBuffer(Thread* self,
-                                                            size_t buffer_size,
-                                                            size_t count) {
-  DCHECK_ALIGNED(buffer_size, space::BumpPointerSpace::kAlignment);
-  size_t dummy = 0;
-  size_t bytes_allocated = 0;
-  uint8_t* buffer =
-      reinterpret_cast<uint8_t*>(to_bps_->Alloc(self, buffer_size, &bytes_allocated, nullptr, &dummy));
-  DCHECK_EQ(bytes_allocated, buffer_size);
-  CHECK(buffer != nullptr) << "Failed to allocate buffer in 'to' space of size " << buffer_size;
-  // The first object was counted when we allocated the buffer.
-  to_bps_->AccountAllocation(count - 1);
-  return buffer;
+inline void MarkSweep::ForwardObjectParallelAllocTLAB(Thread* self, size_t buffer_size) {
+  bool bufferAllocated = to_bps_->AllocNewTlab(self, buffer_size);
+  CHECK(bufferAllocated) << "Failed to allocate buffer in 'to' space";
+  DCHECK_EQ(buffer_size,  self->TlabSize())
+          << " Allocated TLAB's size doesn't match the requested amount";
+}
+
+inline void MarkSweep::ForwardObjectParallelRevokeTLAB(Thread* self) {
+  DCHECK_EQ(self->TlabSize(), 0U) << " TLAB unexpectedly contains free space";
+  to_bps_->RevokeThreadLocalBuffers(self);
 }
 
 void MarkSweep::ForwardObjects() {

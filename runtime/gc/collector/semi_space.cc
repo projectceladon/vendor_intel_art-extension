@@ -736,7 +736,8 @@ class MarkStackCopyTask : public Task {
   size_t objects_updated_;
   size_t objects_processed_;
 
-  virtual void Finalize() {
+  virtual void Finalize()
+      SHARED_REQUIRES(Locks::mutator_lock_) {
     // Revoke Thread local buffers for copying. even for !kUseTLCB.
     // Because ros use thread local runs by default.
     Thread* self = Thread::Current();
