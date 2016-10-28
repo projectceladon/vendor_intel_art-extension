@@ -1930,7 +1930,10 @@ mirror::Object* Heap::AllocateInternalWithGc(Thread* self,
       }
       case kAllocatorTypeNonMoving: {
         // Try to transition the heap if the allocation failure was due to the space being full.
-        if (!IsOutOfMemoryOnAllocation<false>(allocator, alloc_size)) {
+        // The transition does not work if we have no separate non-moving space.
+        if (!IsOutOfMemoryOnAllocation<false>(allocator, alloc_size) &&
+            collector_type_ != kCollectorTypeGSS &&
+            collector_type_ != kCollectorTypeGenCopying) {
           // If we aren't out of memory then the OOM was probably from the non moving space being
           // full. Attempt to disable compaction and turn the main space into a non moving space.
           DisableMovingGc();
