@@ -96,6 +96,8 @@ void HRemoveUnusedLoops::Run() {
     HLoopFormation form_loops(graph_);
     form_loops.Run();
   }
+
+  external_loop_phis_.clear();
 }
 
 bool HRemoveUnusedLoops::CheckInstructionsInBlock(HLoopInformation_X86* loop_info,

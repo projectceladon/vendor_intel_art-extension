@@ -113,6 +113,7 @@ void HCommutativeTreesFlipper::Run() {
   }
 
   PRINT_PASS_OSTREAM_MESSAGE(this, "End " << GetMethodName(graph));
+  estimated_cost_.clear();
 }
 
 }  // namespace art
