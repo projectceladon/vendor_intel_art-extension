@@ -1364,7 +1364,7 @@ void SemiSpace::ProcessMarkStackParallel(size_t thread_count) {
         StackReference<mirror::Object>* mark_stack = rms->GetMarkStack();
         DCHECK(mark_stack != nullptr);
         for (size_t idx = 0; idx < stack_size;) {
-          size_t chunk_size = std::min(stack_size,
+          size_t chunk_size = std::min(stack_size - idx,
                                        static_cast<size_t>(MarkStackCopyTask::kMaxSize));
           CHECK_GT(chunk_size, 0U);
           auto* task = new MarkStackCopyTask(thread_pool, this, chunk_size, mark_stack + idx);
