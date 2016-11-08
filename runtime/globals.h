@@ -64,7 +64,8 @@ static constexpr bool kIsTargetBuild = false;
 static constexpr bool kMovingCollector = true;
 static constexpr bool kMarkCompactSupport = false && kMovingCollector;
 // True if we allow moving classes.
-static constexpr bool kMovingClasses = !kMarkCompactSupport;
+// We disable moving classes because guarded devirtualization suffer it.
+static constexpr bool kMovingClasses = false && !kMarkCompactSupport;
 
 // If true, the quick compiler embeds class pointers in the compiled
 // code, if possible.
