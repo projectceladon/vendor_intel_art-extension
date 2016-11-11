@@ -31,13 +31,13 @@ VENDOR_COMPILER_INCLUDES := \
 # simply add all vendor compiler includes in the general includes.
 ART_C_INCLUDES += $(VENDOR_COMPILER_INCLUDES)
 
-TIP_ID = $(shell cd vendor/intel/art-extension && git log | grep '^\s\+Change-Id:' \
+TIP_ID = $(shell cd $VENDOR_ART_PATH && git log | grep '^\s\+Change-Id:' \
   | head -1 | sed -r 's/^\s+Change-Id:\s*//' | head -c 6)
 
 # To understand what weekly build is base for current build, we get all
 # unique weekly build ids and number of their entries which corresponds to
 # actual number of patches from weekly.
-WWs = $(shell cd vendor/intel/art-extension && git log | grep 'Extension-Weekly:' \
+WWs = $(shell cd $VENDOR_ART_PATH && git log | grep 'Extension-Weekly:' \
   | sed -r 's/^\s+Extension-Weekly:\s*//' | sort -r | uniq -c | sed -r 's/^\s*//' \
   | sed -r 's/\s/-/')
 
@@ -55,7 +55,7 @@ ifeq (${WW},)
 ART_EXTENSION_VERSION = UNKNOWN.${TIP_ID}
 else
 # Calculate number of patches were added to weekly build with number WW.
-NUMBER_OF_PATCHES_ABOVE_WEEKLY = $(shell cd vendor/intel/art-extension && git log \
+NUMBER_OF_PATCHES_ABOVE_WEEKLY = $(shell cd $VENDOR_ART_PATH && git log \
   | sed -r '/^\s+Extension-Weekly:\s*${WW}/q' | grep '^\s\+Change-Id:' | head -n -1 | wc -l)
 
 ART_EXTENSION_VERSION = \
