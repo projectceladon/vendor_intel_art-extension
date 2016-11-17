@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+# Modified by Intel Corporation
+#
 
 include $(VENDOR_ART_PATH)/build/Android.common_build.mk
 

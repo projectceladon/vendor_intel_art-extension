@@ -12,6 +12,8 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Modified by Intel Corporation
  */
 #ifndef ART_CMDLINE_CMDLINE_TYPES_H_
 #define ART_CMDLINE_CMDLINE_TYPES_H_

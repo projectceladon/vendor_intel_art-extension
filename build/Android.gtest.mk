@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+# Modified by Intel Corporation
+#
 
 # The path for which all the dex files are relative, not actually the current directory.
 LOCAL_PATH := $(VENDOR_ART_PATH)/test

@@ -12,6 +12,8 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Modified by Intel Corporation
  */
 
 #ifndef ART_RUNTIME_ARCH_X86_64_ASM_SUPPORT_X86_64_S_

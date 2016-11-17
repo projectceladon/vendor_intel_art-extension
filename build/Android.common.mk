@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
 ifndef ART_ANDROID_COMMON_MK
 ART_ANDROID_COMMON_MK = true
 

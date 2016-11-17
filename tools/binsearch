@@ -13,6 +13,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Modified by Intel Corporation
 
 # Perform a binary search to narrow down a problem.  This script will repeatedly
 # invoke a script './execute test_number works_number fails_number'
@@ -25,6 +27,7 @@
 # a command.  It is also common to use 'grep' to look for known patterns to
 # determine success/failure.  Please ensure that there is no non-determism in the
 # command (such as multiple threads), or the result will not be meaningful.
+
 if (@ARGV < 1 || @ARGV > 2) {
   print "Usage: $0 count [lower_bound]\n";
   exit 1;

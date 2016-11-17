@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+# Modified by Intel Corporation
+#
 
 ifndef ART_ANDROID_COMMON_BUILD_MK
 ART_ANDROID_COMMON_BUILD_MK = true
