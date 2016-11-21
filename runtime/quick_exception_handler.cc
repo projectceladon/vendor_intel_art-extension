@@ -414,6 +414,28 @@ class DeoptimizeStackVisitor FINAL : public StackVisitor {
       return;
     }
 
+    if (!single_frame_deopt_ && number_of_vregs > 0) {
+      // Check that the method we deoptimize was compiled with the debuggable flag.
+      const OatFile::OatDexFile* oat_dex_file = m->GetDexCache()->GetDexFile()->GetOatDexFile();
+      if (oat_dex_file != nullptr &&
+          oat_dex_file->GetOatFile()->Contains(GetCurrentOatQuickMethodHeader())) {
+        CHECK(oat_dex_file->GetOatFile()->IsDebuggable())
+            << "Cannot deoptimize non-debuggable method " << PrettyMethod(m)
+            << " from " << oat_dex_file->GetOatFile()->GetLocation();
+      } else {
+        CHECK(Runtime::Current()->GetJit() != nullptr);
+        jit::JitCodeCache* code_cache = Runtime::Current()->GetJit()->GetCodeCache();
+        if (code_cache != nullptr && code_cache->ContainsPc(GetCurrentOatQuickMethodHeader())) {
+          CHECK(Runtime::Current()->IsDebuggable())  // JIT must have taken the debuggable flag.
+              << "Cannot deoptimize non-debuggable JIT method " << PrettyMethod(m);
+        } else {
+          LOG(FATAL) << "Neither AOT nor JIT: header=0x"
+                     << std::hex << GetCurrentOatQuickMethodHeader()
+                     << ", method: " << PrettyMethod(m);
+        }
+      }
+    }
+
     for (uint16_t vreg = 0; vreg < number_of_vregs; ++vreg) {
       if (updated_vregs != nullptr && updated_vregs[vreg]) {
         // Keep the value set by debugger.
