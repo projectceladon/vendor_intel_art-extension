@@ -90,7 +90,10 @@ inline mirror::Object* Heap::AllocObjectWithAllocator(Thread* self,
     }
     bytes_allocated = byte_count;
     usable_size = bytes_allocated;
-    pre_fence_visitor(obj, usable_size);
+    if (AllocatorHasAllocationStack(allocator)) {
+      PushOnAllocationStack(self, &obj);
+    }
+    pre_fence_visitor(&obj, usable_size);
     QuasiAtomic::ThreadFenceForConstructor();
   } else if (!kInstrumented && allocator == kAllocatorTypeRosAlloc &&
              (obj = rosalloc_space_->AllocThreadLocal(self, byte_count, &bytes_allocated)) &&
@@ -104,7 +107,10 @@ inline mirror::Object* Heap::AllocObjectWithAllocator(Thread* self,
       obj->AssertReadBarrierPointer();
     }
     usable_size = bytes_allocated;
-    pre_fence_visitor(obj, usable_size);
+    if (AllocatorHasAllocationStack(allocator)) {
+      PushOnAllocationStack(self, &obj);
+    }
+    pre_fence_visitor(&obj, usable_size);
     QuasiAtomic::ThreadFenceForConstructor();
   } else {
     // bytes allocated that takes bulk thread-local buffer allocations into account.
@@ -164,7 +170,10 @@ inline mirror::Object* Heap::AllocObjectWithAllocator(Thread* self,
       // space (besides promotions) under the SS/GSS collector.
       WriteBarrierField(obj, mirror::Object::ClassOffset(), klass);
     }
-    pre_fence_visitor(obj, usable_size);
+    if (AllocatorHasAllocationStack(allocator)) {
+      PushOnAllocationStack(self, &obj);
+    }
+    pre_fence_visitor(&obj, usable_size);
     QuasiAtomic::ThreadFenceForConstructor();
     new_num_bytes_allocated = static_cast<size_t>(
         num_bytes_allocated_.FetchAndAddRelaxed(bytes_tl_bulk_allocated)) + bytes_tl_bulk_allocated;
@@ -200,9 +209,6 @@ inline mirror::Object* Heap::AllocObjectWithAllocator(Thread* self,
     }
   } else {
     DCHECK(!IsAllocTrackingEnabled());
-  }
-  if (AllocatorHasAllocationStack(allocator)) {
-    PushOnAllocationStack(self, &obj);
   }
   if (kInstrumented) {
     if (gc_stress_mode_) {
