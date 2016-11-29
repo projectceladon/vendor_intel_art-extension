@@ -338,10 +338,6 @@ class MarkSweep : public GarbageCollector {
   void RevokeAllThreadLocalBuffers() SHARED_REQUIRES(Locks::mutator_lock_);
 
   // Added for copying between two bump pointer spaces.
-  void ForwardObjects()
-      REQUIRES(Locks::heap_bitmap_lock_)
-      REQUIRES(Locks::mutator_lock_);
-
   void ForwardObjectsParallel()
       REQUIRES(Locks::heap_bitmap_lock_)
       REQUIRES(Locks::mutator_lock_);
@@ -358,21 +354,21 @@ class MarkSweep : public GarbageCollector {
       SHARED_REQUIRES(Locks::heap_bitmap_lock_)
       REQUIRES(Locks::mutator_lock_);
 
-  void ForwardObjectParallelAllocTLAB(Thread* self, size_t buffer_size)
+  void AllocTlabInToBps(Thread* self, size_t buffer_size)
       SHARED_REQUIRES(Locks::heap_bitmap_lock_)
       REQUIRES(Locks::mutator_lock_);
 
-  void ForwardObjectParallelRevokeTLAB(Thread* self)
+  void RevokeTlabFromToBps(Thread* self)
       SHARED_REQUIRES(Locks::heap_bitmap_lock_)
       REQUIRES(Locks::mutator_lock_);
 
-  bool ForwardObjectParallelPromo(Thread* self,
-                                         mirror::Object* obj,
-                                         ParallelForwardTask* task)
+  size_t PromoteObjectParallel(Thread* self,
+                               mirror::Object* obj,
+                               ParallelForwardTask* task)
       SHARED_REQUIRES(Locks::heap_bitmap_lock_)
       REQUIRES(Locks::mutator_lock_);
 
-  void ForwardObjectParallelToTLAB(Thread* self,
+  void ForwardObjectToTlabParallel(Thread* self,
                                    mirror::Object* obj,
                                    ParallelForwardTask* task)
       SHARED_REQUIRES(Locks::heap_bitmap_lock_)
@@ -422,6 +418,7 @@ class MarkSweep : public GarbageCollector {
   // objects which are only 8 bytes.
   std::unique_ptr<accounting::ContinuousSpaceBitmap> objects_before_forwarding_ = nullptr;
   std::unique_ptr<accounting::ContinuousSpaceBitmap> objects_after_forwarding_ = nullptr;
+  std::unique_ptr<accounting::ContinuousSpaceBitmap> objects_for_to_bsp_ = nullptr;
   // The space which we are promoting into.
   space::ContinuousMemMapAllocSpace* promo_dest_space_;
   accounting::AgingTable* from_age_table_;
@@ -431,7 +428,6 @@ class MarkSweep : public GarbageCollector {
   accounting::HeapBitmap* mark_bitmap_;
 
   accounting::ObjectStack* mark_stack_;
-  std::unique_ptr<accounting::ObjectStack> copy_candidate_stack_;
 
   // Every object inside the immune spaces is assumed to be marked. Immune spaces that aren't in the
   // immune region are handled by the normal marking logic.
@@ -495,6 +491,8 @@ class MarkSweep : public GarbageCollector {
   class VerifySystemWeakVisitor;
 
   friend class ForwardObjectsVisitor;
+  friend class ParallelPromoteObjectsVisitor;
+  friend class ParallelCopyObjectsVisitor;
   friend class CountLiveObjectsVisitor;
   friend class ParallelForwardTask;
   friend class RecursiveUpdateReferenceTask;
