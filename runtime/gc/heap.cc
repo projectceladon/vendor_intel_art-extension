@@ -3310,7 +3310,10 @@ void Heap::PushOnAllocationStackWithInternalGC(Thread* self, mirror::Object** ob
     // to heap verification requiring that roots are live (either in the live bitmap or in the
     // allocation stack).
     CHECK(allocation_stack_->AtomicPushBackIgnoreGrowthLimit(*obj));
-    CollectGarbageInternal(collector::kGcTypeSticky, kGcCauseForAlloc, false);
+    CollectGarbageInternal(
+        collector_type_ == kCollectorTypeGenCopying ?
+                           collector::kGcTypeFull :
+                           collector::kGcTypeSticky, kGcCauseForAlloc, false);
   } while (!allocation_stack_->AtomicPushBack(*obj));
 }
 
@@ -3329,7 +3332,10 @@ void Heap::PushOnThreadLocalAllocationStackWithInternalGC(Thread* self, mirror::
     // allocation stack).
     CHECK(allocation_stack_->AtomicPushBackIgnoreGrowthLimit(*obj));
     // Push into the reserve allocation stack.
-    CollectGarbageInternal(collector::kGcTypeSticky, kGcCauseForAlloc, false);
+    CollectGarbageInternal(
+        collector_type_ == kCollectorTypeGenCopying ?
+                           collector::kGcTypeFull :
+                           collector::kGcTypeSticky, kGcCauseForAlloc, false);
   }
   self->SetThreadLocalAllocationStack(start_address, end_address);
   // Retry on the new thread-local allocation stack.
