@@ -190,11 +190,11 @@ void MarkSweep::InitializePhase() {
     }
     DCHECK(from_age_table_ != nullptr);
     DCHECK(to_age_table_ != nullptr);
-    saved_bytes_ = 0;
-    bytes_moved_ = 0;
-    bytes_adjusted_ = 0;
-    objects_moved_ = 0;
-    bytes_promoted_ = 0;
+    saved_bytes_.StoreRelaxed(0);
+    bytes_moved_.StoreRelaxed(0);
+    bytes_adjusted_.StoreRelaxed(0);
+    objects_moved_.StoreRelaxed(0);
+    bytes_promoted_.StoreRelaxed(0);
     self_ = Thread::Current();
   }
   if (!GetCurrentIteration()->GetClearSoftReferences()) {
@@ -334,8 +334,8 @@ void MarkSweep::ForwardObject(mirror::Object* obj) {
       objects_after_forwarding_->Set(forward_address);
       to_age_table_->IncreaseObjectAge(forward_address, age);
     } else {
-      bytes_promoted_ += bytes_allocated;
-      bytes_adjusted_ += bytes_allocated - object_size;
+      bytes_promoted_.FetchAndAddRelaxed(bytes_allocated);
+      bytes_adjusted_.FetchAndAddRelaxed(bytes_allocated - object_size);
       GetHeap()->WriteBarrierEveryFieldOf(forward_address);
       // Handle the bitmaps marking.
       accounting::ContinuousSpaceBitmap* live_bitmap = promo_dest_space_->GetLiveBitmap();
@@ -358,13 +358,13 @@ void MarkSweep::ForwardObject(mirror::Object* obj) {
   CHECK((forward_address != nullptr));
   CHECK(to_bps_->HasAddress(forward_address) ||
         promo_dest_space_->HasAddress(forward_address));
-  ++objects_moved_;
+  objects_moved_.FetchAndAddRelaxed(1);
   // The objects promoted to ros will be rounded as backet size.
-  bytes_moved_ += bytes_allocated;
+  bytes_moved_.FetchAndAddRelaxed(bytes_allocated);
   // Copy over the object and add it to the mark stack since we still need to update its
   // references.
-  saved_bytes_ +=
-      CopyAvoidingDirtyingPages(reinterpret_cast<void*>(forward_address), obj, object_size);
+  saved_bytes_.FetchAndAddRelaxed(
+      CopyAvoidingDirtyingPages(reinterpret_cast<void*>(forward_address), obj, object_size));
   // Make sure to only update the forwarding address AFTER you copy the object so that the
   // monitor word doesn't Get stomped over.
   obj->SetLockWord(
@@ -386,7 +386,98 @@ class ForwardObjectsVisitor {
   MarkSweep* const collector_;
 };
 
-inline uint8_t* MarkSweep::ForwardObjectParallelToBuffer(uint8_t* buffer, mirror::Object* obj) {
+class ParallelForwardTask : public Task {
+ public:
+  ParallelForwardTask(MarkSweep* mark_sweep,
+                      StackReference<mirror::Object>* stack,
+                      size_t begin,
+                      size_t end)
+      : mark_sweep_(mark_sweep),
+        stack_(stack),
+        begin_(begin),
+        end_(end),
+        bytes_moved_(0),
+        objects_moved_(0),
+        bytes_promoted_(0),
+        bytes_adjusted_(0),
+        saved_bytes_(0) {
+    }
+
+  ALWAYS_INLINE void CountObjectsMoved(size_t objects_moved,
+                                       size_t bytes_moved,
+                                       size_t saved_bytes) {
+    objects_moved_ += objects_moved;
+    bytes_moved_ += bytes_moved;
+    saved_bytes_ += saved_bytes;
+  }
+
+  ALWAYS_INLINE void CountObjectsPromoted(size_t bytes_promoted,
+                                          size_t bytes_adjusted) {
+    bytes_promoted_ += bytes_promoted;
+    bytes_adjusted_ += bytes_adjusted;
+  }
+
+ protected:
+  MarkSweep* const mark_sweep_;
+  StackReference<mirror::Object>* stack_;
+  const size_t begin_;
+  const size_t end_;
+  size_t bytes_moved_;
+  size_t objects_moved_;
+  size_t bytes_promoted_;
+  size_t bytes_adjusted_;
+  size_t saved_bytes_;
+
+  virtual void Finalize() {
+    mark_sweep_->bytes_moved_.FetchAndAddSequentiallyConsistent(objects_moved_);
+    mark_sweep_->objects_moved_.FetchAndAddSequentiallyConsistent(objects_moved_);
+    mark_sweep_->bytes_promoted_.FetchAndAddSequentiallyConsistent(bytes_promoted_);
+    mark_sweep_->bytes_adjusted_.FetchAndAddSequentiallyConsistent(bytes_adjusted_);
+    mark_sweep_->saved_bytes_.FetchAndAddSequentiallyConsistent(saved_bytes_);
+    delete this;
+  }
+
+  // Scans all of the objects
+  virtual void Run(Thread* self) NO_THREAD_SAFETY_ANALYSIS {
+    DCHECK_EQ(self, Thread::Current());
+    // Two passes:
+    // 1) Copy to "promote" space and compute the required "to" space.
+    // 2) Copy to "to" space.
+    DCHECK_LE(end_ - begin_, kMaxGcParalelTaskSize);
+    static_assert(kMaxGcParalelTaskSize % 32 == 0u, "kMaxGcParalelTaskSize must be 32 bit aligned");
+    uint32_t storage[kMaxGcParalelTaskSize / 32];
+    BitVector handled(false, nullptr, kMaxGcParalelTaskSize / 32, storage);
+    handled.ClearAllBits();
+    size_t req_space_size = 0;
+    size_t count = 0;
+    for (size_t i = begin_; i < end_; i++) {
+      mirror::Object* obj = stack_[i].AsMirrorPtr();
+      if (mark_sweep_->ForwardObjectParallelPromo(self, obj, req_space_size, this)) {
+        handled.SetBit(i - begin_);
+      } else {
+        count++;
+      }
+    }
+    if (LIKELY(count > 0)) {
+      // Now allocate the buffer in "to" space.
+      uint8_t* buffer = mark_sweep_->ForwardObjectParallelAllocBuffer(self, req_space_size, count);
+      const uint8_t* start_buffer = buffer;
+      // Second pass, copy to "to".
+      for (size_t i = begin_; i < end_; i++) {
+        mirror::Object* obj = stack_[i].AsMirrorPtr();
+        if (!handled.IsBitSet(i - begin_)) {
+          buffer = mark_sweep_->ForwardObjectParallelToBuffer(buffer, obj, this);
+        }
+      }
+      // Ensure there is no gap.
+      CHECK_EQ(start_buffer + req_space_size, buffer);
+    }
+  }
+};
+
+inline uint8_t* MarkSweep::ForwardObjectParallelToBuffer(uint8_t* buffer,
+                                                         mirror::Object* obj,
+                                                         ParallelForwardTask* task) {
   const size_t object_size = obj->SizeOf();
   size_t bytes_allocated = RoundUp(object_size, space::BumpPointerSpace::kAlignment);
 
@@ -397,20 +488,22 @@ inline uint8_t* MarkSweep::ForwardObjectParallelToBuffer(uint8_t* buffer, mirror
   objects_after_forwarding_->AtomicTestAndSet(forward_address);
   to_age_table_->IncreaseObjectAge(forward_address, age);
 
-  ++objects_moved_;
-  bytes_moved_ += bytes_allocated;
   // Copy over the object and add it to the mark stack since we still need to update its
   // references.
-  saved_bytes_ +=
+  size_t saved_bytes =
       CopyAvoidingDirtyingPages(reinterpret_cast<void*>(forward_address), obj, object_size);
   obj->SetLockWord(
       LockWord::FromForwardingAddress(reinterpret_cast<size_t>(forward_address)), false);
+  task->CountObjectsMoved(1, bytes_allocated, saved_bytes);
 
   CHECK(to_bps_->HasAddress(forward_address));
   return buffer;
 }
 
-inline bool MarkSweep::ForwardObjectParallelPromo(Thread* self, mirror::Object* obj, size_t& req_space_size) {
+inline bool MarkSweep::ForwardObjectParallelPromo(Thread* self,
+                                                  mirror::Object* obj,
+                                                  size_t& req_space_size,
+                                                  ParallelForwardTask* task) {
   const size_t object_size = obj->SizeOf();
   uint8_t age = from_age_table_->GetObjectAge(obj);
   if (UNLIKELY(force_copy_all_ || age >= threshold_age_)) {
@@ -434,11 +527,7 @@ inline bool MarkSweep::ForwardObjectParallelPromo(Thread* self, mirror::Object* 
     }
 
     if (LIKELY(forward_address != nullptr)) {
-      if (bytes_tl_bulk_allocated > 0u) {
-        GetHeap()->AddBytesAllocated(bytes_tl_bulk_allocated);
-      }
-      bytes_promoted_ += bytes_allocated;
-      bytes_adjusted_ += bytes_allocated - object_size;
+      task->CountObjectsPromoted(bytes_tl_bulk_allocated, bytes_allocated - object_size);
       GetHeap()->WriteBarrierEveryFieldOf(forward_address);
       // Handle the bitmaps marking.
       accounting::ContinuousSpaceBitmap* live_bitmap = promo_dest_space_->GetLiveBitmap();
@@ -449,16 +538,13 @@ inline bool MarkSweep::ForwardObjectParallelPromo(Thread* self, mirror::Object* 
       live_bitmap->AtomicTestAndSet(forward_address);
       // Mark forward_address on the mark bit map.
       mark_bitmap->AtomicTestAndSet(forward_address);
-
-      ++objects_moved_;
-      // The objects promoted to ros will be rounded as backet size.
-      bytes_moved_ += bytes_allocated;
       // Copy over the object and add it to the mark stack since we still need to update its
       // references.
-      saved_bytes_ +=
+      size_t saved_bytes =
           CopyAvoidingDirtyingPages(reinterpret_cast<void*>(forward_address), obj, object_size);
       obj->SetLockWord(
           LockWord::FromForwardingAddress(reinterpret_cast<size_t>(forward_address)), false);
+      task->CountObjectsMoved(1, bytes_allocated, saved_bytes);
 
       CHECK(promo_dest_space_->HasAddress(forward_address));
       return true;
@@ -483,66 +569,6 @@ inline uint8_t* MarkSweep::ForwardObjectParallelAllocBuffer(Thread* self,
   to_bps_->AccountAllocation(count - 1);
   return buffer;
 }
-
-class ParallelForwardTask : public Task {
- public:
-  ParallelForwardTask(MarkSweep* mark_sweep,
-                      StackReference<mirror::Object>* stack,
-                      size_t begin,
-                      size_t end)
-      : mark_sweep_(mark_sweep),
-        stack_(stack),
-        begin_(begin),
-        end_(end) {
-    }
-
- protected:
-  MarkSweep* const mark_sweep_;
-  StackReference<mirror::Object>* stack_;
-  const size_t begin_;
-  const size_t end_;
-
-  virtual void Finalize() {
-    delete this;
-  }
-
-  // Scans all of the objects
-  virtual void Run(Thread* self) NO_THREAD_SAFETY_ANALYSIS {
-    DCHECK_EQ(self, Thread::Current());
-    // Two passes:
-    // 1) Copy to "promote" space and compute the required "to" space.
-    // 2) Copy to "to" space.
-    DCHECK_LE(end_ - begin_, kMaxGcParalelTaskSize);
-    static_assert(kMaxGcParalelTaskSize % 32 == 0u, "kMaxGcParalelTaskSize must be 32 bit aligned");
-    uint32_t storage[kMaxGcParalelTaskSize / 32];
-    BitVector handled(false, nullptr, kMaxGcParalelTaskSize / 32, storage);
-    handled.ClearAllBits();
-    size_t req_space_size = 0;
-    size_t count = 0;
-    for (size_t i = begin_; i < end_; i++) {
-      mirror::Object* obj = stack_[i].AsMirrorPtr();
-      if (mark_sweep_->ForwardObjectParallelPromo(self, obj, req_space_size)) {
-        handled.SetBit(i - begin_);
-      } else {
-        count++;
-      }
-    }
-    if (LIKELY(count > 0)) {
-      // Now allocate the buffer in "to" space.
-      uint8_t* buffer = mark_sweep_->ForwardObjectParallelAllocBuffer(self, req_space_size, count);
-      const uint8_t* start_buffer = buffer;
-      // Second pass, copy to "to".
-      for (size_t i = begin_; i < end_; i++) {
-        mirror::Object* obj = stack_[i].AsMirrorPtr();
-        if (!handled.IsBitSet(i - begin_)) {
-          buffer = mark_sweep_->ForwardObjectParallelToBuffer(buffer, obj);
-        }
-      }
-      // Ensure there is no gap.
-      CHECK_EQ(start_buffer + req_space_size, buffer);
-    }
-  }
-};
 
 void MarkSweep::ForwardObjects() {
   TimingLogger::ScopedTiming t(__FUNCTION__, GetTimings());
@@ -979,19 +1005,23 @@ void MarkSweep::PausePhase() {
       }
     }
     UpdateReferences();
+    // Add the promoted bytes here as the revoke count on it.
+    if (bytes_promoted_ > 0u) {
+      GetHeap()->AddBytesAllocated(bytes_promoted_.LoadRelaxed());
+    }
     // Revoke buffers before measuring how many objects were moved since the TLABs needs
     // to be revoked before they are properly counted.
     // Also the old enough objects may be promoted into ros,
     // and this helps prevent fragmentation.
     GetHeap()->RevokeAllThreadLocalBuffers();
     // Record freed memory.
+    const size_t from_bytes = from_bps_->GetBytesAllocated();
+    const size_t to_bytes = to_bps_->GetBytesAllocated();
     const size_t from_objects = from_bps_->GetObjectsAllocated();
-    const size_t to_objects = objects_moved_;
+    const size_t to_objects = objects_moved_.LoadRelaxed();
     CHECK_LE(to_objects, from_objects);
-    // Note: Freed bytes can be negative because sometimes the promoted objects will be large.
-    int64_t freed_bytes_bps = static_cast<int64_t>(from_bps_->Size()) -
-                              static_cast<int64_t>(to_bps_->Size()) -
-                              static_cast<int64_t>((bytes_promoted_));
+    int64_t freed_bytes_bps = static_cast<int64_t>(from_bytes) -
+                              static_cast<int64_t>(to_bytes);
     RecordFree(ObjectBytePair(from_objects - to_objects, freed_bytes_bps));
     // Clear and protect the from space.
     from_bps_->Clear();
