@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_RUNTIME_ATOMIC_H_
@@ -31,15 +29,6 @@
 namespace art {
 
 class Mutex;
-
-static inline void ThreadFenceAsmX86() {
-#if defined(__i386__)
-  __asm__ __volatile__("lock; addl $0,0(%%esp)" : : : "cc", "memory");
-#elif defined(__x86_64__)
-  __asm__ __volatile__("lock; addl $0,0(%%rsp)" : : : "cc", "memory");
-#endif
-}
-
 
 // QuasiAtomic encapsulates two separate facilities that we are
 // trying to move away from:  "quasiatomic" 64 bit operations
@@ -179,11 +168,7 @@ class QuasiAtomic {
   }
 
   static void ThreadFenceSequentiallyConsistent() {
-#if defined(__i386__) || defined(__x86_64__)
-    ThreadFenceAsmX86();
-#else
     std::atomic_thread_fence(std::memory_order_seq_cst);
-#endif
   }
 
  private:
@@ -247,12 +232,12 @@ class PACKED(sizeof(T)) Atomic : public std::atomic<T> {
 
   // Store to memory with a total ordering.
   void StoreSequentiallyConsistent(T desired) {
-#if defined(__i386__) || defined(__x86_64__)
-    this->store(desired, std::memory_order_relaxed);
-    ThreadFenceAsmX86();
-#else
     this->store(desired, std::memory_order_seq_cst);
-#endif
+  }
+
+  // Atomically replace the value with desired value.
+  T ExchangeRelaxed(T desired_value) {
+    return this->exchange(desired_value, std::memory_order_relaxed);
   }
 
   // Atomically replace the value with desired value if it matches the expected value.
@@ -270,6 +255,13 @@ class PACKED(sizeof(T)) Atomic : public std::atomic<T> {
   // imply ordering or synchronization constraints.
   bool CompareExchangeStrongRelaxed(T expected_value, T desired_value) {
     return this->compare_exchange_strong(expected_value, desired_value, std::memory_order_relaxed);
+  }
+
+  // Atomically replace the value with desired value if it matches the expected value. Prior writes
+  // to other memory locations become visible to the threads that do a consume or an acquire on the
+  // same location.
+  bool CompareExchangeStrongRelease(T expected_value, T desired_value) {
+    return this->compare_exchange_strong(expected_value, desired_value, std::memory_order_release);
   }
 
   // The same, except it may fail spuriously.
@@ -301,6 +293,10 @@ class PACKED(sizeof(T)) Atomic : public std::atomic<T> {
 
   T FetchAndSubSequentiallyConsistent(const T value) {
     return this->fetch_sub(value, std::memory_order_seq_cst);  // Return old value.
+  }
+
+  T FetchAndSubRelaxed(const T value) {
+    return this->fetch_sub(value, std::memory_order_relaxed);  // Return old value.
   }
 
   T FetchAndOrSequentiallyConsistent(const T value) {

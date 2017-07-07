@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_RUNTIME_GC_SPACE_LARGE_OBJECT_SPACE_H_
@@ -76,7 +74,7 @@ class LargeObjectSpace : public DiscontinuousSpace, public AllocSpace {
   AllocSpace* AsAllocSpace() OVERRIDE {
     return this;
   }
-  ObjectBytePair Sweep(bool swap_bitmaps);
+  collector::ObjectBytePair Sweep(bool swap_bitmaps);
   virtual bool CanMoveObjects() const OVERRIDE {
     return false;
   }
@@ -98,13 +96,17 @@ class LargeObjectSpace : public DiscontinuousSpace, public AllocSpace {
     return Begin() <= byte_obj && byte_obj < End();
   }
   void LogFragmentationAllocFailure(std::ostream& os, size_t failed_alloc_bytes) OVERRIDE
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
   // Return true if the large object is a zygote large object. Potentially slow.
   virtual bool IsZygoteLargeObject(Thread* self, mirror::Object* obj) const = 0;
   // Called when we create the zygote space, mark all existing large objects as zygote large
   // objects.
   virtual void SetAllLargeObjectsAsZygoteObjects(Thread* self) = 0;
+
+  // GetRangeAtomic returns Begin() and End() atomically, that is, it never returns Begin() and
+  // End() from different allocations.
+  virtual std::pair<uint8_t*, uint8_t*> GetBeginEndAtomic() const = 0;
 
  protected:
   explicit LargeObjectSpace(const std::string& name, uint8_t* begin, uint8_t* end);
@@ -141,6 +143,8 @@ class LargeObjectMapSpace : public LargeObjectSpace {
   // TODO: disabling thread safety analysis as this may be called when we already hold lock_.
   bool Contains(const mirror::Object* obj) const NO_THREAD_SAFETY_ANALYSIS;
 
+  std::pair<uint8_t*, uint8_t*> GetBeginEndAtomic() const OVERRIDE REQUIRES(!lock_);
+
  protected:
   struct LargeObject {
     MemMap* mem_map;
@@ -173,6 +177,8 @@ class FreeListSpace FINAL : public LargeObjectSpace {
   size_t Free(Thread* self, mirror::Object* obj) OVERRIDE REQUIRES(!lock_);
   void Walk(DlMallocSpace::WalkCallback callback, void* arg) OVERRIDE REQUIRES(!lock_);
   void Dump(std::ostream& os) const REQUIRES(!lock_);
+
+  std::pair<uint8_t*, uint8_t*> GetBeginEndAtomic() const OVERRIDE REQUIRES(!lock_);
 
  protected:
   FreeListSpace(const std::string& name, MemMap* mem_map, uint8_t* begin, uint8_t* end);

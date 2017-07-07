@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #include "compiled_method.h"
@@ -53,7 +51,7 @@ size_t CompiledCode::AlignCode(size_t offset) const {
 }
 
 size_t CompiledCode::AlignCode(size_t offset, InstructionSet instruction_set) {
-  return offset + GetInstructionSetAlignment(instruction_set).GetOffsetFor(offset);
+  return RoundUp(offset, GetInstructionSetAlignment(instruction_set));
 }
 
 size_t CompiledCode::CodeDelta() const {
@@ -107,15 +105,15 @@ CompiledMethod::CompiledMethod(CompilerDriver* driver,
                                const size_t frame_size_in_bytes,
                                const uint32_t core_spill_mask,
                                const uint32_t fp_spill_mask,
-                               const ArrayRef<const SrcMapElem>& src_mapping_table,
+                               const ArrayRef<const uint8_t>& method_info,
                                const ArrayRef<const uint8_t>& vmap_table,
                                const ArrayRef<const uint8_t>& cfi_info,
                                const ArrayRef<const LinkerPatch>& patches)
     : CompiledCode(driver, instruction_set, quick_code),
-      frame_size_in_bytes_(frame_size_in_bytes), core_spill_mask_(core_spill_mask),
+      frame_size_in_bytes_(frame_size_in_bytes),
+      core_spill_mask_(core_spill_mask),
       fp_spill_mask_(fp_spill_mask),
-      src_mapping_table_(
-          driver->GetCompiledMethodStorage()->DeduplicateSrcMappingTable(src_mapping_table)),
+      method_info_(driver->GetCompiledMethodStorage()->DeduplicateMethodInfo(method_info)),
       vmap_table_(driver->GetCompiledMethodStorage()->DeduplicateVMapTable(vmap_table)),
       cfi_info_(driver->GetCompiledMethodStorage()->DeduplicateCFIInfo(cfi_info)),
       patches_(driver->GetCompiledMethodStorage()->DeduplicateLinkerPatches(patches)) {
@@ -128,7 +126,7 @@ CompiledMethod* CompiledMethod::SwapAllocCompiledMethod(
     const size_t frame_size_in_bytes,
     const uint32_t core_spill_mask,
     const uint32_t fp_spill_mask,
-    const ArrayRef<const SrcMapElem>& src_mapping_table,
+    const ArrayRef<const uint8_t>& method_info,
     const ArrayRef<const uint8_t>& vmap_table,
     const ArrayRef<const uint8_t>& cfi_info,
     const ArrayRef<const LinkerPatch>& patches) {
@@ -141,7 +139,7 @@ CompiledMethod* CompiledMethod::SwapAllocCompiledMethod(
                   frame_size_in_bytes,
                   core_spill_mask,
                   fp_spill_mask,
-                  src_mapping_table,
+                  method_info,
                   vmap_table,
                   cfi_info, patches);
   return ret;
@@ -158,7 +156,7 @@ CompiledMethod::~CompiledMethod() {
   storage->ReleaseLinkerPatches(patches_);
   storage->ReleaseCFIInfo(cfi_info_);
   storage->ReleaseVMapTable(vmap_table_);
-  storage->ReleaseSrcMappingTable(src_mapping_table_);
+  storage->ReleaseMethodInfo(method_info_);
 }
 
 }  // namespace art

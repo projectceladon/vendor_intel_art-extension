@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #include "partial_mark_sweep.h"
@@ -27,9 +25,8 @@ namespace art {
 namespace gc {
 namespace collector {
 
-PartialMarkSweep::PartialMarkSweep(Heap* heap, bool is_concurrent, bool is_copying,
-                                   const std::string& name_prefix)
-    : MarkSweep(heap, is_concurrent, is_copying, name_prefix.empty() ? "partial " : name_prefix) {
+PartialMarkSweep::PartialMarkSweep(Heap* heap, bool is_concurrent, const std::string& name_prefix)
+    : MarkSweep(heap, is_concurrent, name_prefix.empty() ? "partial " : name_prefix) {
   cumulative_timings_.SetName(GetName());
 }
 

@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_RUNTIME_GC_COLLECTOR_GARBAGE_COLLECTOR_H_
@@ -27,7 +25,6 @@
 #include "base/timing_logger.h"
 #include "gc/collector_type.h"
 #include "gc/gc_cause.h"
-#include "gc/object_byte_pair.h"
 #include "gc_root.h"
 #include "gc_type.h"
 #include "object_callbacks.h"
@@ -45,6 +42,21 @@ namespace gc {
 class Heap;
 
 namespace collector {
+
+struct ObjectBytePair {
+  explicit ObjectBytePair(uint64_t num_objects = 0, int64_t num_bytes = 0)
+      : objects(num_objects), bytes(num_bytes) {}
+  void Add(const ObjectBytePair& other) {
+    objects += other.objects;
+    bytes += other.bytes;
+  }
+  // Number of objects which were freed.
+  uint64_t objects;
+  // Freed bytes are signed since the GC can free negative bytes if it promotes objects to a space
+  // which has a larger allocation size.
+  int64_t bytes;
+};
+
 // A information related single garbage collector iteration. Since we only ever have one GC running
 // at any given time, we can have a single iteration info.
 class Iteration {
@@ -53,14 +65,6 @@ class Iteration {
   // Returns how long the mutators were paused in nanoseconds.
   const std::vector<uint64_t>& GetPauseTimes() const {
     return pause_times_;
-  }
-  // Returns mark time.
-  uint64_t GetMarkTime() const {
-    return mark_time_;
-  }
-  // Returns sweep time.
-  uint64_t GetSweepTime() const {
-    return sweep_time_;
   }
   TimingLogger* GetTimings() {
     return &timings_;
@@ -113,9 +117,6 @@ class Iteration {
   ObjectBytePair freed_los_;
   uint64_t freed_bytes_revoke_;  // see Heap::num_bytes_freed_revoke_.
   std::vector<uint64_t> pause_times_;
-  // Mark/sweep times for gc profiling.
-  uint64_t mark_time_;
-  uint64_t sweep_time_;
 
   friend class GarbageCollector;
   DISALLOW_COPY_AND_ASSIGN(Iteration);
@@ -125,12 +126,14 @@ class GarbageCollector : public RootVisitor, public IsMarkedVisitor, public Mark
  public:
   class SCOPED_LOCKABLE ScopedPause {
    public:
-    explicit ScopedPause(GarbageCollector* collector) EXCLUSIVE_LOCK_FUNCTION(Locks::mutator_lock_);
+    explicit ScopedPause(GarbageCollector* collector, bool with_reporting = true)
+        EXCLUSIVE_LOCK_FUNCTION(Locks::mutator_lock_);
     ~ScopedPause() UNLOCK_FUNCTION();
 
    private:
     const uint64_t start_time_;
     GarbageCollector* const collector_;
+    bool with_reporting_;
   };
 
   GarbageCollector(Heap* heap, const std::string& name);
@@ -146,9 +149,6 @@ class GarbageCollector : public RootVisitor, public IsMarkedVisitor, public Mark
     return heap_;
   }
   void RegisterPause(uint64_t nano_length);
-  // Register times for gc profiling.
-  void RegisterMark(uint64_t nano_length);
-  void RegisterSweep(uint64_t nano_length);
   const CumulativeLogger& GetCumulativeTimings() const {
     return cumulative_timings_;
   }
@@ -157,7 +157,7 @@ class GarbageCollector : public RootVisitor, public IsMarkedVisitor, public Mark
   // this is the allocation space, for full GC then we swap the zygote bitmaps too.
   void SwapBitmaps()
       REQUIRES(Locks::heap_bitmap_lock_)
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
   uint64_t GetTotalPausedTimeNs() REQUIRES(!pause_histogram_lock_);
   int64_t GetTotalFreedBytes() const {
     return total_freed_bytes_;
@@ -183,23 +183,32 @@ class GarbageCollector : public RootVisitor, public IsMarkedVisitor, public Mark
   void RecordFree(const ObjectBytePair& freed);
   // Record a free of large objects.
   void RecordFreeLOS(const ObjectBytePair& freed);
-  void DumpPerformanceInfo(std::ostream& os) REQUIRES(!pause_histogram_lock_);
+  virtual void DumpPerformanceInfo(std::ostream& os) REQUIRES(!pause_histogram_lock_);
 
   // Helper functions for querying if objects are marked. These are used for processing references,
   // and will be used for reading system weaks while the GC is running.
   virtual mirror::Object* IsMarked(mirror::Object* obj)
-      SHARED_REQUIRES(Locks::mutator_lock_) = 0;
-  virtual bool IsMarkedHeapReference(mirror::HeapReference<mirror::Object>* obj)
-      SHARED_REQUIRES(Locks::mutator_lock_) = 0;
+      REQUIRES_SHARED(Locks::mutator_lock_) = 0;
+  // Returns true if the given heap reference is null or is already marked. If it's already marked,
+  // update the reference (uses a CAS if do_atomic_update is true. Otherwise, returns false.
+  virtual bool IsNullOrMarkedHeapReference(mirror::HeapReference<mirror::Object>* obj,
+                                           bool do_atomic_update)
+      REQUIRES_SHARED(Locks::mutator_lock_) = 0;
   // Used by reference processor.
-  virtual void ProcessMarkStack() SHARED_REQUIRES(Locks::mutator_lock_) = 0;
+  virtual void ProcessMarkStack() REQUIRES_SHARED(Locks::mutator_lock_) = 0;
   // Force mark an object.
   virtual mirror::Object* MarkObject(mirror::Object* obj)
-      SHARED_REQUIRES(Locks::mutator_lock_) = 0;
-  virtual void MarkHeapReference(mirror::HeapReference<mirror::Object>* obj)
-      SHARED_REQUIRES(Locks::mutator_lock_) = 0;
-  virtual void DelayReferenceReferent(mirror::Class* klass, mirror::Reference* reference)
-      SHARED_REQUIRES(Locks::mutator_lock_) = 0;
+      REQUIRES_SHARED(Locks::mutator_lock_) = 0;
+  virtual void MarkHeapReference(mirror::HeapReference<mirror::Object>* obj,
+                                 bool do_atomic_update)
+      REQUIRES_SHARED(Locks::mutator_lock_) = 0;
+  virtual void DelayReferenceReferent(ObjPtr<mirror::Class> klass,
+                                      ObjPtr<mirror::Reference> reference)
+      REQUIRES_SHARED(Locks::mutator_lock_) = 0;
+
+  bool IsTransactionActive() const {
+    return is_transaction_active_;
+  }
 
  protected:
   // Run all of the GC phases.
@@ -219,6 +228,7 @@ class GarbageCollector : public RootVisitor, public IsMarkedVisitor, public Mark
   int64_t total_freed_bytes_;
   CumulativeLogger cumulative_timings_;
   mutable Mutex pause_histogram_lock_ DEFAULT_MUTEX_ACQUIRED_AFTER;
+  bool is_transaction_active_;
 
  private:
   DISALLOW_IMPLICIT_CONSTRUCTORS(GarbageCollector);

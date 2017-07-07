@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #include "gvn.h"
@@ -23,11 +21,8 @@
 #include "base/bit_vector-inl.h"
 #include "side_effects_analysis.h"
 #include "utils.h"
-#include "ext_alias.h"
 
 namespace art {
-
-static constexpr int32_t kMaxGVNAliasSetters = 20;
 
 /**
  * A ValueSet holds instructions that can replace other instructions. It is updated
@@ -130,58 +125,9 @@ class ValueSet : public ArenaObject<kArenaAllocGvn> {
   }
 
   // Removes all instructions in the set affected by the given side effects.
-  void Kill(HInstruction* insn, SideEffects side_effects, AliasCheck& alias) {
-    DeleteAllImpureWhich([alias, insn, side_effects] (Node* node) mutable {
-      bool depends_on =
-        node->GetInstruction()->GetSideEffects().MayDependOn(side_effects);
-      if (depends_on && insn != nullptr) {
-        // What does aliasing think about this?
-        if (alias.Alias(insn, node->GetInstruction()) == AliasCheck::kNoAlias) {
-          depends_on = false;
-        }
-      }
-      return depends_on;
-    });
-  }
-
-  void KillLoop(HBasicBlock* block, SideEffects side_effects, AliasCheck& alias) {
-    // Walk through the loop, collecting instructions that change something.
-    std::vector<HInstruction*> setters;
-    for (HBlocksInLoopIterator it_loop(*block->GetLoopInformation());
-                               !it_loop.Done(); it_loop.Advance()) {
-      HBasicBlock* loop_block = it_loop.Current();
-      for (HInstructionIterator inst_it(loop_block->GetInstructions()); !inst_it.Done(); inst_it.Advance()) {
-        HInstruction* instruction = inst_it.Current();
-        if (instruction->GetSideEffects().HasSideEffects()) {
-          setters.push_back(instruction);
-        }
-      }
-    }
-
-    // Do we have too many instructions to look through?
-    if (setters.size() > kMaxGVNAliasSetters) {
-      // We don't want to.
-      Kill(nullptr, side_effects, alias);
-      return;
-    }
-
-    // Remove only those elements which are really killed by the loop.
-    DeleteAllImpureWhich([alias, setters, side_effects] (Node* node) mutable {
-      HInstruction* current_insn = node->GetInstruction();
-
-      if (!current_insn->GetSideEffects().MayDependOn(side_effects)) {
-        // Nothing to worry about.
-        return false;
-      }
-
-      // Walk through the setters, looking for a kill.
-      for (HInstruction* insn : setters) {
-        // What does aliasing think about this?  Assume it is okay.
-        if (alias.Alias(insn, current_insn) != AliasCheck::kNoAlias) {
-          return true;
-        }
-      }
-      return false;
+  void Kill(SideEffects side_effects) {
+    DeleteAllImpureWhich([side_effects](Node* node) {
+      return node->GetInstruction()->GetSideEffects().MayDependOn(side_effects);
     });
   }
 
@@ -406,15 +352,13 @@ class GlobalValueNumberer : public ValueObject {
  public:
   GlobalValueNumberer(ArenaAllocator* allocator,
                       HGraph* graph,
-                      const SideEffectsAnalysis& side_effects,
-                      OptimizingCompilerStats* stats = nullptr)
+                      const SideEffectsAnalysis& side_effects)
       : graph_(graph),
         allocator_(allocator),
         side_effects_(side_effects),
         sets_(graph->GetBlocks().size(), nullptr, allocator->Adapter(kArenaAllocGvn)),
         visited_blocks_(
-            allocator, graph->GetBlocks().size(), /* expandable */ false, kArenaAllocGvn),
-        stats_(stats) {}
+            allocator, graph->GetBlocks().size(), /* expandable */ false, kArenaAllocGvn) {}
 
   void Run();
 
@@ -455,12 +399,8 @@ class GlobalValueNumberer : public ValueObject {
   ArenaVector<ValueSet*> sets_;
 
   // BitVector which serves as a fast-access map from block id to
-  // visited/unvisited boolean.
+  // visited/unvisited Boolean.
   ArenaBitVector visited_blocks_;
-
-  AliasCheck alias_;
-
-  OptimizingCompilerStats* const stats_;
 
   DISALLOW_COPY_AND_ASSIGN(GlobalValueNumberer);
 };
@@ -471,8 +411,8 @@ void GlobalValueNumberer::Run() {
 
   // Use the reverse post order to ensure the non back-edge predecessors of a block are
   // visited before the block itself.
-  for (HReversePostOrderIterator it(*graph_); !it.Done(); it.Advance()) {
-    VisitBasicBlock(it.Current());
+  for (HBasicBlock* block : graph_->GetReversePostOrder()) {
+    VisitBasicBlock(block);
   }
 }
 
@@ -525,7 +465,7 @@ void GlobalValueNumberer::VisitBasicBlock(HBasicBlock* block) {
         } else {
           DCHECK(!block->GetLoopInformation()->IsIrreducible());
           DCHECK_EQ(block->GetDominator(), block->GetLoopInformation()->GetPreHeader());
-          set->KillLoop(block, side_effects_.GetLoopEffects(block), alias_);
+          set->Kill(side_effects_.GetLoopEffects(block));
         }
       } else if (predecessors.size() > 1) {
         for (HBasicBlock* predecessor : predecessors) {
@@ -560,15 +500,12 @@ void GlobalValueNumberer::VisitBasicBlock(HBasicBlock* block) {
         // Or current is used by a phi, and we don't do OrderInputs() on a phi anyway.
         current->ReplaceWith(existing);
         current->GetBlock()->RemoveInstruction(current);
-        if (stats_ != nullptr) {
-          stats_->RecordStat(kRemovedInstructionViaGVN);
-        }
       } else {
-        set->Kill(current, current->GetSideEffects(), alias_);
+        set->Kill(current->GetSideEffects());
         set->Add(current);
       }
     } else {
-      set->Kill(current, current->GetSideEffects(), alias_);
+      set->Kill(current->GetSideEffects());
     }
     current = next;
   }
@@ -629,7 +566,7 @@ HBasicBlock* GlobalValueNumberer::FindVisitedBlockWithRecyclableSet(
 }
 
 void GVNOptimization::Run() {
-  GlobalValueNumberer gvn(graph_->GetArena(), graph_, side_effects_, stats_);
+  GlobalValueNumberer gvn(graph_->GetArena(), graph_, side_effects_);
   gvn.Run();
 }
 

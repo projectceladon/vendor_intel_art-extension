@@ -150,20 +150,16 @@ MterpCommonTakenBranch:
     decl    rPROFILE
     je      .L_add_batch                    # counted down to zero - report
 .L_resume_backward_branch:
-    leaq    (rPC, rINSTq, 2), rPC
-    EXPORT_PC
-    cmpl    $$0, OFF_FP_PROFILE_ACTIVE(rFP)
-    je      1f
-    leaq    OFF_FP_SHADOWFRAME(rFP), OUT_ARG0
-    call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
-1:  movq    rSELF, %rax
-    testl   $$(THREAD_SUSPEND_REQUEST | THREAD_CHECKPOINT_REQUEST), THREAD_FLAGS_OFFSET(%rax)
+    movq    rSELF, %rax
+    testl   $$(THREAD_SUSPEND_OR_CHECKPOINT_REQUEST), THREAD_FLAGS_OFFSET(%rax)
     REFRESH_IBASE
+    leaq    (rPC, rINSTq, 2), rPC
     FETCH_INST
     jnz     .L_suspend_request_pending
     GOTO_NEXT
 
 .L_suspend_request_pending:
+    EXPORT_PC
     movq    rSELF, OUT_ARG0
     call    SYMBOL(MterpSuspendCheck)       # (self)
     testb   %al, %al
@@ -189,12 +185,7 @@ MterpCommonTakenBranch:
     je      .L_check_osr_forward
 .L_resume_forward_branch:
     leaq    (rPC, rINSTq, 2), rPC
-    cmpl    $$0, OFF_FP_PROFILE_ACTIVE(rFP)
-    je      1f
-    EXPORT_PC
-    leaq    OFF_FP_SHADOWFRAME(rFP), OUT_ARG0
-    call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
-1:  FETCH_INST
+    FETCH_INST
     GOTO_NEXT
 
 .L_check_osr_forward:

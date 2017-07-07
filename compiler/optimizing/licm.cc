@@ -12,11 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #include "licm.h"
+
 #include "side_effects_analysis.h"
 
 namespace art {
@@ -32,8 +31,8 @@ static bool IsPhiOf(HInstruction* instruction, HBasicBlock* block) {
 static bool InputsAreDefinedBeforeLoop(HInstruction* instruction) {
   DCHECK(instruction->IsInLoop());
   HLoopInformation* info = instruction->GetBlock()->GetLoopInformation();
-  for (HInputIterator it(instruction); !it.Done(); it.Advance()) {
-    HLoopInformation* input_loop = it.Current()->GetBlock()->GetLoopInformation();
+  for (const HInstruction* input : instruction->GetInputs()) {
+    HLoopInformation* input_loop = input->GetBlock()->GetLoopInformation();
     // We only need to check whether the input is defined in the loop. If it is not
     // it is defined before the loop.
     if (input_loop != nullptr && input_loop->IsIn(*info)) {
@@ -92,22 +91,13 @@ void LICM::Run() {
   }
 
   // Post order visit to visit inner loops before outer loops.
-  for (HPostOrderIterator it(*graph_); !it.Done(); it.Advance()) {
-    HBasicBlock* block = it.Current();
+  for (HBasicBlock* block : graph_->GetPostOrder()) {
     if (!block->IsLoopHeader()) {
       // Only visit the loop when we reach the header.
       continue;
     }
 
     HLoopInformation* loop_info = block->GetLoopInformation();
-
-    if (loop_info->ContainsIrreducibleLoop()) {
-      // We cannot licm in an irreducible loop, or in a natural loop containing an
-      // irreducible loop.
-      continue;
-    }
-    DCHECK(!loop_info->IsIrreducible());
-
     SideEffects loop_effects = side_effects_.GetLoopEffects(block);
     HBasicBlock* pre_header = loop_info->GetPreHeader();
 
@@ -123,30 +113,39 @@ void LICM::Run() {
         visited->SetBit(inner->GetBlockId());
       }
 
-      // We can move an instruction that can throw only if it is the first
-      // throwing instruction in the loop. Note that the first potentially
-      // throwing instruction encountered that is not hoisted stops this
-      // optimization. Non-throwing instruction can still be hoisted.
-      bool found_first_non_hoisted_throwing_instruction_in_loop = !inner->IsLoopHeader();
+      if (loop_info->ContainsIrreducibleLoop()) {
+        // We cannot licm in an irreducible loop, or in a natural loop containing an
+        // irreducible loop.
+        continue;
+      }
+      DCHECK(!loop_info->IsIrreducible());
+
+      // We can move an instruction that can throw only as long as it is the first visible
+      // instruction (throw or write) in the loop. Note that the first potentially visible
+      // instruction that is not hoisted stops this optimization. Non-throwing instructions,
+      // on the other hand, can still be hoisted.
+      bool found_first_non_hoisted_visible_instruction_in_loop = !inner->IsLoopHeader();
       for (HInstructionIterator inst_it(inner->GetInstructions());
            !inst_it.Done();
            inst_it.Advance()) {
         HInstruction* instruction = inst_it.Current();
         if (instruction->CanBeMoved()
-            && (!instruction->CanThrow() || !found_first_non_hoisted_throwing_instruction_in_loop)
+            && (!instruction->CanThrow() || !found_first_non_hoisted_visible_instruction_in_loop)
             && !instruction->GetSideEffects().MayDependOn(loop_effects)
             && InputsAreDefinedBeforeLoop(instruction)) {
           // We need to update the environment if the instruction has a loop header
           // phi in it.
-          if (instruction->HasEnvironment()) {
+          if (instruction->NeedsEnvironment()) {
             UpdateLoopPhisIn(instruction->GetEnvironment(), loop_info);
+          } else {
+            DCHECK(!instruction->HasEnvironment());
           }
           instruction->MoveBefore(pre_header->GetLastInstruction());
           MaybeRecordStat(MethodCompilationStat::kLoopInvariantMoved);
-        } else if (instruction->CanThrow()) {
-          // If `instruction` can throw, we cannot move further instructions
-          // that can throw as well.
-          found_first_non_hoisted_throwing_instruction_in_loop = true;
+        } else if (instruction->CanThrow() || instruction->DoesAnyWrite()) {
+          // If `instruction` can do something visible (throw or write),
+          // we cannot move further instructions that can throw.
+          found_first_non_hoisted_visible_instruction_in_loop = true;
         }
       }
     }

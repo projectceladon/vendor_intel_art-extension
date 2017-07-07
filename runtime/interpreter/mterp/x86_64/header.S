@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 /*
@@ -128,7 +126,6 @@ unspecified registers or condition codes.
 #define OFF_FP_DEX_PC_PTR OFF_FP(SHADOWFRAME_DEX_PC_PTR_OFFSET)
 #define OFF_FP_CODE_ITEM OFF_FP(SHADOWFRAME_CODE_ITEM_OFFSET)
 #define OFF_FP_COUNTDOWN_OFFSET OFF_FP(SHADOWFRAME_HOTNESS_COUNTDOWN_OFFSET)
-#define OFF_FP_PROFILE_ACTIVE OFF_FP(SHADOWFRAME_PROFILING_ACTIVE_OFFSET)
 #define OFF_FP_SHADOWFRAME (-SHADOWFRAME_VREGS_OFFSET)
 
 /* Frame size must be 16-byte aligned.

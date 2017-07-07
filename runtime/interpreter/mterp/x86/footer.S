@@ -166,22 +166,16 @@ MterpCommonTakenBranch:
     decw    rPROFILE
     je      .L_add_batch                    # counted down to zero - report
 .L_resume_backward_branch:
+    movl    rSELF, %eax
+    testl   $$(THREAD_SUSPEND_OR_CHECKPOINT_REQUEST), THREAD_FLAGS_OFFSET(%eax)
     leal    (rPC, rINST, 2), rPC
-    EXPORT_PC
-    cmpl    $$0, OFF_FP_PROFILE_ACTIVE(rFP)
-    je      1f
-    leal    OFF_FP_SHADOWFRAME(rFP), %ecx
-    movl    %ecx, OUT_ARG0(%esp)
-    call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
-1:  movl    rSELF, %eax
     FETCH_INST
-    testl   $$(THREAD_SUSPEND_REQUEST | THREAD_CHECKPOINT_REQUEST), THREAD_FLAGS_OFFSET(%eax)
-    RESTORE_IBASE
     jnz     .L_suspend_request_pending
+    REFRESH_IBASE
     GOTO_NEXT
 
 .L_suspend_request_pending:
-    movl    rSELF, %eax
+    EXPORT_PC
     movl    %eax, OUT_ARG0(%esp)            # rSELF in eax
     call    SYMBOL(MterpSuspendCheck)       # (self)
     testb   %al, %al
@@ -209,14 +203,7 @@ MterpCommonTakenBranch:
     je      .L_check_osr_forward
 .L_resume_forward_branch:
     leal    (rPC, rINST, 2), rPC
-    cmpl    $$0, OFF_FP_PROFILE_ACTIVE(rFP)
-    je      1f
-    EXPORT_PC
-    leal    OFF_FP_SHADOWFRAME(rFP), %ecx
-    movl    %ecx, OUT_ARG0(%esp)
-    call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
-    RESTORE_IBASE
-1:  FETCH_INST
+    FETCH_INST
     GOTO_NEXT
 
 .L_check_osr_forward:

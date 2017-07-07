@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_RUNTIME_GC_SPACE_ROSALLOC_SPACE_H_
@@ -53,10 +51,8 @@ class RosAllocSpace : public MallocSpace {
       OVERRIDE REQUIRES(!lock_);
   mirror::Object* Alloc(Thread* self, size_t num_bytes, size_t* bytes_allocated,
                         size_t* usable_size, size_t* bytes_tl_bulk_allocated) OVERRIDE {
-    mirror::Object* obj = AllocNonvirtual(self, num_bytes, bytes_allocated, usable_size,
-                                          bytes_tl_bulk_allocated);
-
-    return obj;
+    return AllocNonvirtual(self, num_bytes, bytes_allocated, usable_size,
+                           bytes_tl_bulk_allocated);
   }
   mirror::Object* AllocThreadUnsafe(Thread* self, size_t num_bytes, size_t* bytes_allocated,
                                     size_t* usable_size, size_t* bytes_tl_bulk_allocated)
@@ -68,14 +64,11 @@ class RosAllocSpace : public MallocSpace {
     return AllocationSizeNonvirtual<true>(obj, usable_size);
   }
   size_t Free(Thread* self, mirror::Object* ptr) OVERRIDE
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
   size_t FreeList(Thread* self, size_t num_ptrs, mirror::Object** ptrs) OVERRIDE
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
-  size_t FreeNonThread(Thread* self, mirror::Object* ptr)
-      SHARED_REQUIRES(Locks::mutator_lock_);
-
-    mirror::Object* AllocNonvirtual(Thread* self, size_t num_bytes, size_t* bytes_allocated,
+  mirror::Object* AllocNonvirtual(Thread* self, size_t num_bytes, size_t* bytes_allocated,
                                   size_t* usable_size, size_t* bytes_tl_bulk_allocated) {
     // RosAlloc zeroes memory internally.
     return AllocCommon(self, num_bytes, bytes_allocated, usable_size,
@@ -96,10 +89,6 @@ class RosAllocSpace : public MallocSpace {
   // run without allocating a new run.
   ALWAYS_INLINE mirror::Object* AllocThreadLocal(Thread* self, size_t num_bytes,
                                                  size_t* bytes_allocated);
-  // Free one object slot in an existing thread local run.
-  // Used for Parallel Copy in GSS
-  ALWAYS_INLINE bool FreeThreadLocal(Thread* self, size_t num_bytes,
-                                     mirror::Object* obj);
   size_t MaxBytesBulkAllocatedFor(size_t num_bytes) OVERRIDE {
     return MaxBytesBulkAllocatedForNonvirtual(num_bytes);
   }

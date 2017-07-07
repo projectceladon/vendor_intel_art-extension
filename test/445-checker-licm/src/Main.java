@@ -25,13 +25,9 @@ public class Main {
   /// CHECK-START: int Main.div() licm (after)
   /// CHECK-DAG: Div loop:none
 
-  public static boolean neverThrow = false;
-
   public static int div() {
     int result = 0;
     for (int i = 0; i < 10; ++i) {
-      if (neverThrow)
-        throw new Error();
       result += staticField / 42;
     }
     return result;
@@ -69,9 +65,6 @@ public class Main {
         // The operation has been hoisted out of the inner loop.
         // Note that we depend on the compiler's block numbering to
         // check if it has been moved.
-        if (neverThrow) {
-          throw new Error();
-        }
         result += staticField * i;
       }
     }
@@ -88,9 +81,6 @@ public class Main {
     int result = 0;
     while (b < 5) {
       // a might be null, so we can't hoist the operation.
-      if (neverThrow) {
-        throw new Error();
-      }
       result += staticField / a;
       b++;
     }
@@ -98,8 +88,8 @@ public class Main {
   }
 
   /// CHECK-START: int Main.arrayLength(int[]) licm (before)
-  /// CHECK-DAG: <<NullCheck:l\d+>> NullCheck loop:none
-  /// CHECK-DAG:                    ArrayLength [<<NullCheck>>] loop:none
+  /// CHECK-DAG: <<NullCheck:l\d+>> NullCheck loop:{{B\d+}}
+  /// CHECK-DAG:                    ArrayLength [<<NullCheck>>] loop:{{B\d+}}
 
   /// CHECK-START: int Main.arrayLength(int[]) licm (after)
   /// CHECK-NOT:                    NullCheck loop:{{B\d+}}
@@ -118,7 +108,7 @@ public class Main {
   }
 
   /// CHECK-START: int Main.divAndIntrinsic(int[]) licm (before)
-  /// CHECK-DAG: Div loop:none
+  /// CHECK-DAG: Div loop:{{B\d+}}
 
   /// CHECK-START: int Main.divAndIntrinsic(int[]) licm (after)
   /// CHECK-NOT: Div loop:{{B\d+}}
@@ -174,7 +164,42 @@ public class Main {
     return result;
   }
 
+  //
+  // All operations up to the null check can be hoisted out of the
+  // loop. The null check itself sees the induction in its environment.
+  //
+  /// CHECK-START: int Main.doWhile(int) licm (before)
+  /// CHECK-DAG: <<Add:i\d+>> Add                 loop:<<Loop:B\d+>> outer_loop:none
+  /// CHECK-DAG:              LoadClass           loop:<<Loop>>      outer_loop:none
+  /// CHECK-DAG: <<Get:l\d+>> StaticFieldGet      loop:<<Loop>>      outer_loop:none
+  /// CHECK-DAG:              NullCheck [<<Get>>] env:[[<<Add>>,<<Get>>,{{i\d+}}]] loop:<<Loop>> outer_loop:none
+  /// CHECK-DAG:              ArrayLength         loop:<<Loop>>      outer_loop:none
+  /// CHECK-DAG:              BoundsCheck         loop:<<Loop>>      outer_loop:none
+  /// CHECK-DAG:              ArrayGet            loop:<<Loop>>      outer_loop:none
+  //
+  /// CHECK-START: int Main.doWhile(int) licm (after)
+  /// CHECK-NOT: LoadClass      loop:{{B\d+}}
+  /// CHECK-NOT: StaticFieldGet loop:{{B\d+}}
+  //
+  /// CHECK-START: int Main.doWhile(int) licm (after)
+  /// CHECK-DAG:              LoadClass           loop:none
+  /// CHECK-DAG: <<Get:l\d+>> StaticFieldGet      loop:none
+  /// CHECK-DAG: <<Add:i\d+>> Add                 loop:<<Loop:B\d+>> outer_loop:none
+  /// CHECK-DAG:              NullCheck [<<Get>>] env:[[<<Add>>,<<Get>>,{{i\d+}}]] loop:<<Loop>> outer_loop:none
+  /// CHECK-DAG:              ArrayLength         loop:<<Loop>>      outer_loop:none
+  /// CHECK-DAG:              BoundsCheck         loop:<<Loop>>      outer_loop:none
+  /// CHECK-DAG:              ArrayGet            loop:<<Loop>>      outer_loop:none
+  public static int doWhile(int k) {
+    int i = k;
+    do {
+      i += 2;
+    } while (staticArray[i] == 0);
+    return i;
+  }
+
   public static int staticField = 42;
+
+  public static int[] staticArray = null;
 
   public static void assertEquals(int expected, int actual) {
     if (expected != actual) {
@@ -191,5 +216,24 @@ public class Main {
     assertEquals(21, divAndIntrinsic(new int[] { 4, -2, 8, -3 }));
     assertEquals(45, invariantBoundIntrinsic(-10));
     assertEquals(30, invariantBodyIntrinsic(2, 3));
+
+    staticArray = null;
+    try {
+      doWhile(0);
+      throw new Error("Expected NPE");
+    } catch (NullPointerException e) {
+    }
+    staticArray = new int[5];
+    staticArray[4] = 1;
+    assertEquals(4, doWhile(-2));
+    assertEquals(4, doWhile(0));
+    assertEquals(4, doWhile(2));
+    try {
+      doWhile(1);
+      throw new Error("Expected IOOBE");
+    } catch (IndexOutOfBoundsException e) {
+    }
+
+    System.out.println("passed");
   }
 }

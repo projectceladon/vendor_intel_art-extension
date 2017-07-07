@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #include "gc/heap.h"
@@ -26,10 +24,8 @@ namespace art {
 namespace gc {
 namespace collector {
 
-StickyMarkSweep::StickyMarkSweep(Heap* heap, bool is_concurrent, bool is_copying,
-                                 const std::string& name_prefix)
-    : PartialMarkSweep(heap, is_concurrent, is_copying, /* sticky doesn't support coying*/
-                       name_prefix.empty() ? "sticky " : name_prefix) {
+StickyMarkSweep::StickyMarkSweep(Heap* heap, bool is_concurrent, const std::string& name_prefix)
+    : PartialMarkSweep(heap, is_concurrent, name_prefix.empty() ? "sticky " : name_prefix) {
   cumulative_timings_.SetName(GetName());
 }
 
@@ -58,6 +54,19 @@ void StickyMarkSweep::MarkReachableObjects() {
   // TODO: Not put these objects in the mark stack in the first place.
   mark_stack_->Reset();
   RecursiveMarkDirtyObjects(false, accounting::CardTable::kCardDirty - 1);
+}
+
+void StickyMarkSweep::MarkConcurrentRoots(VisitRootFlags flags) {
+  TimingLogger::ScopedTiming t(__FUNCTION__, GetTimings());
+  // Visit all runtime roots and clear dirty flags including class loader. This is done to prevent
+  // incorrect class unloading since the GC does not card mark when storing store the class during
+  // object allocation. Doing this for each allocation would be slow.
+  // Since the card is not dirty, it means the object may not get scanned. This can cause class
+  // unloading to occur even though the class and class loader are reachable through the object's
+  // class.
+  Runtime::Current()->VisitConcurrentRoots(
+      this,
+      static_cast<VisitRootFlags>(flags | kVisitRootFlagClassLoader));
 }
 
 void StickyMarkSweep::Sweep(bool swap_bitmaps ATTRIBUTE_UNUSED) {

@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_RUNTIME_GC_ALLOCATOR_ROSALLOC_H_
@@ -34,8 +32,6 @@
 #include "base/logging.h"
 #include "globals.h"
 #include "thread.h"
-#include "gc/accounting/space_bitmap.h"
-#include "gc/object_byte_pair.h"
 
 namespace art {
 
@@ -145,7 +141,7 @@ class RosAlloc {
   template<bool kUseTail = true>
   class SlotFreeList {
    public:
-    SlotFreeList() : head_(0U), tail_(0), size_(0) {}
+    SlotFreeList() : head_(0U), tail_(0), size_(0), padding_(0) {}
     Slot* Head() const {
       return reinterpret_cast<Slot*>(head_);
     }
@@ -424,8 +420,6 @@ class RosAlloc {
     // Allocates a slot in a run.
     ALWAYS_INLINE void* AllocSlot();
     // Frees a slot in a run. This is used in a non-bulk free.
-    // This is also used in parallel copying to revoke thread local slots.
-    template<bool kThreadLocal = false>
     void FreeSlot(void* ptr);
     // Add the given slot to the bulk free list. Returns the bracket size.
     size_t AddToBulkFreeList(void* ptr);
@@ -747,7 +741,6 @@ class RosAlloc {
   // The table that indicates what pages are currently used for.
   volatile uint8_t* page_map_;  // No GUARDED_BY(lock_) for kReadPageMapEntryWithoutLockInBulkFree.
   size_t page_map_size_;
-  size_t cur_page_map_size_snapshot_;
   size_t max_page_map_size_;
   std::unique_ptr<MemMap> page_map_mem_map_;
 
@@ -760,11 +753,9 @@ class RosAlloc {
   // and the footprint.
   Mutex lock_ DEFAULT_MUTEX_ACQUIRED_AFTER;
   // The reader-writer lock to allow one bulk free at a time while
-  // allowing multiple individual frees at the same time.
-  // Currently RosAlloc is using bulk free(BulkFree) to free garbages
-  // The individual free is not used any more. Thus no need this lock
-  // for BulkFree. Keep this lock for multiple individual frees, since
-  // the individual free code is still there.
+  // allowing multiple individual frees at the same time. Also, this
+  // is used to avoid race conditions between BulkFree() and
+  // RevokeThreadLocalRuns() on the bulk free list.
   ReaderWriterMutex bulk_free_lock_ DEFAULT_MUTEX_ACQUIRED_AFTER;
 
   // The page release mode.
@@ -807,7 +798,7 @@ class RosAlloc {
 
   // Used to acquire a new/reused run for a size bracket. Used when a
   // thread-local or current run gets full.
-  Run* RefillRun(size_t idx) REQUIRES(!lock_);
+  Run* RefillRun(Thread* self, size_t idx) REQUIRES(!lock_);
 
   // The internal of non-bulk Free().
   size_t FreeInternal(Thread* self, void* ptr) REQUIRES(!lock_);
@@ -818,7 +809,7 @@ class RosAlloc {
       REQUIRES(!lock_);
 
   // Revoke a run by adding it to non_full_runs_ or freeing the pages.
-  bool RevokeRun(Thread* self, size_t idx, Run* run) REQUIRES(!lock_);
+  void RevokeRun(Thread* self, size_t idx, Run* run) REQUIRES(!lock_);
 
   // Revoke the current runs which share an index with the thread local runs.
   void RevokeThreadUnsafeCurrentRuns() REQUIRES(!lock_);
@@ -857,22 +848,6 @@ class RosAlloc {
       REQUIRES(!lock_);
   size_t Free(Thread* self, void* ptr)
       REQUIRES(!bulk_free_lock_, !lock_);
-  void UpdateRunMetadata(Thread* self, Run* run) NO_THREAD_SAFETY_ANALYSIS;
-  ObjectBytePair SweepRun(Thread* self, Run* run, size_t bracket_idx, uintptr_t* live,
-                          uintptr_t* mark, accounting::ContinuousSpaceBitmap* live_bitmap,
-                          bool swap_bitmaps);
-  // SweepWalkPagemap is using free_page_run_size_map_ table to bypass free pages.
-  // The table is guarded by lock_. No need lock_ for SweepWalkPagemap, because it's
-  // OK to bypass fewer pages if this table is modified by new allocation during walking,
-  // since there is no record in the live and mark bitmap for new allocated pages.
-  ObjectBytePair SweepWalkPagemap(bool swap_bitmaps) NO_THREAD_SAFETY_ANALYSIS;
-  void SweepWalkPagemapRange(Thread* self, size_t begin_page_idx, size_t end_page_idx,
-                             uintptr_t* live, uintptr_t* mark,
-                             accounting::ContinuousSpaceBitmap* live_bitmap,
-                             uintptr_t space_begin, bool swap_bitmaps,
-                             ObjectBytePair* freed_pair_ptr)
-      NO_THREAD_SAFETY_ANALYSIS;
-  void SetPageMapSizeSnapshot();
   size_t BulkFree(Thread* self, void** ptrs, size_t num_ptrs)
       REQUIRES(!bulk_free_lock_, !lock_);
 
@@ -882,9 +857,7 @@ class RosAlloc {
   // Allocate the given allocation request in an existing thread local
   // run without allocating a new run.
   ALWAYS_INLINE void* AllocFromThreadLocalRun(Thread* self, size_t size, size_t* bytes_allocated);
-  // Free object in thread local run.
-  // Used for parallel copy in GSS.
-  bool FreeFromThreadLocalRun(Thread* self, size_t size, void* addr);
+
   // Returns the maximum bytes that could be allocated for the given
   // size in bulk, that is the maximum value for the
   // bytes_allocated_bulk out param returned by RosAlloc::Alloc().

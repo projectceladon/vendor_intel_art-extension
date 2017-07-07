@@ -27,7 +27,7 @@
 #include "mirror/class-inl.h"
 #include "mirror/string-inl.h"  // Strings are easiest to allocate
 #include "object_lock.h"
-#include "scoped_thread_state_change.h"
+#include "scoped_thread_state_change-inl.h"
 #include "thread_pool.h"
 
 namespace art {
@@ -61,7 +61,7 @@ static const size_t kMaxHandles = 1000000;  // Use arbitrary large amount for no
 static void FillHeap(Thread* self, ClassLinker* class_linker,
                      std::unique_ptr<StackHandleScope<kMaxHandles>>* hsp,
                      std::vector<MutableHandle<mirror::Object>>* handles)
-    SHARED_REQUIRES(Locks::mutator_lock_) {
+    REQUIRES_SHARED(Locks::mutator_lock_) {
   Runtime::Current()->GetHeap()->SetIdealFootprint(1 * GB);
 
   hsp->reset(new StackHandleScope<kMaxHandles>(self));
@@ -77,7 +77,7 @@ static void FillHeap(Thread* self, ClassLinker* class_linker,
   while (length > 10) {
     MutableHandle<mirror::Object> h((*hsp)->NewHandle<mirror::Object>(
         mirror::ObjectArray<mirror::Object>::Alloc(self, ca.Get(), length / 4)));
-    if (self->IsExceptionPending() || h.Get() == nullptr) {
+    if (self->IsExceptionPending() || h == nullptr) {
       self->ClearException();
 
       // Try a smaller length
@@ -95,7 +95,7 @@ static void FillHeap(Thread* self, ClassLinker* class_linker,
   // Allocate simple objects till it fails.
   while (!self->IsExceptionPending()) {
     MutableHandle<mirror::Object> h = (*hsp)->NewHandle<mirror::Object>(c->AllocObject(self));
-    if (!self->IsExceptionPending() && h.Get() != nullptr) {
+    if (!self->IsExceptionPending() && h != nullptr) {
       handles->push_back(h);
     }
   }
@@ -401,14 +401,11 @@ TEST_F(MonitorTest, TestTryLock) {
   Thread* const self = Thread::Current();
   ThreadPool thread_pool("the pool", 2);
   ScopedObjectAccess soa(self);
-  StackHandleScope<3> hs(self);
+  StackHandleScope<1> hs(self);
   Handle<mirror::Object> obj1(
-      hs.NewHandle<mirror::Object>(mirror::String::AllocFromModifiedUtf8(self, "hello, world!")));
-  Handle<mirror::Object> obj2(
       hs.NewHandle<mirror::Object>(mirror::String::AllocFromModifiedUtf8(self, "hello, world!")));
   {
     ObjectLock<mirror::Object> lock1(self, obj1);
-    ObjectLock<mirror::Object> lock2(self, obj1);
     {
       ObjectTryLock<mirror::Object> trylock(self, obj1);
       EXPECT_TRUE(trylock.Acquired());

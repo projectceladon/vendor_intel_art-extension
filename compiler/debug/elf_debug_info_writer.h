@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_COMPILER_DEBUG_ELF_DEBUG_INFO_WRITER_H_
@@ -23,6 +21,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "art_field-inl.h"
 #include "debug/dwarf/debug_abbrev_writer.h"
 #include "debug/dwarf/debug_info_entry_writer.h"
 #include "debug/elf_compilation_unit.h"
@@ -55,7 +54,7 @@ static std::vector<const char*> GetParamNames(const MethodDebugInfo* mi) {
       uint32_t parameters_size = DecodeUnsignedLeb128(&stream);
       for (uint32_t i = 0; i < parameters_size; ++i) {
         uint32_t id = DecodeUnsignedLeb128P1(&stream);
-        names.push_back(mi->dex_file->StringDataByIdx(id));
+        names.push_back(mi->dex_file->StringDataByIdx(dex::StringIndex(id)));
       }
     }
   }
@@ -99,6 +98,8 @@ class ElfDebugInfoWriter {
   dwarf::DebugAbbrevWriter<> debug_abbrev_;
   std::vector<uint8_t> debug_loc_;
   std::vector<uint8_t> debug_ranges_;
+
+  std::unordered_set<const char*> defined_dex_classes_;  // For CHECKs only.
 
   template<typename ElfTypes2>
   friend class ElfCompilationUnitWriter;
@@ -158,6 +159,9 @@ class ElfCompilationUnitWriter {
         size_t class_offset = StartClassTag(dex_class_desc);
         info_.UpdateUint32(type_attrib_offset, class_offset);
         info_.WriteFlagPresent(DW_AT_declaration);
+        // Check that each class is defined only once.
+        bool unique = owner_->defined_dex_classes_.insert(dex_class_desc).second;
+        CHECK(unique) << "Redefinition of " << dex_class_desc;
         last_dex_class_desc = dex_class_desc;
       }
 
@@ -272,7 +276,7 @@ class ElfCompilationUnitWriter {
     owner_->builder_->GetDebugInfo()->WriteFully(buffer.data(), buffer.size());
   }
 
-  void Write(const ArrayRef<mirror::Class*>& types) SHARED_REQUIRES(Locks::mutator_lock_) {
+  void Write(const ArrayRef<mirror::Class*>& types) REQUIRES_SHARED(Locks::mutator_lock_) {
     using namespace dwarf;  // NOLINT. For easy access to DWARF constants.
 
     info_.StartTag(DW_TAG_compile_unit);
@@ -463,7 +467,7 @@ class ElfCompilationUnitWriter {
   // Linkage name uniquely identifies type.
   // It is used to determine the dynamic type of objects.
   // We use the methods_ field of class since it is unique and it is not moved by the GC.
-  void WriteLinkageName(mirror::Class* type) SHARED_REQUIRES(Locks::mutator_lock_) {
+  void WriteLinkageName(mirror::Class* type) REQUIRES_SHARED(Locks::mutator_lock_) {
     auto* methods_ptr = type->GetMethodsPtr();
     if (methods_ptr == nullptr) {
       // Some types might have no methods.  Allocate empty array instead.

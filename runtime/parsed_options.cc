@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #include "parsed_options.h"
@@ -25,6 +23,7 @@
 #include "gc/heap.h"
 #include "monitor.h"
 #include "runtime.h"
+#include "ti/agent.h"
 #include "trace.h"
 #include "utils.h"
 
@@ -92,6 +91,13 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
       .Define({"-Xrunjdwp:_", "-agentlib:jdwp=_"})
           .WithType<JDWP::JdwpOptions>()
           .IntoKey(M::JdwpOptions)
+      // TODO Re-enable -agentlib: once I have a good way to transform the values.
+      // .Define("-agentlib:_")
+      //     .WithType<std::vector<ti::Agent>>().AppendValues()
+      //     .IntoKey(M::AgentLib)
+      .Define("-agentpath:_")
+          .WithType<std::list<ti::Agent>>().AppendValues()
+          .IntoKey(M::AgentPath)
       .Define("-Xms_")
           .WithType<MemoryKiB>()
           .IntoKey(M::MemoryInitialSize)
@@ -110,18 +116,6 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
       .Define("-XX:NonMovingSpaceCapacity=_")
           .WithType<MemoryKiB>()
           .IntoKey(M::NonMovingSpaceCapacity)
-      .Define("-XX:BumpSpaceCapacity=_")
-          .WithType<MemoryKiB>()
-          .IntoKey(M::BumpSpaceCapacity)
-      .Define("-XX:TenureThreshold=_")
-          .WithType<unsigned int>()
-          .IntoKey(M::TenureThreshold)
-      .Define("-XX:TLABSize=_")
-          .WithType<MemoryKiB>()
-          .IntoKey(M::TLABSize)
-      .Define("-XX:TLABAllocThreshold=_")
-          .WithType<MemoryKiB>()
-          .IntoKey(M::TLABAllocThreshold)
       .Define("-XX:HeapTargetUtilization=_")
           .WithType<double>().WithRange(0.1, 0.9)
           .IntoKey(M::HeapTargetUtilization)
@@ -134,12 +128,6 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
       .Define("-XX:ConcGCThreads=_")
           .WithType<unsigned int>()
           .IntoKey(M::ConcGCThreads)
-      .Define("-XX:ConcurrentGCCycleStart=_")
-          .WithType<unsigned int>()
-          .IntoKey(M::ConcurrentGCCycleStart)
-      .Define("-XX:ConcurrentGCStartFactor=_")
-          .WithType<unsigned int>()
-          .IntoKey(M::ConcurrentGCStartFactor)
       .Define("-Xss_")
           .WithType<Memory<1>>()
           .IntoKey(M::StackSize)
@@ -196,8 +184,13 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
           .WithType<unsigned int>()
           .IntoKey(M::JITInvokeTransitionWeight)
       .Define("-Xjitsaveprofilinginfo")
-          .WithValue(true)
-          .IntoKey(M::JITSaveProfilingInfo)
+          .WithType<ProfileSaverOptions>()
+          .AppendValues()
+          .IntoKey(M::ProfileSaverOpts)
+      .Define("-Xps-_")  // profile saver options -Xps-<key>:<value>
+          .WithType<ProfileSaverOptions>()
+          .AppendValues()
+          .IntoKey(M::ProfileSaverOpts)  // NOTE: Appends into same key as -Xjitsaveprofilinginfo
       .Define("-XX:HspaceCompactForOOMMinIntervalMs=_")  // in ms
           .WithType<MillisecondsToNanoseconds>()  // store as ns
           .IntoKey(M::HSpaceCompactForOOMMinIntervalsMs)
@@ -213,9 +206,6 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
       .Define({"-Xrelocate", "-Xnorelocate"})
           .WithValues({true, false})
           .IntoKey(M::Relocate)
-      .Define({"-XCHA", "-XnoCHA"})
-          .WithValues({true, false})
-          .IntoKey(M::CHA)
       .Define({"-Xdex2oat", "-Xnodex2oat"})
           .WithValues({true, false})
           .IntoKey(M::Dex2Oat)
@@ -267,14 +257,6 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
                          {"wallclock",      TraceClockSource::kWall},
                          {"dualclock",      TraceClockSource::kDual}})
           .IntoKey(M::ProfileClock)
-      .Define("-Xenable-profiler")
-          .WithType<TestProfilerOptions>()
-          .AppendValues()
-          .IntoKey(M::ProfilerOpts)  // NOTE: Appends into same key as -Xprofile-*
-      .Define("-Xprofile-_")  // -Xprofile-<key>:<value>
-          .WithType<TestProfilerOptions>()
-          .AppendValues()
-          .IntoKey(M::ProfilerOpts)  // NOTE: Appends into same key as -Xenable-profiler
       .Define("-Xcompiler:_")
           .WithType<std::string>()
           .IntoKey(M::Compiler)
@@ -299,10 +281,6 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
       .Define("-Xzygote-max-boot-retry=_")
           .WithType<unsigned int>()
           .IntoKey(M::ZygoteMaxFailedBoots)
-      .Define("-Xjit-stress-mode")
-          .IntoKey(M::JitStressMode)
-      .Define("-Xjit-block-mode")
-          .IntoKey(M::JitBlockMode)
       .Define("-Xno-dex-file-fallback")
           .IntoKey(M::NoDexFileFallback)
       .Define("-Xno-sig-chain")
@@ -319,21 +297,12 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
           .IntoKey(M::Experimental)
       .Define("-Xforce-nb-testing")
           .IntoKey(M::ForceNativeBridge)
-      .Define("-XOatFileManagerCompilerFilter:_")
-          .WithType<std::string>()
-          .IntoKey(M::OatFileManagerCompilerFilter)
-      .Define("-XX:GcProfile")
-          .WithValue(true)
-          .IntoKey(M::GcProfile)
-      .Define("-X:GcProfileDir:_")
-          .WithType<std::string>()
-          .IntoKey(M::GcProfileDir)
-      .Define("-XX:GcProfAlloc")
-          .WithValue(true)
-          .IntoKey(M::GcProfAlloc)
-      .Define("-XX:GcProfAtStart")
-          .WithValue(true)
-          .IntoKey(M::GcProfAtStart)
+      .Define("-Xplugin:_")
+          .WithType<std::vector<Plugin>>().AppendValues()
+          .IntoKey(M::Plugins)
+      .Define("-XX:ThreadSuspendTimeout=_")  // in ms
+          .WithType<MillisecondsToNanoseconds>()  // store as ns
+          .IntoKey(M::ThreadSuspendTimeout)
       .Ignore({
           "-ea", "-da", "-enableassertions", "-disableassertions", "--runtime-arg", "-esa",
           "-dsa", "-enablesystemassertions", "-disablesystemassertions", "-Xrs", "-Xint:_",
@@ -467,12 +436,6 @@ static void MaybeOverrideVerbosity() {
 bool ParsedOptions::DoParse(const RuntimeOptions& options,
                             bool ignore_unrecognized,
                             RuntimeArgumentMap* runtime_options) {
-  // Initialize Gc profiling parameters, turn off by default.
-  enable_gcprofile_ = false;
-  gcprofile_dir_ = "/data/local/tmp/gcprofile";
-  enable_succ_alloc_profile_ = false;
-  enable_gcprofile_at_start_ = false;
-
   for (size_t i = 0; i < options.size(); ++i) {
     if (true && options[0].first == "-Xzygote") {
       LOG(INFO) << "option[" << i << "]=" << options[i].first;
@@ -513,8 +476,10 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
     Usage(nullptr);
     return false;
   } else if (args.Exists(M::ShowVersion)) {
-    UsageMessage(stdout, "ART version %s\n", Runtime::GetVersion());
-    UsageMessage(stdout, "Extension version %s\n", Runtime::GetArtExtensionVersion());
+    UsageMessage(stdout,
+                 "ART version %s %s\n",
+                 Runtime::GetVersion(),
+                 GetInstructionSetString(kRuntimeISA));
     Exit(0);
   } else if (args.Exists(M::BootClassPath)) {
     LOG(INFO) << "setting boot class path to " << *args.Get(M::BootClassPath);
@@ -523,11 +488,6 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
   if (args.GetOrDefault(M::UseJitCompilation) && args.GetOrDefault(M::Interpret)) {
     Usage("-Xusejit:true and -Xint cannot be specified together");
     Exit(0);
-  }
-
-  if (args.Exists(M::JitStressMode)) {
-    args.Set(M::JITWarmupThreshold, 1U);
-    args.Set(M::JITCompileThreshold, 1U);
   }
 
   // Set a default boot class path if we didn't get an explicit one via command line.
@@ -540,7 +500,11 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
     args.SetIfMissing(M::ClassPath, std::string(getenv("CLASSPATH")));
   }
 
-  // -Xverbose:
+  // Default to number of processors minus one since the main GC thread also does work.
+  args.SetIfMissing(M::ParallelGCThreads, gc::Heap::kDefaultEnableParallelGC ?
+      static_cast<unsigned int>(sysconf(_SC_NPROCESSORS_CONF) - 1u) : 0u);
+
+  // -verbose:
   {
     LogVerbosity *log_verbosity = args.Get(M::Verbose);
     if (log_verbosity != nullptr) {
@@ -574,10 +538,6 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
       }
     }
 
-    if (collector_type_ == gc::kCollectorTypeGenCopying) {
-      background_collector_type_ = collector_type_;
-    }
-
     if (background_collector_type_ == gc::kCollectorTypeNone) {
       if (collector_type_ != gc::kCollectorTypeGSS) {
         background_collector_type_ = low_memory_mode_ ?
@@ -588,18 +548,6 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
     }
 
     args.Set(M::BackgroundGc, BackgroundGcOption { background_collector_type_ });
-
-    // If foregroud is SS/GSS, Enable Parallel GC without considering kDefaultEnableParallelGC.
-    if (collector_type_ == gc::kCollectorTypeGSS ||
-        collector_type_ == gc::kCollectorTypeSS ||
-        collector_type_ == gc::kCollectorTypeGenCopying) {
-        args.SetIfMissing(M::ParallelGCThreads,
-            static_cast<unsigned int>(sysconf(_SC_NPROCESSORS_CONF) - 1u));
-    } else {
-      // Default to number of processors minus one since the main GC thread also does work.
-      args.SetIfMissing(M::ParallelGCThreads, gc::Heap::kDefaultEnableParallelGC ?
-          static_cast<unsigned int>(sysconf(_SC_NPROCESSORS_CONF) - 1u) : 0u);
-    }
   }
 
   // If a reference to the dalvik core.jar snuck in, replace it with
@@ -652,12 +600,6 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
     args.Set(M::HeapGrowthLimit, args.GetOrDefault(M::MemoryMaximumSize));
   }
 
-  if (args.GetOrDefault(M::Experimental) & ExperimentalFlags::kLambdas) {
-    LOG(WARNING) << "Experimental lambdas have been enabled. All lambda opcodes have "
-                 << "an unstable specification and are nearly guaranteed to change over time. "
-                 << "Do not attempt to write shipping code against these opcodes.";
-  }
-
   *runtime_options = std::move(args);
   return true;
 }
@@ -702,6 +644,11 @@ void ParsedOptions::Usage(const char* fmt, ...) {
   UsageMessage(stream, "  -showversion\n");
   UsageMessage(stream, "  -help\n");
   UsageMessage(stream, "  -agentlib:jdwp=options\n");
+  // TODO add back in once -agentlib actually does something.
+  // UsageMessage(stream, "  -agentlib:library=options (Experimental feature, "
+  //                      "requires -Xexperimental:agent, some features might not be supported)\n");
+  UsageMessage(stream, "  -agentpath:library_path=options (Experimental feature, "
+                       "requires -Xexperimental:agent, some features might not be supported)\n");
   UsageMessage(stream, "\n");
 
   UsageMessage(stream, "The following extended options are supported:\n");
@@ -745,6 +692,7 @@ void ParsedOptions::Usage(const char* fmt, ...) {
   UsageMessage(stream, "  -XX:MaxSpinsBeforeThinLockInflation=integervalue\n");
   UsageMessage(stream, "  -XX:LongPauseLogThreshold=integervalue\n");
   UsageMessage(stream, "  -XX:LongGCLogThreshold=integervalue\n");
+  UsageMessage(stream, "  -XX:ThreadSuspendTimeout=integervalue\n");
   UsageMessage(stream, "  -XX:DumpGCPerformanceOnShutdown\n");
   UsageMessage(stream, "  -XX:DumpJITInfoOnShutdown\n");
   UsageMessage(stream, "  -XX:IgnoreMaxFootprint\n");
@@ -756,19 +704,14 @@ void ParsedOptions::Usage(const char* fmt, ...) {
   UsageMessage(stream, "  -Xmethod-trace\n");
   UsageMessage(stream, "  -Xmethod-trace-file:filename");
   UsageMessage(stream, "  -Xmethod-trace-file-size:integervalue\n");
-  UsageMessage(stream, "  -Xenable-profiler\n");
-  UsageMessage(stream, "  -Xprofile-filename:filename\n");
-  UsageMessage(stream, "  -Xprofile-period:integervalue\n");
-  UsageMessage(stream, "  -Xprofile-duration:integervalue\n");
-  UsageMessage(stream, "  -Xprofile-interval:integervalue\n");
-  UsageMessage(stream, "  -Xprofile-backoff:doublevalue\n");
-  UsageMessage(stream, "  -Xprofile-start-immediately\n");
-  UsageMessage(stream, "  -Xprofile-top-k-threshold:doublevalue\n");
-  UsageMessage(stream, "  -Xprofile-top-k-change-threshold:doublevalue\n");
-  UsageMessage(stream, "  -Xprofile-type:{method,stack}\n");
-  UsageMessage(stream, "  -Xprofile-max-stack-depth:integervalue\n");
-  UsageMessage(stream, "  -Xprofile-call-counts\n");
-  UsageMessage(stream, "  -Xprofile-call-count-ratio:doublevalue\n");
+  UsageMessage(stream, "  -Xps-min-save-period-ms:integervalue\n");
+  UsageMessage(stream, "  -Xps-save-resolved-classes-delay-ms:integervalue\n");
+  UsageMessage(stream, "  -Xps-startup-method-samples:integervalue\n");
+  UsageMessage(stream, "  -Xps-min-methods-to-save:integervalue\n");
+  UsageMessage(stream, "  -Xps-min-classes-to-save:integervalue\n");
+  UsageMessage(stream, "  -Xps-min-notification-before-wake:integervalue\n");
+  UsageMessage(stream, "  -Xps-max-notification-before-wake:integervalue\n");
+  UsageMessage(stream, "  -Xps-profile-path:file-path\n");
   UsageMessage(stream, "  -Xcompiler:filename\n");
   UsageMessage(stream, "  -Xcompiler-option dex2oat-option\n");
   UsageMessage(stream, "  -Ximage-compiler-option dex2oat-option\n");
@@ -780,13 +723,16 @@ void ParsedOptions::Usage(const char* fmt, ...) {
   UsageMessage(stream, "  -Xjitosrthreshold:integervalue\n");
   UsageMessage(stream, "  -Xjitprithreadweight:integervalue\n");
   UsageMessage(stream, "  -X[no]relocate\n");
-  UsageMessage(stream, "  -X[no]CHA\n");
   UsageMessage(stream, "  -X[no]dex2oat (Whether to invoke dex2oat on the application)\n");
   UsageMessage(stream, "  -X[no]image-dex2oat (Whether to create and use a boot image)\n");
   UsageMessage(stream, "  -Xno-dex-file-fallback "
                        "(Don't fall back to dex files without oat files)\n");
-  UsageMessage(stream, "  -Xexperimental:lambdas "
-                       "(Enable new and experimental dalvik opcodes and semantics)\n");
+  UsageMessage(stream, "  -Xplugin:<library.so> "
+                       "(Load a runtime plugin, requires -Xexperimental:runtime-plugins)\n");
+  UsageMessage(stream, "  -Xexperimental:runtime-plugins"
+                       "(Enable new and experimental agent support)\n");
+  UsageMessage(stream, "  -Xexperimental:agents"
+                       "(Enable new and experimental agent support)\n");
   UsageMessage(stream, "\n");
 
   UsageMessage(stream, "The following previously supported Dalvik options are ignored:\n");
@@ -823,10 +769,6 @@ void ParsedOptions::Usage(const char* fmt, ...) {
   UsageMessage(stream, "  -Xjitdisableopt\n");
   UsageMessage(stream, "  -Xjitsuspendpoll\n");
   UsageMessage(stream, "  -XX:mainThreadStackSize=N\n");
-  UsageMessage(stream, "  -XX:GcProfile\n");
-  UsageMessage(stream, "  -XGcProfileDir:dirname\n");
-  UsageMessage(stream, "  -XX:GcProfAlloc\n");
-  UsageMessage(stream, "  -XX:GcProfAtStart\n");
   UsageMessage(stream, "\n");
 
   Exit((error) ? 1 : 0);

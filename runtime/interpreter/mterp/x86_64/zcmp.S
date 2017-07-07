@@ -14,12 +14,4 @@
 1:
     cmpl    $$JIT_CHECK_OSR, rPROFILE
     je      .L_check_not_taken_osr
-    cmpl    $$0, OFF_FP_PROFILE_ACTIVE(rFP)
-    jne     2f
     ADVANCE_PC_FETCH_AND_GOTO_NEXT 2
-2:  ADVANCE_PC 2
-    EXPORT_PC
-    leaq    OFF_FP_SHADOWFRAME(rFP), OUT_ARG0
-    call    SYMBOL(MterpIncrementBB)          # (shadow_frame)
-    FETCH_INST
-    GOTO_NEXT

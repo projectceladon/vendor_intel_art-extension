@@ -13,8 +13,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #include "rosalloc_space-inl.h"
@@ -202,14 +200,6 @@ size_t RosAllocSpace::Free(Thread* self, mirror::Object* ptr) {
   return rosalloc_->Free(self, ptr);
 }
 
-size_t RosAllocSpace::FreeNonThread(Thread* self, mirror::Object* ptr) {
-  if (kDebugSpaces) {
-    CHECK(ptr != nullptr);
-    CHECK(Contains(ptr)) << "Free (" << ptr << ") not in bounds of heap " << *this;
-  }
-  return rosalloc_->Free(self, ptr);
-}
-
 size_t RosAllocSpace::FreeList(Thread* self, size_t num_ptrs, mirror::Object** ptrs) {
   DCHECK(ptrs != nullptr);
 
@@ -389,7 +379,7 @@ namespace allocator {
 
 // Callback from rosalloc when it needs to increase the footprint.
 void* ArtRosAllocMoreCore(allocator::RosAlloc* rosalloc, intptr_t increment)
-    SHARED_REQUIRES(Locks::mutator_lock_) {
+    REQUIRES_SHARED(Locks::mutator_lock_) {
   Heap* heap = Runtime::Current()->GetHeap();
   art::gc::space::RosAllocSpace* rosalloc_space = heap->GetRosAllocSpace(rosalloc);
   DCHECK(rosalloc_space != nullptr);
