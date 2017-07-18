@@ -15,7 +15,7 @@
 //
 
 art_cc_defaults {
-    name: "art_test_defaults1",
+    name: "art_test_defaults",
     host_supported: true,
     target: {
         android_arm: {
@@ -31,10 +31,10 @@ art_cc_defaults {
             relative_install_path: "art/mips64",
         },
         android_x86: {
-            relative_install_path: "art/x86",
+            relative_install_path: "vendor/intel/art-extension/x86",
         },
         android_x86_64: {
-            relative_install_path: "art/x86_64",
+            relative_install_path: "vendor/intel/art-extension/x86_64",
         },
         darwin: {
             enabled: false,
@@ -46,14 +46,14 @@ art_cc_defaults {
 }
 
 art_cc_defaults {
-    name: "art_gtest_defaults1",
+    name: "art_gtest_defaults",
     test_per_src: true,
     // These really are gtests, but the gtest library comes from libart-gtest.so
     gtest: false,
     defaults: [
-        "art_defaults1",
-        "art_debug_defaults1",
-        "art_test_defaults1",
+        "art_defaults",
+        "art_debug_defaults",
+        "art_test_defaults",
     ],
 
     shared_libs: [
@@ -72,8 +72,8 @@ art_cc_defaults {
         "libsigchain",
     ],
     include_dirs: [
-        "art",
-        "art/cmdline",
+        "vendor/intel/art-extension",
+        "vendor/intel/art-extension/cmdline",
     ],
 
     target: {
@@ -125,11 +125,11 @@ art_cc_defaults {
 }
 
 art_cc_defaults {
-    name: "libart-gtest-defaults1",
+    name: "libart-gtest-defaults",
     host_supported: true,
     defaults: [
-        "art_defaults1",
-        "art_debug_defaults1",
+        "art_defaults",
+        "art_debug_defaults",
     ],
     shared_libs: [
         "libartd",
@@ -168,7 +168,7 @@ art_cc_defaults {
 }
 
 art_cc_library {
-    name: "libart-gtest1",
+    name: "libart-gtest",
     host_supported: true,
     whole_static_libs: [
         "libart-compiler-gtest",
@@ -200,10 +200,10 @@ art_cc_library {
 }
 
 cc_defaults {
-    name: "libartagent-defaults1",
+    name: "libartagent-defaults",
     defaults: [
-        "art_defaults1",
-        "art_test_defaults1",
+        "art_defaults",
+        "art_test_defaults",
     ],
     shared_libs: [
         "libbacktrace",
@@ -224,25 +224,25 @@ cc_defaults {
 }
 
 art_cc_test_library {
-    name: "libartagent1",
+    name: "libartagent",
     srcs: ["900-hello-plugin/load_unload.cc"],
-    defaults: ["libartagent-defaults1"],
+    defaults: ["libartagent-defaults"],
     shared_libs: ["libart"],
 }
 
 art_cc_test_library {
-    name: "libartagentd1",
+    name: "libartagentd",
     srcs: ["900-hello-plugin/load_unload.cc"],
     defaults: [
-        "libartagent-defaults1",
-        "art_debug_defaults1",
+        "libartagent-defaults",
+        "art_debug_defaults",
     ],
     shared_libs: ["libartd"],
 }
 
 art_cc_defaults {
-   name: "libtiagent-base-defaults1",
-    defaults: ["libartagent-defaults1"],
+   name: "libtiagent-base-defaults",
+    defaults: ["libartagent-defaults"],
     srcs: [
         // These are the ART-independent parts.
         "ti-agent/agent_common.cc",
@@ -283,12 +283,12 @@ art_cc_defaults {
         "libbase",
     ],
     header_libs: ["libopenjdkjvmti_headers"],
-    include_dirs: ["art/test/ti-agent"],
+    include_dirs: ["vendor/intel/art-extension/test/ti-agent"],
 }
 
 art_cc_defaults {
-    name: "libtiagent-defaults1",
-    defaults: ["libtiagent-base-defaults1"],
+    name: "libtiagent-defaults",
+    defaults: ["libtiagent-base-defaults"],
     srcs: [
         // This is to get the IsInterpreted native method.
         "common/stack_inspect.cc",
@@ -305,23 +305,23 @@ art_cc_defaults {
 }
 
 art_cc_test_library {
-    name: "libtiagent1",
-    defaults: ["libtiagent-defaults1"],
+    name: "libtiagent",
+    defaults: ["libtiagent-defaults"],
     shared_libs: ["libart"],
 }
 
 art_cc_test_library {
-    name: "libtiagentd1",
+    name: "libtiagentd",
     defaults: [
-        "libtiagent-defaults1",
-        "art_debug_defaults1",
+        "libtiagent-defaults",
+        "art_debug_defaults",
     ],
     shared_libs: ["libartd"],
 }
 
 art_cc_defaults {
-    name: "libtistress-defaults1",
-    defaults: ["libartagent-defaults1"],
+    name: "libtistress-defaults",
+    defaults: ["libartagent-defaults"],
     srcs: [
         "ti-stress/stress.cc",
     ],
@@ -332,31 +332,31 @@ art_cc_defaults {
 }
 
 art_cc_test_library {
-    name: "libtistress1",
-    defaults: [ "libtistress-defaults1"],
+    name: "libtistress",
+    defaults: [ "libtistress-defaults"],
     shared_libs: ["libart"],
 }
 
 art_cc_test_library {
-    name: "libtistressd1",
+    name: "libtistressd",
     defaults: [
-        "libtistress-defaults1",
-        "art_debug_defaults1",
+        "libtistress-defaults",
+        "art_debug_defaults",
     ],
     shared_libs: ["libartd"],
 }
 
 art_cc_test_library {
-    name: "libctstiagent1",
-    defaults: ["libtiagent-base-defaults1"],
+    name: "libctstiagent",
+    defaults: ["libtiagent-base-defaults"],
     export_include_dirs: ["ti-agent"],
 }
 
 cc_defaults {
-    name: "libarttest-defaults1",
+    name: "libarttest-defaults",
     defaults: [
-        "art_defaults1",
-        "art_test_defaults1",
+        "art_defaults",
+        "art_test_defaults",
     ],
     srcs: [
         "common/runtime_state.cc",
@@ -413,27 +413,27 @@ cc_defaults {
 }
 
 art_cc_test_library {
-    name: "libarttest1",
-    defaults: ["libarttest-defaults1"],
+    name: "libarttest",
+    defaults: ["libarttest-defaults"],
     shared_libs: ["libart"],
 }
 
 art_cc_test_library {
-    name: "libarttestd1",
+    name: "libarttestd",
     defaults: [
-        "libarttest-defaults1",
-        "art_debug_defaults1",
+        "libarttest-defaults",
+        "art_debug_defaults",
     ],
     shared_libs: ["libartd"],
 }
 
 art_cc_test_library {
-    name: "libnativebridgetest1",
+    name: "libnativebridgetest",
     shared_libs: ["libart"],
     defaults: [
-        "art_defaults1",
-        "art_debug_defaults1",
-        "art_test_defaults1",
+        "art_defaults",
+        "art_debug_defaults",
+        "art_test_defaults",
     ],
     srcs: ["115-native-bridge/nativebridge.cc"],
     target: {

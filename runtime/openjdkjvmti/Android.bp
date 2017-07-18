@@ -14,14 +14,14 @@
 // limitations under the License.
 
 cc_library_headers {
-    name: "libopenjdkjvmti_headers1",
+    name: "libopenjdkjvmti_headers",
     host_supported: true,
     export_include_dirs: ["include"],
 }
 
 cc_defaults {
-    name: "libopenjdkjvmti_defaults1",
-    defaults: ["art_defaults1"],
+    name: "libopenjdkjvmti_defaults",
+    defaults: ["art_defaults"],
     host_supported: true,
     srcs: ["events.cc",
            "fixed_up_dex_file.cc",
@@ -46,7 +46,7 @@ cc_defaults {
            "ti_threadgroup.cc",
            "ti_timers.cc",
            "transform.cc"],
-    include_dirs: ["art/runtime"],
+    include_dirs: ["vendor/intel/art-extension/runtime"],
     header_libs: ["libopenjdkjvmti_headers"],
     shared_libs: [
         "libbase",
@@ -55,8 +55,8 @@ cc_defaults {
 }
 
 art_cc_library {
-    name: "libopenjdkjvmti1",
-    defaults: ["libopenjdkjvmti_defaults1"],
+    name: "libopenjdkjvmti",
+    defaults: ["libopenjdkjvmti_defaults"],
     shared_libs: [
         "libart",
         "libart-compiler",
@@ -64,10 +64,10 @@ art_cc_library {
 }
 
 art_cc_library {
-    name: "libopenjdkjvmtid1",
+    name: "libopenjdkjvmtid",
     defaults: [
-        "art_debug_defaults1",
-        "libopenjdkjvmti_defaults1",
+        "art_debug_defaults",
+        "libopenjdkjvmti_defaults",
     ],
     shared_libs: [
         "libartd",

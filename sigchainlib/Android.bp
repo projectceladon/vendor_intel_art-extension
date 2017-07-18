@@ -15,9 +15,9 @@
 //
 
 cc_library {
-    name: "libsigchain1",
+    name: "libsigchain",
     host_supported: true,
-    defaults: ["art_defaults1"],
+    defaults: ["art_defaults"],
     shared: {
         srcs: ["sigchain_dummy.cc"],
     },
@@ -38,9 +38,9 @@ cc_library {
 // but throws when called. This can be used to get static binaries which don't
 // need the real functionality of the sig chain but need to please the linker.
 cc_library_static {
-    name: "libsigchain_dummy1",
+    name: "libsigchain_dummy",
     host_supported: true,
-    defaults: ["art_defaults1"],
+    defaults: ["art_defaults"],
     srcs: ["sigchain_dummy.cc"],
     target: {
         host: {

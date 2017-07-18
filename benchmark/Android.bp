@@ -15,9 +15,9 @@
 //
 
 art_cc_library {
-    name: "libartbenchmark1",
+    name: "libartbenchmark",
     host_supported: true,
-    defaults: ["art_defaults1" ],
+    defaults: ["art_defaults" ],
     srcs: [
         "jni_loader.cc",
         "jobject-benchmark/jobject_benchmark.cc",
@@ -46,10 +46,10 @@ art_cc_library {
 }
 
 art_cc_library {
-    name: "libartbenchmark-micronative-host1",
+    name: "libartbenchmark-micronative-host",
     host_supported: true,
     device_supported: false,
-    defaults: ["art_defaults1", "art_debug_defaults1"],
+    defaults: ["art_defaults", "art_debug_defaults"],
     srcs: [
         "jni_loader.cc",
         "micro-native/micro_native.cc",

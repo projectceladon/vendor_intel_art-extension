@@ -15,11 +15,11 @@
 //
 
 cc_defaults {
-    name: "libart_simulator_defaults1",
+    name: "libart_simulator_defaults",
     host_supported: true,
     device_supported: false,
 
-    defaults: ["art_defaults1"],
+    defaults: ["art_defaults"],
     srcs: [
         "code_simulator.cc",
         "code_simulator_arm64.cc",
@@ -30,12 +30,12 @@ cc_defaults {
     ],
     cflags: ["-DVIXL_INCLUDE_SIMULATOR_AARCH64"],
     export_include_dirs: ["."],
-    include_dirs: ["art/runtime"],
+    include_dirs: ["vendor/intel/art-extension/runtime"],
 }
 
 art_cc_library {
-    name: "libart-simulator1",
-    defaults: ["libart_simulator_defaults1"],
+    name: "libart-simulator",
+    defaults: ["libart_simulator_defaults"],
     shared_libs: [
         "libart",
         "libvixl-arm64",
@@ -43,10 +43,10 @@ art_cc_library {
 }
 
 art_cc_library {
-    name: "libartd-simulator1",
+    name: "libartd-simulator",
     defaults: [
-        "art_debug_defaults1",
-        "libart_simulator_defaults1",
+        "art_debug_defaults",
+        "libart_simulator_defaults",
     ],
     shared_libs: [
         "libartd",

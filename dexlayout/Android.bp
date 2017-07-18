@@ -13,8 +13,8 @@
 // limitations under the License.
 
 art_cc_defaults {
-    name: "libart-dexlayout-defaults1",
-    defaults: ["art_defaults1"],
+    name: "libart-dexlayout-defaults",
+    defaults: ["art_defaults"],
     host_supported: true,
     srcs: [
         "dexlayout.cc",
@@ -30,20 +30,20 @@ art_cc_defaults {
 }
 
 art_cc_library {
-    name: "libart-dexlayout1",
-    defaults: ["libart-dexlayout-defaults1"],
+    name: "libart-dexlayout",
+    defaults: ["libart-dexlayout-defaults"],
     shared_libs: ["libart"],
 }
 
 art_cc_library {
-    name: "libartd-dexlayout1",
-    defaults: ["libart-dexlayout-defaults1"],
+    name: "libartd-dexlayout",
+    defaults: ["libart-dexlayout-defaults"],
     shared_libs: ["libartd"],
 }
 
 art_cc_binary {
-    name: "dexlayout1",
-    defaults: ["art_defaults1"],
+    name: "dexlayout",
+    defaults: ["art_defaults"],
     host_supported: true,
     srcs: ["dexlayout_main.cc"],
     cflags: ["-Wall"],
@@ -55,14 +55,14 @@ art_cc_binary {
 }
 
 art_cc_test {
-    name: "art_dexlayout_tests1",
-    defaults: ["art_gtest_defaults1"],
+    name: "art_dexlayout_tests",
+    defaults: ["art_gtest_defaults"],
     srcs: ["dexlayout_test.cc"],
 }
 
 art_cc_binary {
-    name: "dexdiag1",
-    defaults: ["art_defaults1"],
+    name: "dexdiag",
+    defaults: ["art_defaults"],
     host_supported: false,
     srcs: ["dexdiag.cc"],
     cflags: ["-Wall"],

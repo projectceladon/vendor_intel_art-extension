@@ -14,11 +14,11 @@
 // limitations under the License.
 
 cc_defaults {
-    name: "libopenjdkjvm_defaults1",
-    defaults: ["art_defaults1"],
+    name: "libopenjdkjvm_defaults",
+    defaults: ["art_defaults"],
     host_supported: true,
     srcs: ["OpenjdkJvm.cc"],
-    include_dirs: ["art/runtime"],
+    include_dirs: ["vendor/intel/art-extension/runtime"],
     shared_libs: [
         "libbase",
         "libnativehelper"
@@ -26,16 +26,16 @@ cc_defaults {
 }
 
 art_cc_library {
-    name: "libopenjdkjvm1",
-    defaults: ["libopenjdkjvm_defaults1"],
+    name: "libopenjdkjvm",
+    defaults: ["libopenjdkjvm_defaults"],
     shared_libs: ["libart"],
 }
 
 art_cc_library {
-    name: "libopenjdkjvmd1",
+    name: "libopenjdkjvmd",
     defaults: [
-        "art_debug_defaults1",
-        "libopenjdkjvm_defaults1",
+        "art_debug_defaults",
+        "libopenjdkjvm_defaults",
     ],
     shared_libs: ["libartd"],
 }

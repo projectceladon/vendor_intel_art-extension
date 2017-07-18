@@ -15,8 +15,8 @@
 //
 
 cc_defaults {
-    name: "oatdump-defaults1",
-    defaults: ["art_defaults1"],
+    name: "oatdump-defaults",
+    defaults: ["art_defaults"],
     host_supported: true,
     srcs: ["oatdump.cc"],
     target: {
@@ -24,12 +24,12 @@ cc_defaults {
             shared_libs: ["libcutils"],
         },
     },
-    include_dirs: ["art/cmdline"],
+    include_dirs: ["vendor/intel/art-extension/cmdline"],
 }
 
 art_cc_binary {
-    name: "oatdump1",
-    defaults: ["oatdump-defaults1"],
+    name: "oatdump",
+    defaults: ["oatdump-defaults"],
     shared_libs: [
         "libart",
         "libart-compiler",
@@ -39,10 +39,10 @@ art_cc_binary {
 }
 
 art_cc_binary {
-    name: "oatdumpd1",
+    name: "oatdumpd",
     defaults: [
-        "art_debug_defaults1",
-        "oatdump-defaults1",
+        "art_debug_defaults",
+        "oatdump-defaults",
     ],
     shared_libs: [
         "libartd",
@@ -53,10 +53,10 @@ art_cc_binary {
 }
 
 art_cc_binary {
-    name: "oatdumps1",
+    name: "oatdumps",
     device_supported: false,
     static_executable: true,
-    defaults: ["oatdump-defaults1"],
+    defaults: ["oatdump-defaults"],
     target: {
         darwin: {
             enabled: false,
@@ -80,12 +80,12 @@ art_cc_binary {
 }
 
 art_cc_binary {
-    name: "oatdumpds1",
+    name: "oatdumpds",
     device_supported: false,
     static_executable: true,
     defaults: [
-        "art_debug_defaults1",
-        "oatdump-defaults1",
+        "art_debug_defaults",
+        "oatdump-defaults",
     ],
     target: {
         darwin: {
@@ -110,9 +110,9 @@ art_cc_binary {
 }
 
 art_cc_test {
-    name: "art_oatdump_tests1",
+    name: "art_oatdump_tests",
     defaults: [
-        "art_gtest_defaults1",
+        "art_gtest_defaults",
     ],
     srcs: ["oatdump_test.cc"],
 }

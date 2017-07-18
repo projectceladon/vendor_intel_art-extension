@@ -1,5 +1,5 @@
 bootstrap_go_package {
-    name: "soong-art1",
+    name: "soong-art",
     pkgPath: "android/soong/art",
     deps: [
         "blueprint",
@@ -19,7 +19,7 @@ bootstrap_go_package {
 art_global_defaults {
     // Additional flags are computed by art.go
 
-    name: "art_defaults1",
+    name: "art_defaults",
     clang: true,
     cflags: [
         // Base set of cflags used by all things ART.
@@ -155,7 +155,7 @@ art_global_defaults {
 }
 
 art_debug_defaults {
-    name: "art_debug_defaults1",
+    name: "art_debug_defaults",
     cflags: [
         "-DDYNAMIC_ANNOTATIONS_ENABLED=1",
         "-DVIXL_DEBUG",

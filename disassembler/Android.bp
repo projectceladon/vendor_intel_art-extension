@@ -15,8 +15,8 @@
 //
 
 art_cc_defaults {
-    name: "libart-disassembler-defaults1",
-    defaults: ["art_defaults1"],
+    name: "libart-disassembler-defaults",
+    defaults: ["art_defaults"],
     host_supported: true,
     clang: true,
     srcs: [
@@ -26,7 +26,7 @@ art_cc_defaults {
         "disassembler_mips.cc",
         "disassembler_x86.cc",
     ],
-    include_dirs: ["art/runtime"],
+    include_dirs: ["vendor/intel/art-extension/runtime"],
 
     shared_libs: [
         "libbase",
@@ -35,8 +35,8 @@ art_cc_defaults {
 }
 
 art_cc_library {
-    name: "libart-disassembler1",
-    defaults: ["libart-disassembler-defaults1"],
+    name: "libart-disassembler",
+    defaults: ["libart-disassembler-defaults"],
     shared_libs: [
         // For disassembler_arm*.
         "libvixl-arm",
@@ -45,10 +45,10 @@ art_cc_library {
 }
 
 art_cc_library {
-    name: "libartd-disassembler1",
+    name: "libartd-disassembler",
     defaults: [
-        "libart-disassembler-defaults1",
-        "art_debug_defaults1",
+        "libart-disassembler-defaults",
+        "art_debug_defaults",
     ],
     shared_libs: [
         // For disassembler_arm*.

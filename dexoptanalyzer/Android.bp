@@ -15,9 +15,9 @@
 //
 
 cc_defaults {
-    name: "dexoptanalyzer-defaults1",
+    name: "dexoptanalyzer-defaults",
     host_supported: true,
-    defaults: ["art_defaults1"],
+    defaults: ["art_defaults"],
     srcs: [
         "dexoptanalyzer.cc",
     ],
@@ -29,7 +29,7 @@ cc_defaults {
     },
 
     include_dirs: [
-        "art/cmdline",
+        "vendor/intel/art-extension/cmdline",
     ],
 
     shared_libs: [
@@ -38,18 +38,18 @@ cc_defaults {
 }
 
 art_cc_binary {
-    name: "dexoptanalyzer1",
-    defaults: ["dexoptanalyzer-defaults1"],
+    name: "dexoptanalyzer",
+    defaults: ["dexoptanalyzer-defaults"],
     shared_libs: [
         "libart",
     ],
 }
 
 art_cc_binary {
-    name: "dexoptanalyzerd1",
+    name: "dexoptanalyzerd",
     defaults: [
-        "dexoptanalyzer-defaults1",
-        "art_debug_defaults1",
+        "dexoptanalyzer-defaults",
+        "art_debug_defaults",
     ],
     shared_libs: [
         "libartd",
@@ -57,9 +57,9 @@ art_cc_binary {
 }
 
 art_cc_test {
-    name: "art_dexoptanalyzer_tests1",
+    name: "art_dexoptanalyzer_tests",
     defaults: [
-        "art_gtest_defaults1",
+        "art_gtest_defaults",
     ],
     shared_libs: [
         "libbacktrace"

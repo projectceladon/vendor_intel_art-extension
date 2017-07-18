@@ -15,7 +15,7 @@
 //
 
 art_cc_binary {
-    name: "dalvikvm1",
+    name: "dalvikvm",
     host_supported: true,
     compile_multilib: "both",
 
@@ -25,7 +25,7 @@ art_cc_binary {
         "-Werror",
         "-Wextra",
     ],
-    include_dirs: ["art/runtime"],
+    include_dirs: ["vendor/intel/art-extension/runtime"],
     shared_libs: [
         "libnativehelper",
     ],

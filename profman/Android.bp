@@ -15,9 +15,9 @@
 //
 
 cc_defaults {
-    name: "profman-defaults1",
+    name: "profman-defaults",
     host_supported: true,
-    defaults: ["art_defaults1"],
+    defaults: ["art_defaults"],
     srcs: [
         "profman.cc",
         "profile_assistant.cc",
@@ -30,7 +30,7 @@ cc_defaults {
     },
 
     include_dirs: [
-        "art/cmdline",
+        "vendor/intel/art-extension/cmdline",
     ],
 
     shared_libs: [
@@ -39,18 +39,18 @@ cc_defaults {
 }
 
 art_cc_binary {
-    name: "profman1",
-    defaults: ["profman-defaults1"],
+    name: "profman",
+    defaults: ["profman-defaults"],
     shared_libs: [
         "libart",
     ],
 }
 
 art_cc_binary {
-    name: "profmand1",
+    name: "profmand",
     defaults: [
-        "profman-defaults1",
-        "art_debug_defaults1",
+        "profman-defaults",
+        "art_debug_defaults",
     ],
     shared_libs: [
         "libartd",
@@ -58,9 +58,9 @@ art_cc_binary {
 }
 
 art_cc_test {
-    name: "art_profman_tests1",
+    name: "art_profman_tests",
     defaults: [
-        "art_gtest_defaults1",
+        "art_gtest_defaults",
     ],
     srcs: ["profile_assistant_test.cc"],
 }

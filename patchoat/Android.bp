@@ -15,9 +15,9 @@
 //
 
 cc_defaults {
-    name: "patchoat-defaults1",
+    name: "patchoat-defaults",
     host_supported: true,
-    defaults: ["art_defaults1"],
+    defaults: ["art_defaults"],
     srcs: ["patchoat.cc"],
     target: {
         android: {
@@ -30,18 +30,18 @@ cc_defaults {
 }
 
 art_cc_binary {
-    name: "patchoat1",
-    defaults: ["patchoat-defaults1"],
+    name: "patchoat",
+    defaults: ["patchoat-defaults"],
     shared_libs: [
         "libart",
     ],
 }
 
 art_cc_binary {
-    name: "patchoatd1",
+    name: "patchoatd",
     defaults: [
-        "patchoat-defaults1",
-        "art_debug_defaults1",
+        "patchoat-defaults",
+        "art_debug_defaults",
     ],
     shared_libs: [
         "libartd",

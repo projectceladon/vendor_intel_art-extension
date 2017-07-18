@@ -20,8 +20,8 @@
 // 32bit one.
 
 art_cc_defaults {
-    name: "libart-compiler-defaults1",
-    defaults: ["art_defaults1"],
+    name: "libart-compiler-defaults",
+    defaults: ["art_defaults"],
     host_supported: true,
     clang: true,
     srcs: [
@@ -205,7 +205,7 @@ art_cc_defaults {
         "liblz4",
         "liblzma",
     ],
-    include_dirs: ["art/disassembler"],
+    include_dirs: ["vendor/intel/art-extension/disassembler"],
     export_include_dirs: ["."],
 
     // For SHA-1 checksumming of build ID
@@ -218,8 +218,8 @@ art_cc_defaults {
 }
 
 gensrcs {
-    name: "art_compiler_operator_srcs1",
-    cmd: "$(location generate-operator-out.py) art/compiler $(in) > $(out)",
+    name: "art_compiler_operator_srcs",
+    cmd: "$(location generate-operator-out.py) vendor/intel/art-extension/compiler $(in) > $(out)",
     tool_files: ["generate-operator-out.py"],
     srcs: [
         "compiled_method.h",
@@ -237,8 +237,8 @@ gensrcs {
 }
 
 art_cc_library {
-    name: "libart-compiler1",
-    defaults: ["libart-compiler-defaults1"],
+    name: "libart-compiler",
+    defaults: ["libart-compiler-defaults"],
     codegen: {
         arm: {
             // VIXL assembly support for ARM targets.
@@ -274,10 +274,10 @@ art_cc_library {
 }
 
 art_cc_library {
-    name: "libartd-compiler1",
+    name: "libartd-compiler",
     defaults: [
-        "art_debug_defaults1",
-        "libart-compiler-defaults1",
+        "art_debug_defaults",
+        "libart-compiler-defaults",
     ],
     codegen: {
         arm: {
@@ -314,8 +314,8 @@ art_cc_library {
 }
 
 art_cc_library {
-    name: "libart-compiler-gtest1",
-    defaults: ["libart-gtest-defaults1"],
+    name: "libart-compiler-gtest",
+    defaults: ["libart-gtest-defaults"],
     srcs: ["common_compiler_test.cc"],
     shared_libs: [
         "libartd-compiler",
@@ -325,9 +325,9 @@ art_cc_library {
 }
 
 art_cc_test {
-    name: "art_compiler_tests1",
+    name: "art_compiler_tests",
     defaults: [
-        "art_gtest_defaults1",
+        "art_gtest_defaults",
     ],
     srcs: [
         "compiled_method_test.cc",
@@ -436,10 +436,10 @@ art_cc_test {
 }
 
 art_cc_test {
-    name: "art_compiler_host_tests1",
+    name: "art_compiler_host_tests",
     device_supported: false,
     defaults: [
-        "art_gtest_defaults1",
+        "art_gtest_defaults",
     ],
     codegen: {
         arm: {

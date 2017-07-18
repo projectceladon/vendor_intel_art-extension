@@ -21,8 +21,8 @@
 JIT_DEBUG_REGISTER_CODE_LDFLAGS = ["-Wl,--keep-unique,__jit_debug_register_code"]
 
 cc_defaults {
-    name: "libart_defaults1",
-    defaults: ["art_defaults1"],
+    name: "libart_defaults",
+    defaults: ["art_defaults"],
     host_supported: true,
     srcs: [
         "art_field.cc",
@@ -392,9 +392,9 @@ cc_defaults {
     export_generated_headers: ["cpp-define-generator-asm-support"],
     clang: true,
     include_dirs: [
-        "art/cmdline",
-        "art/sigchainlib",
-        "art",
+        "vendor/intel/art-extension/cmdline",
+        "vendor/intel/art-extension/sigchainlib",
+        "vendor/intel/art-extension",
     ],
     shared_libs: [
         "libnativehelper",
@@ -420,8 +420,8 @@ cc_defaults {
 }
 
 gensrcs {
-    name: "art_operator_srcs1",
-    cmd: "$(location generate-operator-out.py) art/runtime $(in) > $(out)",
+    name: "art_operator_srcs",
+    cmd: "$(location generate-operator-out.py) vendor/intel/art-extension/runtime $(in) > $(out)",
     tool_files: ["generate-operator-out.py"],
     srcs: [
         "arch/instruction_set.h",
@@ -467,8 +467,8 @@ gensrcs {
 // they are used to cross compile for the target.
 
 art_cc_library {
-    name: "libart1",
-    defaults: ["libart_defaults1"],
+    name: "libart",
+    defaults: ["libart_defaults"],
     // Leave the symbols in the shared library so that stack unwinders can
     // produce meaningful name resolution.
     strip: {
@@ -477,16 +477,16 @@ art_cc_library {
 }
 
 art_cc_library {
-    name: "libartd1",
+    name: "libartd",
     defaults: [
-       "art_debug_defaults1",
-       "libart_defaults1",
+       "art_debug_defaults",
+       "libart_defaults",
     ],
 }
 
 art_cc_library {
-    name: "libart-runtime-gtest1",
-    defaults: ["libart-gtest-defaults1"],
+    name: "libart-runtime-gtest",
+    defaults: ["libart-gtest-defaults"],
     srcs: [
         "common_runtime_test.cc",
         "dexopt_test.cc"
@@ -499,9 +499,9 @@ art_cc_library {
 }
 
 art_cc_test {
-    name: "art_runtime_tests1",
+    name: "art_runtime_tests",
     defaults: [
-        "art_gtest_defaults1",
+        "art_gtest_defaults",
     ],
     srcs: [
         "arch/arch_test.cc",
@@ -601,9 +601,9 @@ art_cc_test {
 }
 
 art_cc_test {
-    name: "art_runtime_compiler_tests1",
+    name: "art_runtime_compiler_tests",
     defaults: [
-        "art_gtest_defaults1",
+        "art_gtest_defaults",
     ],
     srcs: [
         "jni_internal_test.cc",

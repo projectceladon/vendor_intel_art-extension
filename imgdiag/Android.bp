@@ -17,10 +17,10 @@
 // Build variants {target,host} x {debug,ndebug} x {32,64}
 
 cc_defaults {
-    name: "imgdiag-defaults1",
+    name: "imgdiag-defaults",
     host_supported: true,
     srcs: ["imgdiag.cc"],
-    defaults: ["art_defaults1"],
+    defaults: ["art_defaults"],
 
     // Note that this tool needs to be built for both 32-bit and 64-bit since it requires
     // that the image it's analyzing be the same ISA as the runtime ISA.
@@ -39,7 +39,7 @@ cc_defaults {
         },
     },
     include_dirs: [
-        "art/cmdline",
+        "vendor/intel/art-extension/cmdline",
     ],
     multilib: {
         lib32: {
@@ -53,8 +53,8 @@ cc_defaults {
 }
 
 art_cc_binary {
-    name: "imgdiag1",
-    defaults: ["imgdiag-defaults1"],
+    name: "imgdiag",
+    defaults: ["imgdiag-defaults"],
     shared_libs: [
         "libart",
         "libart-compiler",
@@ -62,10 +62,10 @@ art_cc_binary {
 }
 
 art_cc_binary {
-    name: "imgdiagd1",
+    name: "imgdiagd",
     defaults: [
-        "imgdiag-defaults1",
-        "art_debug_defaults1",
+        "imgdiag-defaults",
+        "art_debug_defaults",
     ],
     shared_libs: [
         "libartd",
@@ -74,9 +74,9 @@ art_cc_binary {
 }
 
 art_cc_test {
-    name: "art_imgdiag_tests1",
+    name: "art_imgdiag_tests",
     defaults: [
-        "art_gtest_defaults1",
+        "art_gtest_defaults",
     ],
     srcs: ["imgdiag_test.cc"],
 }

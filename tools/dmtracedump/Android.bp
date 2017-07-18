@@ -15,7 +15,7 @@
 // Java method trace dump tool
 
 art_cc_binary {
-    name: "dmtracedump1",
+    name: "dmtracedump",
     host_supported: true,
     device_supported: false,
     srcs: ["tracedump.cc"],
@@ -32,7 +32,7 @@ art_cc_binary {
 }
 
 art_cc_binary {
-    name: "create_test_dmtrace1",
+    name: "create_test_dmtrace",
     host_supported: true,
     device_supported: false,
     srcs: ["createtesttrace.cc"],
