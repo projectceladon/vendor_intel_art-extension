@@ -107,8 +107,7 @@ namespace art {
 
 static constexpr size_t kArenaAllocatorMemoryReportThreshold = 8 * MB;
 
-// nneraj - resolve build error
-//static constexpr const char* kPassNameSeparator = "$";
+static constexpr const char* kPassNameSeparator = "$";
 
 /**
  * Used by the code generator, to allocate the code in a vector.
@@ -466,7 +465,7 @@ static bool IsInstructionSetSupported(InstructionSet instruction_set) {
       || instruction_set == kX86_64;
 }
 
-#if 0	//neeraj - to check - resolve build error (below function defined in O-Bronze, became unused by N-Silver patch)
+#if 1 //neeraj - to check - resolve build error (below function defined in O-Bronze, became unused by N-Silver patch)
 // Strip pass name suffix to get optimization name.
 static std::string ConvertPassNameToOptimizationName(const std::string& pass_name) {
   size_t pos = pass_name.find(kPassNameSeparator);
@@ -769,6 +768,19 @@ void OptimizingCompiler::RunOptimizations(HGraph* graph,
                                           VariableSizedHandleScope* handles) const {
   OptimizingCompilerStats* stats = compilation_stats_.get();
   ArenaAllocator* arena = graph->GetArena();
+  if (driver->GetCompilerOptions().GetPassesToRun() != nullptr) {
+    ArenaVector<HOptimization*> optimizations = BuildOptimizations(
+        *driver->GetCompilerOptions().GetPassesToRun(),
+        arena,
+        graph,
+        stats,
+        codegen,
+        driver,
+        dex_compilation_unit,
+        handles);
+    RunOptimizations(&optimizations[0], optimizations.size(), pass_observer);
+    return;
+  }
   ArenaVector<HOptimization*> opt_list(graph->GetArena()->Adapter(kArenaAllocMisc));
   HDeadCodeElimination* dce1 = new (arena) HDeadCodeElimination(
       graph, stats, "dead_code_elimination$initial");
@@ -811,7 +823,7 @@ void OptimizingCompiler::RunOptimizations(HGraph* graph,
     simplify1,
     dce1,
   };
-  RunOptimizations(optimizations1, arraysize(optimizations1), pass_observer);
+  //RunOptimizations(optimizations1, arraysize(optimizations1), pass_observer);
 
   // FIXME: We don't invoke SILVER for methods with try/catch
   if (graph->HasTryCatch() ||

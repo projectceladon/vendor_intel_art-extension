@@ -1633,6 +1633,7 @@ bool HInliner::TryBuildAndInlineHelper(HInvoke* invoke_instruction,
       compiler_driver_->GetInstructionSet(),
       invoke_type,
       graph_->IsDebuggable(),
+      /* osr */ false,
       caller_instruction_counter);
   callee_graph->SetArtMethod(resolved_method);
 
