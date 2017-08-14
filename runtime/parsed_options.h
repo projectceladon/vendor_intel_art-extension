@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_RUNTIME_PARSED_OPTIONS_H_
@@ -28,7 +26,7 @@
 #include "gc/collector_type.h"
 #include "gc/space/large_object_space.h"
 #include "arch/instruction_set.h"
-#include "profiler_options.h"
+#include "jit/profile_saver_options.h"
 #include "runtime_options.h"
 
 namespace art {
@@ -60,15 +58,6 @@ class ParsedOptions {
   jint (*hook_vfprintf_)(FILE* stream, const char* format, va_list ap);
   void (*hook_exit_)(jint status);
   void (*hook_abort_)();
-
-  // Enable gc profiling.
-  bool enable_gcprofile_;
-  // Dir path for saving gc profile data, used with setprop "-XGcProfileDir:filename".
-  std::string gcprofile_dir_;
-  // Enable success allocation profile.
-  bool enable_succ_alloc_profile_;
-  // For gcprofiling at process start up. combined with "-XX:GcProfile" option.
-  bool enable_gcprofile_at_start_;
 
  private:
   ParsedOptions();

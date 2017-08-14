@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_RUNTIME_GC_SPACE_ROSALLOC_SPACE_INL_H_
@@ -102,13 +100,6 @@ inline mirror::Object* RosAllocSpace::AllocThreadLocal(Thread* self, size_t num_
   DCHECK(bytes_allocated != nullptr);
   return reinterpret_cast<mirror::Object*>(
       rosalloc_->AllocFromThreadLocalRun(self, num_bytes, bytes_allocated));
-}
-
-inline bool RosAllocSpace::FreeThreadLocal(Thread* self, size_t num_bytes,
-                                                      mirror::Object* obj) {
-  DCHECK_GT(num_bytes, 0u);
-  return rosalloc_->FreeFromThreadLocalRun(self, num_bytes,
-                                           reinterpret_cast<void*>(obj));
 }
 
 inline size_t RosAllocSpace::MaxBytesBulkAllocatedForNonvirtual(size_t num_bytes) {

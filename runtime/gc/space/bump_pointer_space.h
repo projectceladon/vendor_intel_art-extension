@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_RUNTIME_GC_SPACE_BUMP_POINTER_SPACE_H_
@@ -21,7 +19,6 @@
 
 #include "object_callbacks.h"
 #include "space.h"
-#include "gc/accounting/aging_table.h"
 
 namespace art {
 namespace gc {
@@ -50,24 +47,20 @@ class BumpPointerSpace FINAL : public ContinuousMemMapAllocSpace {
 
   // Allocate num_bytes, returns null if the space is full.
   mirror::Object* Alloc(Thread* self, size_t num_bytes, size_t* bytes_allocated,
-                        size_t* usable_size,
-                        size_t* bytes_tl_bulk_allocated) OVERRIDE;
+                        size_t* usable_size, size_t* bytes_tl_bulk_allocated) OVERRIDE;
   // Thread-unsafe allocation for when mutators are suspended, used by the semispace collector.
   mirror::Object* AllocThreadUnsafe(Thread* self, size_t num_bytes, size_t* bytes_allocated,
                                     size_t* usable_size, size_t* bytes_tl_bulk_allocated)
       OVERRIDE REQUIRES(Locks::mutator_lock_);
 
-  mirror::Object* AllocNonvirtual(size_t num_bytes, size_t* bytes_allocated,
-                                  size_t* usable_size, size_t* bytes_tl_bulk_allocated);
+  mirror::Object* AllocNonvirtual(size_t num_bytes);
+  mirror::Object* AllocNonvirtualWithoutAccounting(size_t num_bytes);
 
   // Return the storage space required by obj.
   size_t AllocationSize(mirror::Object* obj, size_t* usable_size) OVERRIDE
-      SHARED_REQUIRES(Locks::mutator_lock_) {
+      REQUIRES_SHARED(Locks::mutator_lock_) {
     return AllocationSizeNonvirtual(obj, usable_size);
   }
-
-  // Account allocations, used by Parallel copying collector.
-  void AccountAllocation(size_t num_objects);
 
   // NOPS unless we support free lists.
   size_t Free(Thread*, mirror::Object*) OVERRIDE {
@@ -79,7 +72,7 @@ class BumpPointerSpace FINAL : public ContinuousMemMapAllocSpace {
   }
 
   size_t AllocationSizeNonvirtual(mirror::Object* obj, size_t* usable_size)
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
   // Removes the fork time growth limit on capacity, allowing the application to allocate up to the
   // maximum reserved size of the heap.
@@ -106,24 +99,21 @@ class BumpPointerSpace FINAL : public ContinuousMemMapAllocSpace {
   }
 
   // Reset the space to empty.
-  void Clear();
+  void Clear() OVERRIDE REQUIRES(!block_lock_);
 
   void Dump(std::ostream& os) const;
 
-  size_t RevokeThreadLocalBuffers(Thread* thread) SHARED_REQUIRES(Locks::mutator_lock_);
-  size_t RevokeAllThreadLocalBuffers() SHARED_REQUIRES(Locks::mutator_lock_)
-      REQUIRES(!Locks::runtime_shutdown_lock_, !Locks::thread_list_lock_);
-
-  void AssertTlabOperationSafety(Thread* thread);
-  void AssertThreadLocalBuffersAreRevoked(Thread* thread);
+  size_t RevokeThreadLocalBuffers(Thread* thread) REQUIRES(!block_lock_);
+  size_t RevokeAllThreadLocalBuffers()
+      REQUIRES(!Locks::runtime_shutdown_lock_, !Locks::thread_list_lock_, !block_lock_);
+  void AssertThreadLocalBuffersAreRevoked(Thread* thread) REQUIRES(!block_lock_);
   void AssertAllThreadLocalBuffersAreRevoked()
-      REQUIRES(!Locks::runtime_shutdown_lock_, !Locks::thread_list_lock_);
+      REQUIRES(!Locks::runtime_shutdown_lock_, !Locks::thread_list_lock_, !block_lock_);
 
-  uint64_t GetBytesAllocated() SHARED_REQUIRES(Locks::mutator_lock_)
-      REQUIRES(!*Locks::runtime_shutdown_lock_, !*Locks::thread_list_lock_);
-  uint64_t GetObjectsAllocated() SHARED_REQUIRES(Locks::mutator_lock_)
-      REQUIRES(!*Locks::runtime_shutdown_lock_, !*Locks::thread_list_lock_);
-
+  uint64_t GetBytesAllocated() REQUIRES_SHARED(Locks::mutator_lock_)
+      REQUIRES(!*Locks::runtime_shutdown_lock_, !*Locks::thread_list_lock_, !block_lock_);
+  uint64_t GetObjectsAllocated() REQUIRES_SHARED(Locks::mutator_lock_)
+      REQUIRES(!*Locks::runtime_shutdown_lock_, !*Locks::thread_list_lock_, !block_lock_);
   bool IsEmpty() const {
     return Begin() == End();
   }
@@ -142,17 +132,18 @@ class BumpPointerSpace FINAL : public ContinuousMemMapAllocSpace {
 
   // Return the object which comes after obj, while ensuring alignment.
   static mirror::Object* GetNextObject(mirror::Object* obj)
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
   // Allocate a new TLAB, returns false if the allocation failed.
-  bool AllocNewTlab(Thread* self, size_t bytes) SHARED_REQUIRES(Locks::mutator_lock_);
+  bool AllocNewTlab(Thread* self, size_t bytes) REQUIRES(!block_lock_);
 
   BumpPointerSpace* AsBumpPointerSpace() OVERRIDE {
     return this;
   }
 
   // Go through all of the blocks and visit the continuous objects.
-  void Walk(ObjectCallback* callback, void* arg) SHARED_REQUIRES(Locks::mutator_lock_);
+  void Walk(ObjectCallback* callback, void* arg)
+      REQUIRES_SHARED(Locks::mutator_lock_) REQUIRES(!block_lock_);
 
   accounting::ContinuousSpaceBitmap::SweepCallback* GetSweepCallback() OVERRIDE;
 
@@ -163,56 +154,42 @@ class BumpPointerSpace FINAL : public ContinuousMemMapAllocSpace {
   }
 
   void LogFragmentationAllocFailure(std::ostream& os, size_t failed_alloc_bytes) OVERRIDE
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
   // Object alignment within the space.
-  static constexpr size_t kAlignment = art::kObjectAlignment;
-  accounting::AgingTable* GetAgingTable() {
-    return aging_table_.get();
-  }
-
-  size_t GetMaxContiguousBytes() {
-    return Limit() - End();
-  }
+  static constexpr size_t kAlignment = 8;
 
  protected:
   BumpPointerSpace(const std::string& name, MemMap* mem_map);
 
   // Allocate a raw block of bytes.
-  mirror::Object* AllocNonvirtualWithoutAccounting(size_t num_bytes);
+  uint8_t* AllocBlock(size_t bytes) REQUIRES(block_lock_);
+  void RevokeThreadLocalBuffersLocked(Thread* thread) REQUIRES(block_lock_);
 
-  // Used to fill a memory block when updating the forwarding pointer fails.
-  ALWAYS_INLINE void FillWithDummyObject(mirror::Object* dummy_obj, size_t byte_size)
-      SHARED_REQUIRES(Locks::mutator_lock_);
+  // The main block is an unbounded block where objects go when there are no other blocks. This
+  // enables us to maintain tightly packed objects when you are not using thread local buffers for
+  // allocation. The main block starts at the space Begin().
+  void UpdateMainBlock() REQUIRES(block_lock_);
 
   uint8_t* growth_end_;
   AtomicInteger objects_allocated_;  // Accumulated from revoked thread local regions.
-  AtomicInteger bytes_allocated_;    // Accumulated from revoked thread local regions.
-  AtomicInteger tlabs_alive_;        // Number of currently allocated TLABs
-
-  // Aging table.
-  std::unique_ptr<accounting::AgingTable> aging_table_;
+  AtomicInteger bytes_allocated_;  // Accumulated from revoked thread local regions.
+  Mutex block_lock_ DEFAULT_MUTEX_ACQUIRED_AFTER;
+  // The objects at the start of the space are stored in the main block. The main block doesn't
+  // have a header, this lets us walk empty spaces which are mprotected.
+  size_t main_block_size_ GUARDED_BY(block_lock_);
+  // The number of blocks in the space, if it is 0 then the space has one long continuous block
+  // which doesn't have an updated header.
+  size_t num_blocks_ GUARDED_BY(block_lock_);
 
  private:
-  struct TlabPtrs {
-    TlabPtrs(uint8_t* start, uint8_t* end) :
-             start_(start), end_(end) {}
-    uint8_t* start_;
-    uint8_t* end_;
+  struct BlockHeader {
+    size_t size_;  // Size of the block in bytes, does not include the header.
+    size_t unused_;  // Ensures alignment of kAlignment.
   };
 
-  static bool TlabPtrsSorter(TlabPtrs a, TlabPtrs b) {
-    return a.start_ < b.start_;
-  }
-
-  // Thread-unsafe walk for when active TLABs are known.
-  void WalkThreadUnsafe(std::vector<TlabPtrs>* active_tlabs, ObjectCallback* callback, void* arg)
-      SHARED_REQUIRES(Locks::mutator_lock_);
-  void CollectActiveTlabsWithSuspendAll(Thread* self, std::vector<TlabPtrs>* active_tlabs);
-  // Thread-unsafe collecting for when mutators are suspended.
-  void CollectActiveTlabsUnsafe(std::vector<TlabPtrs>* active_tlabs)
-      SHARED_REQUIRES(Locks::mutator_lock_)
-      REQUIRES(Locks::runtime_shutdown_lock_, Locks::thread_list_lock_);
+  static_assert(sizeof(BlockHeader) % kAlignment == 0,
+                "continuous block must be kAlignment aligned");
 
   friend class collector::MarkSweep;
   DISALLOW_COPY_AND_ASSIGN(BumpPointerSpace);

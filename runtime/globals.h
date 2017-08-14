@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_RUNTIME_GLOBALS_H_
@@ -42,8 +40,15 @@ static constexpr size_t kStackAlignment = 16;
 // compile-time constant so the compiler can generate better code.
 static constexpr int kPageSize = 4096;
 
+// Returns whether the given memory offset can be used for generating
+// an implicit null check.
+static inline bool CanDoImplicitNullCheckOn(uintptr_t offset) {
+  return offset < kPageSize;
+}
+
 // Required object alignment
-static constexpr size_t kObjectAlignment = 8;
+static constexpr size_t kObjectAlignmentShift = 3;
+static constexpr size_t kObjectAlignment = 1u << kObjectAlignmentShift;
 static constexpr size_t kLargeObjectAlignment = kPageSize;
 
 // Whether or not this is a debug build. Useful in conditionals where NDEBUG isn't.
@@ -53,19 +58,46 @@ static constexpr bool kIsDebugBuild = false;
 static constexpr bool kIsDebugBuild = true;
 #endif
 
-// Whether or not this is a target (vs host) build. Useful in conditionals where ART_TARGET isn't.
+// ART_TARGET - Defined for target builds of ART.
+// ART_TARGET_LINUX - Defined for target Linux builds of ART.
+// ART_TARGET_ANDROID - Defined for target Android builds of ART.
+// Note: Either ART_TARGET_LINUX or ART_TARGET_ANDROID need to be set when ART_TARGET is set.
+// Note: When ART_TARGET_LINUX is defined mem_map.h will not be using Ashmem for memory mappings
+// (usually only available on Android kernels).
 #if defined(ART_TARGET)
+// Useful in conditionals where ART_TARGET isn't.
 static constexpr bool kIsTargetBuild = true;
+# if defined(ART_TARGET_LINUX)
+static constexpr bool kIsTargetLinux = true;
+# elif defined(ART_TARGET_ANDROID)
+static constexpr bool kIsTargetLinux = false;
+# else
+# error "Either ART_TARGET_LINUX or ART_TARGET_ANDROID needs to be defined for target builds."
+# endif
 #else
 static constexpr bool kIsTargetBuild = false;
+# if defined(ART_TARGET_LINUX)
+# error "ART_TARGET_LINUX defined for host build."
+# elif defined(ART_TARGET_ANDROID)
+# error "ART_TARGET_ANDROID defined for host build."
+# else
+static constexpr bool kIsTargetLinux = false;
+# endif
+#endif
+
+// Additional statically-linked ART binaries (dex2oats, oatdumps, etc.) are
+// always available on the host
+#if !defined(ART_TARGET)
+static constexpr bool kHostStaticBuildEnabled = true;
+#else
+static constexpr bool kHostStaticBuildEnabled = false;
 #endif
 
 // Garbage collector constants.
 static constexpr bool kMovingCollector = true;
 static constexpr bool kMarkCompactSupport = false && kMovingCollector;
 // True if we allow moving classes.
-// We disable moving classes because guarded devirtualization suffer it.
-static constexpr bool kMovingClasses = false && !kMarkCompactSupport;
+static constexpr bool kMovingClasses = !kMarkCompactSupport;
 
 // If true, the quick compiler embeds class pointers in the compiled
 // code, if possible.
@@ -117,11 +149,6 @@ static constexpr bool kUseTlab = true;
 static constexpr bool kUseTlab = false;
 #endif
 
-// Reuse TLAB as PLAB since this is for STW GC.
-static constexpr bool kUsePlab = kUseTlab;
-static constexpr size_t kDefaultPLABSize = 64 * KB;
-static constexpr size_t kMaxGcParallelCopyTaskSize = 256;
-
 // Kinds of tracing clocks.
 enum class TraceClockSource {
   kThreadCpu,
@@ -138,6 +165,15 @@ static constexpr TraceClockSource kDefaultTraceClockSource = TraceClockSource::k
 static constexpr bool kDefaultMustRelocate = true;
 
 static constexpr bool kArm32QuickCodeUseSoftFloat = false;
+
+#ifdef ART_ENABLE_VDEX
+static constexpr bool kIsVdexEnabled = true;
+#else
+static constexpr bool kIsVdexEnabled = false;
+#endif
+
+// Size of a heap reference.
+static constexpr size_t kHeapReferenceSize = sizeof(uint32_t);
 
 }  // namespace art
 

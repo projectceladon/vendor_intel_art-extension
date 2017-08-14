@@ -1,18 +1,22 @@
 /*
- * Copyright (C) 2015 Intel Corporation.
+ * INTEL CONFIDENTIAL
+ * Copyright (c) 2015, Intel Corporation All Rights Reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * The source code contained or described herein and all documents related to the
+ * source code ("Material") are owned by Intel Corporation or its suppliers or
+ * licensors. Title to the Material remains with Intel Corporation or its suppliers
+ * and licensors. The Material contains trade secrets and proprietary and
+ * confidential information of Intel or its suppliers and licensors. The Material
+ * is protected by worldwide copyright and trade secret laws and treaty provisions.
+ * No part of the Material may be used, copied, reproduced, modified, published,
+ * uploaded, posted, transmitted, distributed, or disclosed in any way without
+ * Intel's prior express written permission.
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * No license under any patent, copyright, trade secret or other intellectual
+ * property right is granted to or conferred upon you by disclosure or delivery of
+ * the Materials, either expressly, by implication, inducement, estoppel or
+ * otherwise. Any license under such intellectual property rights must be express
+ * and approved by Intel in writing.
  */
 
 #include "base/arena_allocator.h"
@@ -31,14 +35,16 @@
 #include "gtest/gtest.h"
 
 namespace art {
-  class LoopIVBoundTest : public CommonCompilerTest {};
-
   static void TestIVBounds(const uint16_t* data, ArenaAllocator* allocator,
                            int nbr_ivs,
                            int lower, int upper,
                            int inc) {
     // Build the graph.
-    HGraph_X86* graph = CreateX86CFG(allocator, data);
+    HGraph_X86* graph = CreateGraph_X86_for_test(allocator);
+    HGraphBuilder builder(graph);
+    const DexFile::CodeItem* item = reinterpret_cast<const DexFile::CodeItem*>(data);
+    builder.BuildGraph(*item);
+    graph->TryBuildingSsa();
 
     // Loop formation is needed to get loop hierarchy in place.
     HLoopFormation formation(graph);
@@ -52,12 +58,12 @@ namespace art {
     HLoopInformation_X86* inner_loop = inner_iter.Current();
     const HLoopBoundInformation& bound_info = inner_loop->GetBoundInformation();
 
-    ASSERT_EQ(bound_info.GetIntegralBIVStartValue(), lower);
-    ASSERT_EQ(bound_info.GetIntegralBIVEndValue(), upper);
-    ASSERT_EQ(bound_info.GetLoopBIV()->GetIncrement(), inc);
+    ASSERT_EQ(bound_info.biv_start_value_, lower);
+    ASSERT_EQ(bound_info.biv_end_value_, upper);
+    ASSERT_EQ(bound_info.loop_biv_->GetIncrement(), inc);
 
-    ArenaVector<HInductionVariable*>& list = inner_loop->GetInductionVariables();
-    ASSERT_EQ(static_cast<int>(list.size()), nbr_ivs);
+    GrowableArray<HInductionVariable*>& list = inner_loop->GetInductionVariables();
+    ASSERT_EQ(static_cast<int>(list.Size()), nbr_ivs);
   }
 
   static void TestFPIVBounds(const uint16_t* data, ArenaAllocator* allocator,
@@ -65,7 +71,11 @@ namespace art {
                            int lower, int upper,
                            float inc) {
     // Build the graph.
-    HGraph_X86* graph = CreateX86CFG(allocator, data, Primitive::kPrimFloat);
+    HGraph_X86* graph = CreateGraph_X86_for_test(allocator);
+    HGraphBuilder builder(graph);
+    const DexFile::CodeItem* item = reinterpret_cast<const DexFile::CodeItem*>(data);
+    builder.BuildGraph(*item);
+    graph->TryBuildingSsa();
 
     // Loop formation is needed to get loop hierarchy in place.
     HLoopFormation formation(graph);
@@ -79,15 +89,15 @@ namespace art {
     HLoopInformation_X86* inner_loop = inner_iter.Current();
     const HLoopBoundInformation& bound_info = inner_loop->GetBoundInformation();
 
-    ASSERT_FLOAT_EQ(bound_info.GetFPBIVStartValue(), lower);
-    ASSERT_FLOAT_EQ(bound_info.GetFPBIVEndValue(), upper);
-    ASSERT_LT(fabs(bound_info.GetLoopBIV()->GetFPIncrement() - inc), 0.001);
+    ASSERT_EQ(bound_info.biv_start_value_, lower);
+    ASSERT_EQ(bound_info.biv_end_value_, upper);
+    ASSERT_LT(fabs(bound_info.loop_biv_->GetFPIncrement() - inc), 0.001);
 
-    ArenaVector<HInductionVariable*>& list = inner_loop->GetInductionVariables();
-    ASSERT_EQ(static_cast<int>(list.size()), nbr_ivs);
+    GrowableArray<HInductionVariable*>& list = inner_loop->GetInductionVariables();
+    ASSERT_EQ(static_cast<int>(list.Size()), nbr_ivs);
   }
 
-  TEST_F(LoopIVBoundTest, Simple) {
+  TEST(LoopIVBoundTest, Simple) {
     /*
      *  Simple for loop:
      *  int result = 0;
@@ -112,7 +122,7 @@ namespace art {
     TestIVBounds(data, &allocator, 1, 0, 1024, 1);
   }
 
-  TEST_F(LoopIVBoundTest, SimpleDoWhile) {
+  TEST(LoopIVBoundTest, SimpleDoWhile) {
     /*
      *  Simple while loop:
      *  int result = 0;
@@ -138,7 +148,7 @@ namespace art {
     TestIVBounds(data, &allocator, 1, 0, 42, 2);
   }
 
-  TEST_F(LoopIVBoundTest, SimpleDoWhileIncBeforeUse) {
+  TEST(LoopIVBoundTest, SimpleDoWhileIncBeforeUse) {
     /*
      *  Simple while loop:
      *  int result = 0;
@@ -164,7 +174,7 @@ namespace art {
     TestIVBounds(data, &allocator, 1, 0, 126, 4);
   }
 
-  TEST_F(LoopIVBoundTest, Two) {
+  TEST(LoopIVBoundTest, Two) {
     /*
      *  Two IVs for loop:
      *  int result = 0;
@@ -193,7 +203,7 @@ namespace art {
     TestIVBounds(data, &allocator, 2, 0, 1024, 1);
   }
 
-  TEST_F(LoopIVBoundTest, TwoDoWhile) {
+  TEST(LoopIVBoundTest, TwoDoWhile) {
     /*
      *  Simple while loop:
      *  int result = 0;
@@ -222,7 +232,7 @@ namespace art {
   }
 
   // Now do floating point ones.
-  TEST_F(LoopIVBoundTest, FloatSimple) {
+  TEST(LoopIVBoundTest, FloatSimple) {
     /*
      *  Simple for loop:
      *  float result = 0;
@@ -249,7 +259,7 @@ namespace art {
     TestFPIVBounds(data, &allocator, 1, 0.0, 1024.0, 1.0);
   }
 
-  TEST_F(LoopIVBoundTest, FloatSimpleDoWhile) {
+  TEST(LoopIVBoundTest, FloatSimpleDoWhile) {
     /*
      *  Simple while loop:
      *  float result = 0;
@@ -277,7 +287,7 @@ namespace art {
     TestFPIVBounds(data, &allocator, 1, 0.0, 42.0, 1.0);
   }
 
-  TEST_F(LoopIVBoundTest, FloatSimpleDoWhileIncBeforeUse) {
+  TEST(LoopIVBoundTest, FloatSimpleDoWhileIncBeforeUse) {
     /*
      *  Simple while loop:
      *  float result = 0;
@@ -305,7 +315,7 @@ namespace art {
     TestFPIVBounds(data, &allocator, 1, 0.0, 126.0, 1.0);
   }
 
-  TEST_F(LoopIVBoundTest, FloatTwo) {
+  TEST(LoopIVBoundTest, FloatTwo) {
     /*
      *  Two IVs for loop:
      *  float result = 0;
@@ -336,7 +346,7 @@ namespace art {
     TestFPIVBounds(data, &allocator, 2, 0.0, 1024.0, 1.0);
   }
 
-  TEST_F(LoopIVBoundTest, FloatTwoDoWhile) {
+  TEST(LoopIVBoundTest, FloatTwoDoWhile) {
     /*
      *  Simple while loop:
      *  float result = 0;

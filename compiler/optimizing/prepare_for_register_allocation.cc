@@ -12,18 +12,18 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #include "prepare_for_register_allocation.h"
+
+#include "jni_internal.h"
+#include "well_known_classes.h"
 
 namespace art {
 
 void PrepareForRegisterAllocation::Run() {
   // Order does not matter.
-  for (HReversePostOrderIterator it(*GetGraph()); !it.Done(); it.Advance()) {
-    HBasicBlock* block = it.Current();
+  for (HBasicBlock* block : GetGraph()->GetReversePostOrder()) {
     // No need to visit the phis.
     for (HInstructionIterator inst_it(block->GetInstructions()); !inst_it.Done();
          inst_it.Advance()) {
@@ -33,34 +33,44 @@ void PrepareForRegisterAllocation::Run() {
 }
 
 void PrepareForRegisterAllocation::VisitNullCheck(HNullCheck* check) {
-  // When substituting be sure that we are in sync with "aur" phase.
-  DCHECK(check->CanBeSubstitutedWithItsInput());
   check->ReplaceWith(check->InputAt(0));
 }
 
 void PrepareForRegisterAllocation::VisitDivZeroCheck(HDivZeroCheck* check) {
-  // When substituting be sure that we are in sync with "aur" phase.
-  DCHECK(check->CanBeSubstitutedWithItsInput());
   check->ReplaceWith(check->InputAt(0));
 }
 
+void PrepareForRegisterAllocation::VisitDeoptimize(HDeoptimize* deoptimize) {
+  if (deoptimize->GuardsAnInput()) {
+    // Replace the uses with the actual guarded instruction.
+    deoptimize->ReplaceWith(deoptimize->GuardedInput());
+    deoptimize->RemoveGuard();
+  }
+}
+
 void PrepareForRegisterAllocation::VisitBoundsCheck(HBoundsCheck* check) {
-  // When substituting be sure that we are in sync with "aur" phase.
-  DCHECK(check->CanBeSubstitutedWithItsInput());
   check->ReplaceWith(check->InputAt(0));
+  if (check->IsStringCharAt()) {
+    // Add a fake environment for String.charAt() inline info as we want
+    // the exception to appear as being thrown from there.
+    ArtMethod* char_at_method = jni::DecodeArtMethod(WellKnownClasses::java_lang_String_charAt);
+    ArenaAllocator* arena = GetGraph()->GetArena();
+    HEnvironment* environment = new (arena) HEnvironment(arena,
+                                                         /* number_of_vregs */ 0u,
+                                                         char_at_method,
+                                                         /* dex_pc */ DexFile::kDexNoIndex,
+                                                         check);
+    check->InsertRawEnvironment(environment);
+  }
 }
 
 #if defined(ART_ENABLE_CODEGEN_x86) || defined(ART_ENABLE_CODEGEN_x86_64)
 void PrepareForRegisterAllocation::VisitX86BoundsCheckMemory(HX86BoundsCheckMemory* check) {
-  // When substituting be sure that we are in sync with "aur" phase.
-  DCHECK(check->CanBeSubstitutedWithItsInput());
   check->ReplaceWith(check->InputAt(0));
 }
 #endif
 
 void PrepareForRegisterAllocation::VisitBoundType(HBoundType* bound_type) {
-  // When substituting be sure that we are in sync with "aur" phase.
-  DCHECK(bound_type->CanBeSubstitutedWithItsInput());
   bound_type->ReplaceWith(bound_type->InputAt(0));
   bound_type->GetBlock()->RemoveInstruction(bound_type);
 }
@@ -119,8 +129,6 @@ void PrepareForRegisterAllocation::VisitClinitCheck(HClinitCheck* check) {
   HLoadClass* load_class = check->GetLoadClass();
   bool can_merge_with_load_class = CanMoveClinitCheck(load_class, check);
 
-  // When substituting be sure that we are in sync with "aur" phase.
-  DCHECK(check->CanBeSubstitutedWithItsInput());
   check->ReplaceWith(load_class);
 
   if (implicit_clinit != nullptr) {
@@ -133,35 +141,9 @@ void PrepareForRegisterAllocation::VisitClinitCheck(HClinitCheck* check) {
   } else if (can_merge_with_load_class && !load_class->NeedsAccessCheck()) {
     // Pass the initialization duty to the `HLoadClass` instruction,
     // and remove the instruction from the graph.
+    DCHECK(load_class->HasEnvironment());
     load_class->SetMustGenerateClinitCheck(true);
     check->GetBlock()->RemoveInstruction(check);
-  }
-}
-
-void PrepareForRegisterAllocation::VisitNewInstance(HNewInstance* instruction) {
-  HLoadClass* load_class = instruction->InputAt(0)->AsLoadClass();
-  bool has_only_one_use = load_class->HasOnlyOneNonEnvironmentUse();
-  // Change the entrypoint to kQuickAllocObject if either:
-  // - the class is finalizable (only kQuickAllocObject handles finalizable classes),
-  // - the class needs access checks (we do not know if it's finalizable),
-  // - or the load class has only one use.
-  if (instruction->IsFinalizable() || has_only_one_use || load_class->NeedsAccessCheck()) {
-    instruction->SetEntrypoint(kQuickAllocObject);
-    instruction->ReplaceInput(GetGraph()->GetIntConstant(load_class->GetTypeIndex()), 0);
-    // The allocation entry point that deals with access checks does not work with inlined
-    // methods, so we need to check whether this allocation comes from an inlined method.
-    // We also need to make the same check as for moving clinit check, whether the HLoadClass
-    // has the clinit check responsibility or not (HLoadClass can throw anyway).
-    if (has_only_one_use &&
-        !instruction->GetEnvironment()->IsFromInlinedInvoke() &&
-        CanMoveClinitCheck(load_class, instruction)) {
-      // We can remove the load class from the graph. If it needed access checks, we delegate
-      // the access check to the allocation.
-      if (load_class->NeedsAccessCheck()) {
-        instruction->SetEntrypoint(kQuickAllocObjectWithAccessCheck);
-      }
-      load_class->GetBlock()->RemoveInstruction(load_class);
-    }
   }
 }
 
@@ -193,8 +175,7 @@ void PrepareForRegisterAllocation::VisitCondition(HCondition* condition) {
 
 void PrepareForRegisterAllocation::VisitInvokeStaticOrDirect(HInvokeStaticOrDirect* invoke) {
   if (invoke->IsStaticWithExplicitClinitCheck()) {
-    size_t last_input_index = invoke->InputCount() - 1;
-    HLoadClass* last_input = invoke->InputAt(last_input_index)->AsLoadClass();
+    HLoadClass* last_input = invoke->GetInputs().back()->AsLoadClass();
     DCHECK(last_input != nullptr)
         << "Last input is not HLoadClass. It is " << last_input->DebugName();
 
@@ -231,8 +212,7 @@ bool PrepareForRegisterAllocation::CanMoveClinitCheck(HInstruction* input,
       return false;
     }
     if (user_environment->GetDexPc() != input_environment->GetDexPc() ||
-        user_environment->GetMethodIdx() != input_environment->GetMethodIdx() ||
-        !IsSameDexFile(user_environment->GetDexFile(), input_environment->GetDexFile())) {
+        user_environment->GetMethod() != input_environment->GetMethod()) {
       return false;
     }
     user_environment = user_environment->GetParent();
@@ -244,15 +224,15 @@ bool PrepareForRegisterAllocation::CanMoveClinitCheck(HInstruction* input,
     return false;
   }
 
-  // The final check to see if we can move the clinit check is whether there are no side-exits
-  // and no side-effects between the two instructions. If there are, we cannot move it.
-  for (HInstruction* between = input->GetNext(); between != user; between = between->GetNext()) {
-    CHECK(between != nullptr);  // User must be after input in the same block - we checked above.
-    if (between->CanThrow() || between->GetSideEffects().HasSideEffectsExcludingGC()) {
-      return false;
+  // In debug mode, check that we have not inserted a throwing instruction
+  // or an instruction with side effects between input and user.
+  if (kIsDebugBuild) {
+    for (HInstruction* between = input->GetNext(); between != user; between = between->GetNext()) {
+      CHECK(between != nullptr);  // User must be after input in the same block.
+      CHECK(!between->CanThrow());
+      CHECK(!between->HasSideEffects());
     }
   }
-
   return true;
 }
 

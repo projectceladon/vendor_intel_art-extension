@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_COMPILER_OPTIMIZING_OPTIMIZING_UNIT_TEST_H_
@@ -24,8 +22,7 @@
 #include "common_compiler_test.h"
 #include "dex_file.h"
 #include "dex_instruction.h"
-#include "graph_x86.h"
-#include "handle_scope-inl.h"
+#include "handle_scope.h"
 #include "scoped_thread_state_change.h"
 #include "ssa_builder.h"
 #include "ssa_liveness_analysis.h"
@@ -67,6 +64,9 @@ LiveInterval* BuildInterval(const size_t ranges[][2],
 void RemoveSuspendChecks(HGraph* graph) {
   for (HBasicBlock* block : graph->GetBlocks()) {
     if (block != nullptr) {
+      if (block->GetLoopInformation() != nullptr) {
+        block->GetLoopInformation()->SetSuspendCheck(nullptr);
+      }
       for (HInstructionIterator it(block->GetInstructions()); !it.Done(); it.Advance()) {
         HInstruction* current = it.Current();
         if (current->IsSuspendCheck()) {
@@ -78,14 +78,28 @@ void RemoveSuspendChecks(HGraph* graph) {
 }
 
 inline HGraph* CreateGraph(ArenaAllocator* allocator) {
-  return CreateX86CFG(allocator);
+  return new (allocator) HGraph(
+      allocator,
+      *reinterpret_cast<DexFile*>(allocator->Alloc(sizeof(DexFile))),
+      /*method_idx*/-1,
+      kRuntimeISA);
 }
 
 // Create a control-flow graph from Dex instructions.
 inline HGraph* CreateCFG(ArenaAllocator* allocator,
                          const uint16_t* data,
                          Primitive::Type return_type = Primitive::kPrimInt) {
-  return CreateX86CFG(allocator, data, return_type);
+  const DexFile::CodeItem* item =
+    reinterpret_cast<const DexFile::CodeItem*>(data);
+  HGraph* graph = CreateGraph(allocator);
+
+  {
+    ScopedObjectAccess soa(Thread::Current());
+    VariableSizedHandleScope handles(soa.Self());
+    HGraphBuilder builder(graph, *item, &handles, return_type);
+    bool graph_built = (builder.BuildGraph() == kAnalysisSuccess);
+    return graph_built ? graph : nullptr;
+  }
 }
 
 // Naive string diff data type.

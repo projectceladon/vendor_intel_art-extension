@@ -12,23 +12,27 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #include "mirror/class-inl.h"
 #include "mirror/object-inl.h"
-#include "entrypoints/entrypoint_utils.h"
 
 namespace art {
 
 // Assignable test for code, won't throw.  Null and equality tests already performed
-extern "C" HOT_SECTION(assignable)
-    uint32_t artIsAssignableFromCode(mirror::Class* klass, mirror::Class* ref_class)
-    SHARED_REQUIRES(Locks::mutator_lock_) {
+extern "C" size_t artIsAssignableFromCode(mirror::Class* klass, mirror::Class* ref_class)
+    REQUIRES_SHARED(Locks::mutator_lock_) {
   DCHECK(klass != nullptr);
   DCHECK(ref_class != nullptr);
   return klass->IsAssignableFrom(ref_class) ? 1 : 0;
+}
+
+// Is assignable test for code, won't throw.  Null and equality test already performed.
+extern "C" size_t artInstanceOfFromCode(mirror::Object* obj, mirror::Class* ref_class)
+    REQUIRES_SHARED(Locks::mutator_lock_) {
+  DCHECK(obj != nullptr);
+  DCHECK(ref_class != nullptr);
+  return obj->InstanceOf(ref_class) ? 1 : 0;
 }
 
 }  // namespace art

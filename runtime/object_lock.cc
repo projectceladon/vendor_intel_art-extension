@@ -17,13 +17,14 @@
 #include "object_lock.h"
 
 #include "mirror/object-inl.h"
+#include "mirror/class_ext.h"
 #include "monitor.h"
 
 namespace art {
 
 template <typename T>
 ObjectLock<T>::ObjectLock(Thread* self, Handle<T> object) : self_(self), obj_(object) {
-  CHECK(object.Get() != nullptr);
+  CHECK(object != nullptr);
   obj_->MonitorEnter(self_);
 }
 
@@ -49,7 +50,7 @@ void ObjectLock<T>::NotifyAll() {
 
 template <typename T>
 ObjectTryLock<T>::ObjectTryLock(Thread* self, Handle<T> object) : self_(self), obj_(object) {
-  CHECK(object.Get() != nullptr);
+  CHECK(object != nullptr);
   acquired_ = obj_->MonitorTryEnter(self_) != nullptr;
 }
 
@@ -61,6 +62,7 @@ ObjectTryLock<T>::~ObjectTryLock() {
 }
 
 template class ObjectLock<mirror::Class>;
+template class ObjectLock<mirror::ClassExt>;
 template class ObjectLock<mirror::Object>;
 template class ObjectTryLock<mirror::Class>;
 template class ObjectTryLock<mirror::Object>;

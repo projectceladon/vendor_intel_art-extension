@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Intel Corporation
+ * Copyright (C) 2015 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,12 +28,13 @@ namespace x86 {
 class X86MemoryOperandGeneration : public HOptimization {
  public:
   X86MemoryOperandGeneration(HGraph* graph,
-                             OptimizingCompilerStats* stats,
-                             CodeGenerator* codegen);
+                             CodeGenerator* codegen,
+                             OptimizingCompilerStats* stats);
 
   void Run() OVERRIDE;
 
-  static constexpr const char* kPassNameX86MemOpGen = "x86_memory_gen";
+  static constexpr const char* kX86MemoryOperandGenerationPassName =
+          "x86_memory_operand_generation";
 
  private:
   bool do_implicit_null_checks_;

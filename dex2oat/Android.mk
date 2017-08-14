@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Modified by Intel Corporation
-#
 
 # ASan slows down dex2oat by ~3.5x, which translates into extremely slow first
 # boot. Disabled to help speed up SANITIZE_TARGET mode.

@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #include "space.h"
@@ -88,19 +86,19 @@ DiscontinuousSpace::DiscontinuousSpace(const std::string& name,
   CHECK(mark_bitmap_.get() != nullptr);
 }
 
-ObjectBytePair ContinuousMemMapAllocSpace::Sweep(bool swap_bitmaps) {
+collector::ObjectBytePair ContinuousMemMapAllocSpace::Sweep(bool swap_bitmaps) {
   accounting::ContinuousSpaceBitmap* live_bitmap = GetLiveBitmap();
   accounting::ContinuousSpaceBitmap* mark_bitmap = GetMarkBitmap();
   // If the bitmaps are bound then sweeping this space clearly won't do anything.
   if (live_bitmap == mark_bitmap) {
-    return ObjectBytePair(0, 0);
+    return collector::ObjectBytePair(0, 0);
   }
   SweepCallbackContext scc(swap_bitmaps, this);
   if (swap_bitmaps) {
     std::swap(live_bitmap, mark_bitmap);
   }
   // Bitmaps are pre-swapped for optimization which enables sweeping with the heap unlocked.
-  accounting::ContinuousSpaceBitmap::SweepWalkBitmap(
+  accounting::ContinuousSpaceBitmap::SweepWalk(
       *live_bitmap, *mark_bitmap, reinterpret_cast<uintptr_t>(Begin()),
       reinterpret_cast<uintptr_t>(End()), GetSweepCallback(), reinterpret_cast<void*>(&scc));
   return scc.freed;

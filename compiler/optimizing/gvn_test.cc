@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #include "base/arena_allocator.h"
@@ -30,14 +28,13 @@ class GVNTest : public CommonCompilerTest {};
 TEST_F(GVNTest, LocalFieldElimination) {
   ArenaPool pool;
   ArenaAllocator allocator(&pool);
-  ScopedNullHandle<mirror::DexCache> dex_cache;
 
   HGraph* graph = CreateGraph(&allocator);
   HBasicBlock* entry = new (&allocator) HBasicBlock(graph);
   graph->AddBlock(entry);
   graph->SetEntryBlock(entry);
   HInstruction* parameter = new (&allocator) HParameterValue(graph->GetDexFile(),
-                                                             0,
+                                                             dex::TypeIndex(0),
                                                              0,
                                                              Primitive::kPrimNot);
   entry->AddInstruction(parameter);
@@ -47,53 +44,53 @@ TEST_F(GVNTest, LocalFieldElimination) {
   entry->AddSuccessor(block);
 
   block->AddInstruction(new (&allocator) HInstanceFieldGet(parameter,
+                                                           nullptr,
                                                            Primitive::kPrimNot,
                                                            MemberOffset(42),
                                                            false,
                                                            kUnknownFieldIndex,
                                                            kUnknownClassDefIndex,
                                                            graph->GetDexFile(),
-                                                           dex_cache,
                                                            0));
   block->AddInstruction(new (&allocator) HInstanceFieldGet(parameter,
+                                                           nullptr,
                                                            Primitive::kPrimNot,
                                                            MemberOffset(42),
                                                            false,
                                                            kUnknownFieldIndex,
                                                            kUnknownClassDefIndex,
                                                            graph->GetDexFile(),
-                                                           dex_cache,
                                                            0));
   HInstruction* to_remove = block->GetLastInstruction();
   block->AddInstruction(new (&allocator) HInstanceFieldGet(parameter,
+                                                           nullptr,
                                                            Primitive::kPrimNot,
                                                            MemberOffset(43),
                                                            false,
                                                            kUnknownFieldIndex,
                                                            kUnknownClassDefIndex,
                                                            graph->GetDexFile(),
-                                                           dex_cache,
                                                            0));
   HInstruction* different_offset = block->GetLastInstruction();
   // Kill the value.
   block->AddInstruction(new (&allocator) HInstanceFieldSet(parameter,
                                                            parameter,
+                                                           nullptr,
                                                            Primitive::kPrimNot,
                                                            MemberOffset(42),
                                                            false,
                                                            kUnknownFieldIndex,
                                                            kUnknownClassDefIndex,
                                                            graph->GetDexFile(),
-                                                           dex_cache,
                                                            0));
   block->AddInstruction(new (&allocator) HInstanceFieldGet(parameter,
+                                                           nullptr,
                                                            Primitive::kPrimNot,
                                                            MemberOffset(42),
                                                            false,
                                                            kUnknownFieldIndex,
                                                            kUnknownClassDefIndex,
                                                            graph->GetDexFile(),
-                                                           dex_cache,
                                                            0));
   HInstruction* use_after_kill = block->GetLastInstruction();
   block->AddInstruction(new (&allocator) HExit());
@@ -115,14 +112,13 @@ TEST_F(GVNTest, LocalFieldElimination) {
 TEST_F(GVNTest, GlobalFieldElimination) {
   ArenaPool pool;
   ArenaAllocator allocator(&pool);
-  ScopedNullHandle<mirror::DexCache> dex_cache;
 
   HGraph* graph = CreateGraph(&allocator);
   HBasicBlock* entry = new (&allocator) HBasicBlock(graph);
   graph->AddBlock(entry);
   graph->SetEntryBlock(entry);
   HInstruction* parameter = new (&allocator) HParameterValue(graph->GetDexFile(),
-                                                             0,
+                                                             dex::TypeIndex(0),
                                                              0,
                                                              Primitive::kPrimNot);
   entry->AddInstruction(parameter);
@@ -131,13 +127,13 @@ TEST_F(GVNTest, GlobalFieldElimination) {
   graph->AddBlock(block);
   entry->AddSuccessor(block);
   block->AddInstruction(new (&allocator) HInstanceFieldGet(parameter,
+                                                           nullptr,
                                                            Primitive::kPrimBoolean,
                                                            MemberOffset(42),
                                                            false,
                                                            kUnknownFieldIndex,
                                                            kUnknownClassDefIndex,
                                                            graph->GetDexFile(),
-                                                           dex_cache,
                                                            0));
 
   block->AddInstruction(new (&allocator) HIf(block->GetLastInstruction()));
@@ -154,33 +150,33 @@ TEST_F(GVNTest, GlobalFieldElimination) {
   else_->AddSuccessor(join);
 
   then->AddInstruction(new (&allocator) HInstanceFieldGet(parameter,
+                                                          nullptr,
                                                           Primitive::kPrimBoolean,
                                                           MemberOffset(42),
                                                           false,
                                                           kUnknownFieldIndex,
                                                           kUnknownClassDefIndex,
                                                           graph->GetDexFile(),
-                                                          dex_cache,
                                                           0));
   then->AddInstruction(new (&allocator) HGoto());
   else_->AddInstruction(new (&allocator) HInstanceFieldGet(parameter,
+                                                           nullptr,
                                                            Primitive::kPrimBoolean,
                                                            MemberOffset(42),
                                                            false,
                                                            kUnknownFieldIndex,
                                                            kUnknownClassDefIndex,
                                                            graph->GetDexFile(),
-                                                           dex_cache,
                                                            0));
   else_->AddInstruction(new (&allocator) HGoto());
   join->AddInstruction(new (&allocator) HInstanceFieldGet(parameter,
+                                                          nullptr,
                                                           Primitive::kPrimBoolean,
                                                           MemberOffset(42),
                                                           false,
                                                           kUnknownFieldIndex,
                                                           kUnknownClassDefIndex,
                                                           graph->GetDexFile(),
-                                                          dex_cache,
                                                           0));
   join->AddInstruction(new (&allocator) HExit());
 
@@ -198,7 +194,6 @@ TEST_F(GVNTest, GlobalFieldElimination) {
 TEST_F(GVNTest, LoopFieldElimination) {
   ArenaPool pool;
   ArenaAllocator allocator(&pool);
-  ScopedNullHandle<mirror::DexCache> dex_cache;
 
   HGraph* graph = CreateGraph(&allocator);
   HBasicBlock* entry = new (&allocator) HBasicBlock(graph);
@@ -206,7 +201,7 @@ TEST_F(GVNTest, LoopFieldElimination) {
   graph->SetEntryBlock(entry);
 
   HInstruction* parameter = new (&allocator) HParameterValue(graph->GetDexFile(),
-                                                             0,
+                                                             dex::TypeIndex(0),
                                                              0,
                                                              Primitive::kPrimNot);
   entry->AddInstruction(parameter);
@@ -215,13 +210,13 @@ TEST_F(GVNTest, LoopFieldElimination) {
   graph->AddBlock(block);
   entry->AddSuccessor(block);
   block->AddInstruction(new (&allocator) HInstanceFieldGet(parameter,
+                                                           nullptr,
                                                            Primitive::kPrimBoolean,
                                                            MemberOffset(42),
                                                            false,
                                                            kUnknownFieldIndex,
                                                            kUnknownClassDefIndex,
                                                            graph->GetDexFile(),
-                                                           dex_cache,
                                                            0));
   block->AddInstruction(new (&allocator) HGoto());
 
@@ -238,13 +233,13 @@ TEST_F(GVNTest, LoopFieldElimination) {
   loop_body->AddSuccessor(loop_header);
 
   loop_header->AddInstruction(new (&allocator) HInstanceFieldGet(parameter,
+                                                                 nullptr,
                                                                  Primitive::kPrimBoolean,
                                                                  MemberOffset(42),
                                                                  false,
                                                                  kUnknownFieldIndex,
                                                                  kUnknownClassDefIndex,
                                                                  graph->GetDexFile(),
-                                                                 dex_cache,
                                                                  0));
   HInstruction* field_get_in_loop_header = loop_header->GetLastInstruction();
   loop_header->AddInstruction(new (&allocator) HIf(block->GetLastInstruction()));
@@ -252,36 +247,36 @@ TEST_F(GVNTest, LoopFieldElimination) {
   // Kill inside the loop body to prevent field gets inside the loop header
   // and the body to be GVN'ed.
   loop_body->AddInstruction(new (&allocator) HInstanceFieldSet(parameter,
-                                                               graph->GetIntConstant(1),
+                                                               parameter,
+                                                               nullptr,
                                                                Primitive::kPrimBoolean,
                                                                MemberOffset(42),
                                                                false,
                                                                kUnknownFieldIndex,
                                                                kUnknownClassDefIndex,
                                                                graph->GetDexFile(),
-                                                               dex_cache,
                                                                0));
   HInstruction* field_set = loop_body->GetLastInstruction();
   loop_body->AddInstruction(new (&allocator) HInstanceFieldGet(parameter,
+                                                               nullptr,
                                                                Primitive::kPrimBoolean,
                                                                MemberOffset(42),
                                                                false,
                                                                kUnknownFieldIndex,
                                                                kUnknownClassDefIndex,
                                                                graph->GetDexFile(),
-                                                               dex_cache,
                                                                0));
   HInstruction* field_get_in_loop_body = loop_body->GetLastInstruction();
   loop_body->AddInstruction(new (&allocator) HGoto());
 
   exit->AddInstruction(new (&allocator) HInstanceFieldGet(parameter,
+                                                          nullptr,
                                                           Primitive::kPrimBoolean,
                                                           MemberOffset(42),
                                                           false,
                                                           kUnknownFieldIndex,
                                                           kUnknownClassDefIndex,
                                                           graph->GetDexFile(),
-                                                          dex_cache,
                                                           0));
   HInstruction* field_get_in_exit = exit->GetLastInstruction();
   exit->AddInstruction(new (&allocator) HExit());
@@ -321,7 +316,6 @@ TEST_F(GVNTest, LoopFieldElimination) {
 TEST_F(GVNTest, LoopSideEffects) {
   ArenaPool pool;
   ArenaAllocator allocator(&pool);
-  ScopedNullHandle<mirror::DexCache> dex_cache;
 
   static const SideEffects kCanTriggerGC = SideEffects::CanTriggerGC();
 
@@ -354,7 +348,7 @@ TEST_F(GVNTest, LoopSideEffects) {
   inner_loop_exit->AddSuccessor(outer_loop_header);
 
   HInstruction* parameter = new (&allocator) HParameterValue(graph->GetDexFile(),
-                                                             0,
+                                                             dex::TypeIndex(0),
                                                              0,
                                                              Primitive::kPrimBoolean);
   entry->AddInstruction(parameter);
@@ -378,13 +372,13 @@ TEST_F(GVNTest, LoopSideEffects) {
     // Make one block with a side effect.
     entry->AddInstruction(new (&allocator) HInstanceFieldSet(parameter,
                                                              parameter,
+                                                             nullptr,
                                                              Primitive::kPrimNot,
                                                              MemberOffset(42),
                                                              false,
                                                              kUnknownFieldIndex,
                                                              kUnknownClassDefIndex,
                                                              graph->GetDexFile(),
-                                                             dex_cache,
                                                              0));
 
     SideEffectsAnalysis side_effects(graph);
@@ -403,13 +397,13 @@ TEST_F(GVNTest, LoopSideEffects) {
     outer_loop_body->InsertInstructionBefore(
         new (&allocator) HInstanceFieldSet(parameter,
                                            parameter,
+                                           nullptr,
                                            Primitive::kPrimNot,
                                            MemberOffset(42),
                                            false,
                                            kUnknownFieldIndex,
                                            kUnknownClassDefIndex,
                                            graph->GetDexFile(),
-                                           dex_cache,
                                            0),
         outer_loop_body->GetLastInstruction());
 
@@ -429,13 +423,13 @@ TEST_F(GVNTest, LoopSideEffects) {
     inner_loop_body->InsertInstructionBefore(
         new (&allocator) HInstanceFieldSet(parameter,
                                            parameter,
+                                           nullptr,
                                            Primitive::kPrimNot,
                                            MemberOffset(42),
                                            false,
                                            kUnknownFieldIndex,
                                            kUnknownClassDefIndex,
                                            graph->GetDexFile(),
-                                           dex_cache,
                                            0),
         inner_loop_body->GetLastInstruction());
 

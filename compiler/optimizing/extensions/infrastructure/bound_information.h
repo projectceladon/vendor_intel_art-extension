@@ -1,25 +1,27 @@
 /*
- * Copyright (C) 2015 Intel Corporation.
+ * INTEL CONFIDENTIAL
+ * Copyright (c) 2015, Intel Corporation All Rights Reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * The source code contained or described herein and all documents related to the
+ * source code ("Material") are owned by Intel Corporation or its suppliers or
+ * licensors. Title to the Material remains with Intel Corporation or its suppliers
+ * and licensors. The Material contains trade secrets and proprietary and
+ * confidential information of Intel or its suppliers and licensors. The Material
+ * is protected by worldwide copyright and trade secret laws and treaty provisions.
+ * No part of the Material may be used, copied, reproduced, modified, published,
+ * uploaded, posted, transmitted, distributed, or disclosed in any way without
+ * Intel's prior express written permission.
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * No license under any patent, copyright, trade secret or other intellectual
+ * property right is granted to or conferred upon you by disclosure or delivery of
+ * the Materials, either expressly, by implication, inducement, estoppel or
+ * otherwise. Any license under such intellectual property rights must be express
+ * and approved by Intel in writing.
  *
  */
 
 #ifndef VENDOR_INTEL_ART_EXTENSION_OPT_INFRASTRUCTURE_BOUND_INFORMATION_H_
 #define VENDOR_INTEL_ART_EXTENSION_OPT_INFRASTRUCTURE_BOUND_INFORMATION_H_
-
-#include <cinttypes>
-#include <iosfwd>
 
 namespace art {
 
@@ -28,75 +30,22 @@ class HConstant;
 class HInductionVariable;
 
 /**
- * @brief This class is used to keep bound information.
+ * @brief This structure is used to keep bound information.
  * @see ComputeBoundInformation which outlines the algorithm used to compute this.
  * @details This is not guaranteed to be filled completely.
  * - loop_biv may be null.
+ * - constant_bound is only valid if is_bound_constant is true.
  * - comparison_condition is only valid if is_simple_count_up or is_simple_count_down are true.
  * - num_iterations, biv_start_value, and biv_end_value are only valid if knowIterations is true.
  */
-class HLoopBoundInformation {
- public:
+struct HLoopBoundInformation {
   HLoopBoundInformation() :
-    loop_biv_(nullptr), constant_bound_(nullptr),
+    loop_biv_(nullptr), is_bound_constant_(false), constant_bound_(nullptr),
     is_simple_count_up_(false), is_simple_count_down_(false),
-    comparison_condition_(0), num_iterations_(-1) {}
+    comparison_condition_(0), num_iterations_(-1), biv_start_value_(0),
+    biv_end_value_(0) {
+    }
 
-  HInductionVariable* GetLoopBIV() const { return loop_biv_; }
-
-  void SetLoopBIV(HInductionVariable* biv) { loop_biv_ = biv; }
-
-  HConstant* GetConstantBound() const { return constant_bound_; }
-
-  void SetConstantBound(HConstant* constant_bound) { constant_bound_ = constant_bound; }
-
-  bool IsSimpleCountUp() const { return is_simple_count_up_; }
-
-  void SetSimpleCountUp(bool b = true) { is_simple_count_up_ = b; }
-
-  bool IsSimpleCountDown() const { return is_simple_count_down_; }
-
-  void SetSimpleCountDown(bool b = true) { is_simple_count_down_ = b; }
-
-  int GetComparisonCondition() const { return comparison_condition_; }
-
-  void SetComparisonCondition(int cond) { comparison_condition_ = cond; }
-
-  int64_t GetNumIterations() const { return num_iterations_; }
-
-  void SetNumIterations(int64_t num_iterations) { num_iterations_ = num_iterations; }
-
-  int64_t GetIntegralBIVStartValue() const;
-
-  void SetIntegralBIVStartValue(int64_t start_value);
-
-  int64_t GetIntegralBIVEndValue() const;
-
-  void SetIntegralBIVEndValue(int64_t end_value);
-
-  double GetFPBIVStartValue() const;
-
-  void SetFPBIVStartValue(double start_value);
-
-  double GetFPBIVEndValue() const;
-
-  void SetFPBIVEndValue(double end_value);
-
-  void Dump(std::ostream& os);
-
-  bool IsFP() const;
-
-  bool IsInteger() const;
-
-  bool IsLong() const;
-
-  bool IsFloat() const;
-
-  bool IsDouble() const;
-
-  bool IsWide() const;
-
- private:
   /**
    * @brief Used to store the loop's BIV.
    * @details In order for this to exist, the loop must have only one backedge and exit.
@@ -105,7 +54,12 @@ class HLoopBoundInformation {
   HInductionVariable* loop_biv_;
 
   /**
-   * @brief The constant of the loop bound.
+   * @brief Whether the loop's bound is constant.
+   */
+  bool is_bound_constant_;
+
+  /**
+   * @brief The constant of the loop bound. Only valid if is_bound_constant is true.
    */
   HConstant* constant_bound_;
 
@@ -135,20 +89,15 @@ class HLoopBoundInformation {
    */
   int64_t num_iterations_;
 
-  typedef union {
-    int64_t integral = 0;
-    double fp;
-  } Border;
-
   /**
    * @brief The start value of the induction variable.
    */
-  Border biv_start_value_ = Border();
+  int64_t biv_start_value_;
 
   /**
    * @brief The end value of the induction variable.
    */
-  Border biv_end_value_ = Border();
+  int64_t biv_end_value_;
 };
 }  // namespace art
 

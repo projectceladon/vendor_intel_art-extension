@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_RUNTIME_ARCH_X86_64_ASM_SUPPORT_X86_64_S_
@@ -33,7 +31,8 @@
     // Clang/llvm does not support .altmacro. However, the clang/llvm preprocessor doesn't
     // separate the backslash and parameter by a space. Everything just works.
     #define RAW_VAR(name) \name
-    #define VAR(name) SYMBOL(\name)
+    #define VAR(name) \name
+    #define CALLVAR(name) SYMBOL(\name)
     #define PLT_VAR(name) \name@PLT
     #define REG_VAR(name) %\name
     #define CALL_MACRO(name) \name
@@ -47,6 +46,7 @@
     .altmacro
     #define RAW_VAR(name) name&
     #define VAR(name) name&
+    #define CALLVAR(name) SYMBOL(name&)
     #define PLT_VAR(name) name&@PLT
     #define REG_VAR(name) %name
     #define CALL_MACRO(name) name&
@@ -54,7 +54,7 @@
 
 #define LITERAL(value) $value
 #if defined(__APPLE__)
-    #define MACRO_LITERAL(value) $$(value)
+    #define MACRO_LITERAL(value) $(value)
 #else
     #define MACRO_LITERAL(value) $value
 #endif
@@ -67,18 +67,6 @@
     #define SIZE(name) .size name, .-name
 #endif
 
-#if defined(__APPLE__)
-    #define STARTFCNSECTION(name)
-    #define ENDFCNSECTION
-    #define STARTHOTFCN(name)
-    #define ENDHOTFCN
-#else
-    #define STARTFCNSECTION(name) .pushsection .text.##name,"ax",@progbits
-    #define ENDFCNSECTION .popsection
-    #define STARTHOTFCN(name) .pushsection .text.hot.##name,"ax",@progbits
-    #define ENDHOTFCN .popsection
-#endif
-
     // CFI support.
 #if !defined(__APPLE__)
     #define CFI_STARTPROC .cfi_startproc
@@ -88,6 +76,8 @@
     #define CFI_DEF_CFA_REGISTER(reg) .cfi_def_cfa_register reg
     #define CFI_RESTORE(reg) .cfi_restore reg
     #define CFI_REL_OFFSET(reg,size) .cfi_rel_offset reg,size
+    #define CFI_RESTORE_STATE .cfi_restore_state
+    #define CFI_REMEMBER_STATE .cfi_remember_state
 #else
     // Mac OS' doesn't like cfi_* directives.
     #define CFI_STARTPROC
@@ -97,6 +87,8 @@
     #define CFI_DEF_CFA_REGISTER(reg)
     #define CFI_RESTORE(reg)
     #define CFI_REL_OFFSET(reg,size)
+    #define CFI_RESTORE_STATE
+    #define CFI_REMEMBER_STATE
 #endif
 
     // Symbols.
@@ -122,32 +114,24 @@ END_MACRO
 
 // TODO: we might need to use SYMBOL() here to add the underscore prefix
 // for mac builds.
-MACRO1(DEFINE_FUNCTION, c_name)
-    STARTFCNSECTION(\c_name)
+MACRO2(DEFINE_FUNCTION_CUSTOM_CFA, c_name, cfa_offset)
     FUNCTION_TYPE(SYMBOL(\c_name))
-    ASM_HIDDEN SYMBOL(\c_name)
-    .globl VAR(c_name)
+    ASM_HIDDEN CALLVAR(c_name)
+    .globl CALLVAR(c_name)
     ALIGN_FUNCTION_ENTRY
-VAR(c_name):
+CALLVAR(c_name):
     CFI_STARTPROC
     // Ensure we get a sane starting CFA.
-    CFI_DEF_CFA(rsp, 8)
+    CFI_DEF_CFA(rsp, RAW_VAR(cfa_offset))
+END_MACRO
+
+MACRO1(DEFINE_FUNCTION, c_name)
+    DEFINE_FUNCTION_CUSTOM_CFA RAW_VAR(c_name), __SIZEOF_POINTER__
 END_MACRO
 
 MACRO1(END_FUNCTION, c_name)
     CFI_ENDPROC
     SIZE(SYMBOL(\c_name))
-    ENDFCNSECTION
-END_MACRO
-
-MACRO2(DEFINE_HOT_FUNCTION, c_name, section)
-    STARTHOTFCN(\section)
-    DEFINE_FUNCTION VAR(c_name)
-END_MACRO
-
-MACRO1(END_HOT_FUNCTION, c_name)
-    END_FUNCTION VAR(c_name)
-    ENDHOTFCN
 END_MACRO
 
 MACRO1(PUSH, reg)

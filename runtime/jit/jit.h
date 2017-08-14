@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_RUNTIME_JIT_JIT_H_
@@ -24,41 +22,45 @@
 #include "base/macros.h"
 #include "base/mutex.h"
 #include "base/timing_logger.h"
+#include "jit/profile_saver_options.h"
+#include "obj_ptr.h"
 #include "object_callbacks.h"
-#include "offline_profiling_info.h"
+#include "profile_compilation_info.h"
 #include "thread_pool.h"
 
 namespace art {
 
 class ArtMethod;
+class ClassLinker;
 struct RuntimeArgumentMap;
+union JValue;
+
+namespace mirror {
+class Object;
+class Class;
+}   // namespace mirror
 
 namespace jit {
 
 class JitCodeCache;
 class JitOptions;
-class JitCompileTask;
-class JniTask : public Task { };
-
-enum JitTaskKind {
-  kAllocateProfile,
-  kCompile,
-  kCompileOsr
-};
 
 static constexpr int16_t kJitCheckForOSR = -1;
 static constexpr int16_t kJitHotnessDisabled = -2;
 
 class Jit {
  public:
-  static constexpr size_t kDefaultCompileThreshold = 10000;
+  static constexpr bool kStressMode = kIsDebugBuild;
+  static constexpr size_t kDefaultCompileThreshold = kStressMode ? 2 : 10000;
   static constexpr size_t kDefaultPriorityThreadWeightRatio = 1000;
   static constexpr size_t kDefaultInvokeTransitionWeightRatio = 500;
+  // How frequently should the interpreter check to see if OSR compilation is ready.
+  static constexpr int16_t kJitRecheckOSRThreshold = 100;
 
   virtual ~Jit();
   static Jit* Create(JitOptions* options, std::string* error_msg);
   bool CompileMethod(ArtMethod* method, Thread* self, bool osr)
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
   void CreateThreadPool();
 
   const JitCodeCache* GetCodeCache() const {
@@ -78,7 +80,7 @@ class Jit {
 
   void AddMemoryUsage(ArtMethod* method, size_t bytes)
       REQUIRES(!lock_)
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
   size_t OSRMethodThreshold() const {
     return osr_method_threshold_;
@@ -101,8 +103,8 @@ class Jit {
     return use_jit_compilation_;
   }
 
-  bool SaveProfilingInfo() const {
-    return save_profiling_info_;
+  bool GetSaveProfilingInfo() const {
+    return profile_saver_options_.IsEnabled();
   }
 
   // Wait until there is no more pending compilation tasks.
@@ -110,48 +112,38 @@ class Jit {
 
   // Profiling methods.
   void MethodEntered(Thread* thread, ArtMethod* method)
-      SHARED_REQUIRES(Locks::mutator_lock_) REQUIRES(!tasks_in_queue_lock_);
-
-  void IncrementBBCount(Thread* thread, ArtMethod* method, uint32_t dex_pc)
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
   void AddSamples(Thread* self, ArtMethod* method, uint16_t samples, bool with_backedges)
-      SHARED_REQUIRES(Locks::mutator_lock_) REQUIRES(!tasks_in_queue_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
-  void InvokeVirtualOrInterface(Thread* thread,
-                                mirror::Object* this_object,
+  void InvokeVirtualOrInterface(ObjPtr<mirror::Object> this_object,
                                 ArtMethod* caller,
                                 uint32_t dex_pc,
                                 ArtMethod* callee)
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
   void NotifyInterpreterToCompiledCodeTransition(Thread* self, ArtMethod* caller)
-      SHARED_REQUIRES(Locks::mutator_lock_) REQUIRES(!tasks_in_queue_lock_) {
+      REQUIRES_SHARED(Locks::mutator_lock_) {
     AddSamples(self, caller, invoke_transition_weight_, false);
   }
 
   void NotifyCompiledCodeToInterpreterTransition(Thread* self, ArtMethod* callee)
-      SHARED_REQUIRES(Locks::mutator_lock_) REQUIRES(!tasks_in_queue_lock_) {
+      REQUIRES_SHARED(Locks::mutator_lock_) {
     AddSamples(self, callee, invoke_transition_weight_, false);
   }
 
   // Starts the profile saver if the config options allow profile recording.
   // The profile will be stored in the specified `filename` and will contain
   // information collected from the given `code_paths` (a set of dex locations).
-  // The `foreign_dex_profile_path` is the path where the saver will put the
-  // profile markers for loaded dex files which are not owned by the application.
-  // The `app_dir` is the application directory and is used to decide which
-  // dex files belong to the application.
   void StartProfileSaver(const std::string& filename,
-                         const std::vector<std::string>& code_paths,
-                         const std::string& foreign_dex_profile_path,
-                         const std::string& app_dir);
+                         const std::vector<std::string>& code_paths);
   void StopProfileSaver();
 
   void DumpForSigQuit(std::ostream& os) REQUIRES(!lock_);
 
   static void NewTypeLoadedIfUsingJit(mirror::Class* type)
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
   // If debug info generation is turned on then write the type information for types already loaded
   // into the specified class linker to the jit debug interface,
@@ -175,15 +167,19 @@ class Jit {
                                         uint32_t dex_pc,
                                         int32_t dex_pc_offset,
                                         JValue* result)
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
   static bool LoadCompilerLibrary(std::string* error_msg);
 
-  void AddCompileTask(Thread* self, ArtMethod* method, JitTaskKind kind)
-      REQUIRES(!tasks_in_queue_lock_);
-  void RemoveCompileTask(ArtMethod* method, JitTaskKind kind) REQUIRES(!tasks_in_queue_lock_);
+  ThreadPool* GetThreadPool() const {
+    return thread_pool_.get();
+  }
 
-  bool AddJniTask(Thread* self, JniTask* task);
+  // Stop the JIT by waiting for all current compilations and enqueued compilations to finish.
+  void Stop();
+
+  // Start JIT threads.
+  void Start();
 
  private:
   Jit();
@@ -207,7 +203,7 @@ class Jit {
   std::unique_ptr<jit::JitCodeCache> code_cache_;
 
   bool use_jit_compilation_;
-  bool save_profiling_info_;
+  ProfileSaverOptions profile_saver_options_;
   static bool generate_debug_info_;
   uint16_t hot_method_threshold_;
   uint16_t warm_method_threshold_;
@@ -215,8 +211,6 @@ class Jit {
   uint16_t priority_thread_weight_;
   uint16_t invoke_transition_weight_;
   std::unique_ptr<ThreadPool> thread_pool_;
-  Mutex tasks_in_queue_lock_;
-  std::set<std::pair<ArtMethod*, JitTaskKind>> tasks_in_queue_;
 
   DISALLOW_COPY_AND_ASSIGN(Jit);
 };
@@ -248,8 +242,11 @@ class JitOptions {
   bool DumpJitInfoOnShutdown() const {
     return dump_info_on_shutdown_;
   }
+  const ProfileSaverOptions& GetProfileSaverOptions() const {
+    return profile_saver_options_;
+  }
   bool GetSaveProfilingInfo() const {
-    return save_profiling_info_;
+    return profile_saver_options_.IsEnabled();
   }
   bool UseJitCompilation() const {
     return use_jit_compilation_;
@@ -257,8 +254,8 @@ class JitOptions {
   void SetUseJitCompilation(bool b) {
     use_jit_compilation_ = b;
   }
-  void SetSaveProfilingInfo(bool b) {
-    save_profiling_info_ = b;
+  void SetSaveProfilingInfo(bool save_profiling_info) {
+    profile_saver_options_.SetEnabled(save_profiling_info);
   }
   void SetJitAtFirstUse() {
     use_jit_compilation_ = true;
@@ -275,17 +272,30 @@ class JitOptions {
   uint16_t priority_thread_weight_;
   size_t invoke_transition_weight_;
   bool dump_info_on_shutdown_;
-  bool save_profiling_info_;
+  ProfileSaverOptions profile_saver_options_;
 
   JitOptions()
       : use_jit_compilation_(false),
         code_cache_initial_capacity_(0),
         code_cache_max_capacity_(0),
         compile_threshold_(0),
-        dump_info_on_shutdown_(false),
-        save_profiling_info_(false) { }
+        warmup_threshold_(0),
+        osr_threshold_(0),
+        priority_thread_weight_(0),
+        invoke_transition_weight_(0),
+        dump_info_on_shutdown_(false) {}
 
   DISALLOW_COPY_AND_ASSIGN(JitOptions);
+};
+
+// Helper class to stop the JIT for a given scope. This will wait for the JIT to quiesce.
+class ScopedJitSuspend {
+ public:
+  ScopedJitSuspend();
+  ~ScopedJitSuspend();
+
+ private:
+  bool was_on_;
 };
 
 }  // namespace jit

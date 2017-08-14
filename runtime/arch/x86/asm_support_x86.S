@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_RUNTIME_ARCH_X86_ASM_SUPPORT_X86_S_
@@ -70,18 +68,6 @@
     #define SIZE(name) .size name, .-name
 #endif
 
-#if defined(__APPLE__)
-    #define STARTFCNSECTION(name)
-    #define ENDFCNSECTION
-    #define STARTHOTFCN(name)
-    #define ENDHOTFCN
-#else
-    #define STARTFCNSECTION(name) .pushsection .text.##name,"ax",@progbits
-    #define ENDFCNSECTION .popsection
-    #define STARTHOTFCN(name) .pushsection .text.hot.##name,"ax",@progbits
-    #define ENDHOTFCN .popsection
-#endif
-
     // CFI support.
 #if !defined(__APPLE__)
     #define CFI_STARTPROC .cfi_startproc
@@ -128,8 +114,7 @@ MACRO0(ALIGN_FUNCTION_ENTRY)
     .balign 16
 END_MACRO
 
-MACRO1(DEFINE_FUNCTION, c_name)
-    STARTFCNSECTION(\c_name)
+MACRO2(DEFINE_FUNCTION_CUSTOM_CFA, c_name, cfa_offset)
     FUNCTION_TYPE(SYMBOL(\c_name))
     ASM_HIDDEN CALLVAR(c_name)
     .globl CALLVAR(c_name)
@@ -137,23 +122,16 @@ MACRO1(DEFINE_FUNCTION, c_name)
 CALLVAR(c_name):
     CFI_STARTPROC
     // Ensure we get a sane starting CFA.
-    CFI_DEF_CFA(esp, 4)
+    CFI_DEF_CFA(esp, RAW_VAR(cfa_offset))
+END_MACRO
+
+MACRO1(DEFINE_FUNCTION, c_name)
+    DEFINE_FUNCTION_CUSTOM_CFA RAW_VAR(c_name), __SIZEOF_POINTER__
 END_MACRO
 
 MACRO1(END_FUNCTION, c_name)
     CFI_ENDPROC
     SIZE(SYMBOL(\c_name))
-    ENDFCNSECTION
-END_MACRO
-
-MACRO2(DEFINE_HOT_FUNCTION, c_name, section)
-    STARTHOTFCN(\section)
-    DEFINE_FUNCTION VAR(c_name)
-END_MACRO
-
-MACRO1(END_HOT_FUNCTION, c_name)
-    END_FUNCTION VAR(c_name)
-    ENDHOTFCN
 END_MACRO
 
 MACRO1(PUSH, reg)

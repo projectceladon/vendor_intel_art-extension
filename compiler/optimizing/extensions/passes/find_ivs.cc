@@ -1,27 +1,34 @@
 /*
- * Copyright (C) 2015 Intel Corporation
+ * INTEL CONFIDENTIAL
+ * Copyright (c) 2015, Intel Corporation All Rights Reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * The source code contained or described herein and all documents related to the
+ * source code ("Material") are owned by Intel Corporation or its suppliers or
+ * licensors. Title to the Material remains with Intel Corporation or its suppliers
+ * and licensors. The Material contains trade secrets and proprietary and
+ * confidential information of Intel or its suppliers and licensors. The Material
+ * is protected by worldwide copyright and trade secret laws and treaty provisions.
+ * No part of the Material may be used, copied, reproduced, modified, published,
+ * uploaded, posted, transmitted, distributed, or disclosed in any way without
+ * Intel's prior express written permission.
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * No license under any patent, copyright, trade secret or other intellectual
+ * property right is granted to or conferred upon you by disclosure or delivery of
+ * the Materials, either expressly, by implication, inducement, estoppel or
+ * otherwise. Any license under such intellectual property rights must be express
+ * and approved by Intel in writing.
  *
  */
 
 #include "ext_utility.h"
 #include "find_ivs.h"
+#include "graph_x86.h"
+#include "induction_variable.h"
 #include "loop_iterators.h"
 
 namespace art {
 
-void HFindInductionVariables::FindInductionVariablesHelper(HLoopInformation_X86* info) const {
+void HFindInductionVariables::FindInductionVariablesHelper(HLoopInformation_X86* info) {
   // Get the loop entry BB.
   HBasicBlock* entry = info->GetHeader();
 
@@ -56,11 +63,11 @@ void HFindInductionVariables::FindInductionVariablesHelper(HLoopInformation_X86*
   }
 }
 
-HIf* HFindInductionVariables::FindLoopIf(HLoopInformation_X86* loop) const {
+HIf* HFindInductionVariables::FindLoopIf(HLoopInformation_X86* loop) {
   DCHECK(loop != nullptr);
 
   // Get the only exit block.
-  HBasicBlock* exit_block = loop->GetExitBlock(true);
+  HBasicBlock* exit_block = loop->GetExitBlock();
   DCHECK(exit_block != nullptr);
 
   // exit_block always has only one predecessor and it comes from the loop.
@@ -76,11 +83,10 @@ HIf* HFindInductionVariables::FindLoopIf(HLoopInformation_X86* loop) const {
   return last_insn->AsIf();
 }
 
-bool HFindInductionVariables::FindLoopUpperBound(HLoopInformation_X86* loop,
-                                                 int64_t& upper_bound) const {
+bool HFindInductionVariables::FindLoopUpperBound(HLoopInformation_X86* loop, int64_t& upper_bound) {
   DCHECK(loop != nullptr);
 
-  if (!loop->HasOneExitEdge()) {
+  if (!loop->HasOneExitBlock()) {
     return false;
   }
 
@@ -138,8 +144,7 @@ bool HFindInductionVariables::FindLoopUpperBound(HLoopInformation_X86* loop,
   return upper_bound_found;
 }
 
-bool HFindInductionVariables::IsValidCastForIV(HInstruction* candidate,
-                                               HLoopInformation_X86* loop) const {
+bool HFindInductionVariables::IsValidCastForIV(HInstruction* candidate, HLoopInformation_X86* loop) {
   DCHECK(candidate != nullptr);
   DCHECK(loop != nullptr);
 
@@ -182,8 +187,7 @@ bool HFindInductionVariables::IsValidCastForIV(HInstruction* candidate,
   return true;
 }
 
-void HFindInductionVariables::DetectAndInitializeBasicIV(HLoopInformation_X86* info,
-                                                         HPhi* phi) const {
+void HFindInductionVariables::DetectAndInitializeBasicIV(HLoopInformation_X86* info, HPhi* phi) {
   size_t input_count = phi->InputCount();
 
   // For now accept only PHI nodes that have two uses and one define.
@@ -266,13 +270,16 @@ void HFindInductionVariables::DetectAndInitializeBasicIV(HLoopInformation_X86* i
             ArenaAllocator* arena = graph_->GetArena();
             ArenaVector<HInductionVariable*>& iv_list = info->GetInductionVariables();
 
-            HInductionVariable* iv_info = new (arena) HInductionVariable(right->AsConstant(),
-                                                                         is_wide, is_fp,
-                                                                         candidate, phi);
+            int ssa_reg = phi->GetId();
+
+            HInductionVariable* iv_info = new (arena) HInductionVariable(ssa_reg, right->AsConstant(), is_wide, is_fp, candidate, phi);
             DCHECK(iv_info != nullptr);
 
             iv_list.push_back(iv_info);
             MaybeRecordStat(MethodCompilationStat::kIntelBIVFound);
+            if (IsVerbose()) {
+              iv_info->Dump();
+            }
           }
         }
       }
@@ -281,7 +288,7 @@ void HFindInductionVariables::DetectAndInitializeBasicIV(HLoopInformation_X86* i
 }
 
 void HFindInductionVariables::Run() {
-  HGraph_X86* graph = GetGraphX86();
+  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
   HLoopInformation_X86* loop_info = graph->GetLoopInformation();
   PRINT_PASS_OSTREAM_MESSAGE(this, "Find IVs: Begin " << GetMethodName(graph));
   for (HOutToInLoopIterator loop_iter(loop_info); !loop_iter.Done(); loop_iter.Advance()) {
@@ -290,9 +297,6 @@ void HFindInductionVariables::Run() {
     FindInductionVariablesHelper(current);
     // And also calculate the loop bounds.
     current->ComputeBoundInformation();
-    if (IsVerbose()) {
-      current->Dump(LOG(INFO));
-    }
   }
   PRINT_PASS_OSTREAM_MESSAGE(this, "Find IVs: End " << GetMethodName(graph));
 }

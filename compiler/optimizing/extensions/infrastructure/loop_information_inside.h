@@ -1,24 +1,26 @@
 /*
- * Copyright (C) 2015 Intel Corporation.
+ * INTEL CONFIDENTIAL
+ * Copyright (c) 2015, Intel Corporation All Rights Reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * The source code contained or described herein and all documents related to the
+ * source code ("Material") are owned by Intel Corporation or its suppliers or
+ * licensors. Title to the Material remains with Intel Corporation or its suppliers
+ * and licensors. The Material contains trade secrets and proprietary and
+ * confidential information of Intel or its suppliers and licensors. The Material
+ * is protected by worldwide copyright and trade secret laws and treaty provisions.
+ * No part of the Material may be used, copied, reproduced, modified, published,
+ * uploaded, posted, transmitted, distributed, or disclosed in any way without
+ * Intel's prior express written permission.
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * No license under any patent, copyright, trade secret or other intellectual
+ * property right is granted to or conferred upon you by disclosure or delivery of
+ * the Materials, either expressly, by implication, inducement, estoppel or
+ * otherwise. Any license under such intellectual property rights must be express
+ * and approved by Intel in writing.
  */
 
 #ifndef ART_OPT_INFRASTRUCTURE_LOOP_INFORMATION_INSIDE_H_
 #define ART_OPT_INFRASTRUCTURE_LOOP_INFORMATION_INSIDE_H_
-
-#include "bound_information.h"
 
 /*
  * This is done without namespace in order to be included
@@ -32,34 +34,22 @@
 #define LOOPINFO_TO_LOOPINFO_X86(X) static_cast<HLoopInformation_X86*>(X)
 #endif
 
-// Forward declarations.
+// Forward declaration.
 class HInductionVariable;
-class HOptimization_X86;
 
 class HLoopInformation_X86 : public HLoopInformation {
  public:
   HLoopInformation_X86(HBasicBlock* block, HGraph* graph) :
       HLoopInformation(block, graph),
       depth_(0), count_up_(false),
-      suppress_suspend_check_(false), bottom_tested_(false),
       outer_(nullptr), sibling_previous_(nullptr),
       sibling_next_(nullptr), inner_(nullptr),
       test_suspend_(nullptr), suspend_(nullptr),
       iv_list_(graph->GetArena()->Adapter(kArenaAllocMisc)),
-      inter_iteration_variables_(graph->GetArena()->Adapter(kArenaAllocMisc)),
-      peeled_blocks_(graph->GetArena()->Adapter(kArenaAllocMisc)),
-      graph_(graph) {
+      inter_iteration_variables_(graph->GetArena()->Adapter(kArenaAllocMisc)) {
 #ifndef NDEBUG
         down_cast_checker_ = LOOPINFO_MAGIC;
 #endif
-  }
-
-  void ResetRelationships() {
-    depth_ = 0;
-    inner_ = nullptr;
-    outer_ = nullptr;
-    sibling_next_ = nullptr;
-    sibling_previous_ = nullptr;
   }
 
   /**
@@ -148,7 +138,7 @@ class HLoopInformation_X86 : public HLoopInformation {
     * @return the basic induction variable.
     */
   HInductionVariable* GetBasicIV() const {
-    return bound_info_.GetLoopBIV();
+    return bound_info_.loop_biv_;
   }
 
   /**
@@ -207,22 +197,6 @@ class HLoopInformation_X86 : public HLoopInformation {
   }
 
   /**
-   * @brief  Set the bottom tested loop boolean.
-   * @param b 'true' if the loop should be reported as bottom tested.
-   */
-  void SetBottomTested(bool b) {
-    bottom_tested_ = b;
-  }
-
-  /**
-   * @brief Is the loop bottom tested?
-   * @return 'true' if the test for continuing the loop is at the bottom of the loop.
-   */
-  bool IsBottomTested() const {
-    return bottom_tested_;
-  }
-
-  /**
    * @brief Is the basic block executed every iteration?
    * @param bb the basic block.
    * @return whether or not the block is executed every iteration.
@@ -237,23 +211,16 @@ class HLoopInformation_X86 : public HLoopInformation {
   bool ExecutedPerIteration(HInstruction* candidate) const;
 
   /**
-   * @brief Used to obtain number of loop exits edges.
-   * @return Returns the number of loop exit edges.
+   * @brief Does the loop only have one exit block?
+   * @return whether or not the loop has one single exit block.
    */
-  size_t GetLoopExitCount() const;
+  bool HasOneExitBlock() const;
 
   /**
-   * @brief Does the loop only have one exit edge?
-   * @return Returns whether or not the loop has one single exit edge.
+   * @brief Get the exit block if there is only one.
+   * @return the exit block, nullptr if more than one.
    */
-  bool HasOneExitEdge() const;
-
-  /**
-   * @brief Get the exit block if there is only one exit edge.
-   * @param guarantee_one_exit Whether we know for sure that the loop has one exit block.
-   * @return Returns the exit block, nullptr if more than one.
-   */
-  HBasicBlock* GetExitBlock(bool guarantee_one_exit = false) const;
+  HBasicBlock* GetExitBlock() const;
 
   /**
    * @brief Get the number of iterations of given basic block.
@@ -269,7 +236,7 @@ class HLoopInformation_X86 : public HLoopInformation {
    * @return whether we know the number of iterations.
    */
   bool HasKnownNumIterations() const {
-    return (bound_info_.GetNumIterations() != -1);
+    return (bound_info_.num_iterations_ != -1);
   }
 
   /**
@@ -281,11 +248,10 @@ class HLoopInformation_X86 : public HLoopInformation {
    * @brief Insert an HInstruction before the call to Suspend.  Will
    * call SplitSuspendCheck if there isn't already a split suspend.
    * @param instruction HInstruction to insert just before call to Suspend.
-   * @returns 'true' if the suspend block was created.
    * @note RebuildDominators() must be called before an optimization that uses
-   * this method is returns 'true'.
+   * this method is returns.
    */
-  bool InsertInstructionInSuspendBlock(HInstruction* instruction);
+  void InsertInstructionInSuspendBlock(HInstruction* instruction);
 
   /**
    * @brief Add a block to all nested loops, and set the loop_information
@@ -331,18 +297,12 @@ class HLoopInformation_X86 : public HLoopInformation {
   bool HasTestSuspend() const { return test_suspend_ != nullptr; }
 
   /**
-   * @brief Should a SuspendCheck be inserted into this loop?
-   * @param value 'true' if no suspend check is needed in the loop.
-   */
-  void SetSuppressSuspendCheck(bool value) { suppress_suspend_check_ = value; }
-
-  /**
    * @brief Does this loop need to have a HSuspendCheck added?
    * @returns 'true' if a SuspendCheck should not be added.
    * @note If we have converted to HTestSuspend/HSuspend, we don't want
    * another HSuspendCheck to be added to the loop.
    */
-  bool DontAddSuspendCheck() const OVERRIDE { return suppress_suspend_check_ || HasTestSuspend(); }
+  bool DontAddSuspendCheck() const OVERRIDE { return HasTestSuspend(); }
 
 #ifndef NDEBUG
   static HLoopInformation_X86* DownCast(HLoopInformation* info) {
@@ -378,176 +338,6 @@ class HLoopInformation_X86 : public HLoopInformation {
     outer_ = nullptr;
   }
 
-  /**
-   * @brief Used to check if loop can be peeled.
-   * @param optim Useful during development of using the interface to understand
-   * why peeling failed.
-   * @return Returns true if loop peeling will surely succeed and false otherwise.
-   */
-  bool IsPeelable(HOptimization_X86* optim) const;
-
-  /**
-   * @brief Used to peel one iteration from the loop on top.
-   * @param optim Useful during development of using the interface to understand
-   * @details This method should be called when caller knows the loop is peelable.
-   */
-  void PeelHead(HOptimization_X86* optim) {
-    DCHECK_EQ(IsPeelable(optim), true);
-    bool peeled = PeelHelperHead();
-    DCHECK(peeled);
-  }
-
-  /**
-   * @brief Used to peel one iteration from the loop on top.
-   * @details This method should be called when caller does not know if loop is peelable.
-   * @param optim Useful during development of using the interface to understand
-   * @return Returns true if peeling succeeds and false otherwise.
-   */
-  bool PeelHeadWithCheck(HOptimization_X86* optim) {
-    if (IsPeelable(optim)) {
-      return PeelHelperHead();
-    }
-    return false;
-  }
-
-  /**
-   * @brief Used to check whether a loop has already been peeled.
-   * @returns True if the loop has been peeled.
-   */
-  bool HasBeenPeeled() const {
-    return !peeled_blocks_.empty();
-  }
-
-  /**
-   * @brief Used to check if loop has a try block or a catch handler block.
-   * @return Returns true if loop has a try block or a catch handler block.
-   */
-  bool HasTryCatchHandler() const;
-
-  /**
-   * @brief This is used to get a list of ids for the peeled blocks.
-   * @details The reason this does not return a list of block pointers is because
-   * we do not want to maintain correctness of this list. Namely, other optimizations
-   * may remove/merge blocks and thus invalidate some blocks. The list returned here
-   * is for reference only to see if a known id was ever the result of peeling. This
-   * method can be used in testing to see which blocks were result of peeling.
-   * @return Returns the list of ids for the peeled blocks.
-   */
-  const ArenaVector<int>& GetPeeledBlockIds() {
-    return peeled_blocks_;
-  }
-
-  /**
-   * @brief Determines whether the loop contains opcodes that can exit the block unexpectedly.
-   * @param ignore_suspends Should HSuspendCheck and HSuspend be ignored during the check?
-   * @return 'true' if any instruction in the loop has an environment.
-   */
-  bool CanSideExit(bool ignore_suspends = true) const;
-
-  /**
-   * @brief Estimate the number of cycles for one loop execution.
-   * @param cost Returned cycle estimation count.
-   * @return 'true' if the estimation was successful.
-   */
-  bool GetLoopCost(uint64_t* cost) const;
-
-  /**
-   * @brief Removes the loop from the graph it belongs to.
-   * @details This method takes care of handling graph and loop internal structures as well, especially:
-   * - Delete the basic blocks inside of the loop.
-   * If the loop is nested:
-   * - Remove the inner loop from its first parent.
-   * - Remove the loop's BBs from every outer loop level.
-   * Currently, only innermost loops are supported by this method.
-   * @return Returns true if the loop has been successfully removed from the graph, or false otherwise.
-   */
-  bool RemoveFromGraph();
-
-  /**
-   * @brief Determines whether the loop contains instructions that can throw exceptions.
-   * @return Whether the loop contains instructions that can throw exceptions.
-   */
-  bool CanThrow() const;
-
-  /**
-   * @brief Compute the number of instructions in a loop. Phi nodes and
-   * suspend checks (if requested so) are not considered in the computation.
-   * @param skip_suspend_checks Whether we want to count suspend checks as loop instructions.
-   * This argument is true by default.
-   */
-  uint64_t CountInstructionsInBody(bool skip_suspend_checks = true) const;
-
-  /**
-   * @return The graph attached to the loop information instance.
-   */
-  HGraph* GetGraph() const {
-    return graph_;
-  }
-
-  void SetGraph(HGraph* graph) { graph_ = graph; }
-
-  /**
-    * @brief Returns the phi input that is either inside or outside of the loop.
-    * @param phi A phi node that must have 2 inputs, and that must be in a loop.
-    * @param inside_of_loop Whether we want to retrieve the phi input that is inside
-    * of the loop.
-    * @return Returns the phi input that is either inside or outside of the loop.
-    */
-  HInstruction* PhiInput(HPhi* phi, bool inside_of_loop);
-
-  /**
-   * @brief Used to check whether all inputs for this instruction are defined out of loop.
-   * @param instr The instruction whose inputs need checked.
-   * @return Returns true if all inputs are from outside the loop (including inputs into
-   * the environment).
-   */
-  bool AllInputsDefinedOutsideLoop(HInstruction* instr);
-
-  /**
-   * @brief Used to determine whether the loop is irreducible or contains irreducible loop
-   * @details Returns true if either the loop is irreducible or contains irreducible loop.
-   */
-  bool IsOrHasIrreducibleLoop() const;
-
-  /*
-   * @brief Use exact profiling BB counts to determine the average loop iteration
-   * count of the loop.
-   * @param valid Set to 'true' if BB counts are available.
-   * @return The average number of times the loop is executed, or 0 if not available.
-   * @note A loop that is never executed sets valid to 'true' and returns 0.
-   */
-  uint64_t AverageLoopIterationCount(bool& valid) const;
-
-  /*
-   * @brief Return true if there is a catch handler which needs a VR corresponding
-   * to value produced by the instruction.
-   * @param instruction to check.
-   * @return true is there is a usage of VR corresponding to insn in any catch block.
-   */
-  bool CheckForCatchBlockUsage(HInstruction* insn) const;
-
-  /**
-    * @brief Dumps the details about this loop info.
-    */
-  void Dump(std::ostream& os);
-
-  /**
-   * @brief Slow check on irreducibility of the loop.
-   * @return true, if there is an edge into a block
-   *         other than the loop header in the CFG.
-   */
-  bool IsIrreducibleSlowCheck();
-
-  /**
-   * @brief Used to determine whether the loop is irreducible or contains irreducible loop
-   * @details Returns true if either the loop is irreducible or contains irreducible loop.
-   */
-  virtual bool ContainsIrreducibleLoop() const OVERRIDE {
-    return IsOrHasIrreducibleLoop();
-  }
-
-  static const char* kLoopDumpPrefix;
-
  protected:
   /**
    * @brief Find the constant entry SSA associated to the Phi instruction.
@@ -570,8 +360,6 @@ class HLoopInformation_X86 : public HLoopInformation {
 
   int depth_;
   bool count_up_;
-  bool suppress_suspend_check_;
-  bool bottom_tested_;
 
   HLoopInformation_X86* outer_;
   HLoopInformation_X86* sibling_previous_;
@@ -579,7 +367,7 @@ class HLoopInformation_X86 : public HLoopInformation {
   HLoopInformation_X86* inner_;
 
   /** @brief The bound information. */
-  HLoopBoundInformation bound_info_ = HLoopBoundInformation();
+  HLoopBoundInformation bound_info_;
 
   /** @brief Pointer to the split HTestSuspend, if present. */
   HTestSuspend* test_suspend_;
@@ -592,20 +380,6 @@ class HLoopInformation_X86 : public HLoopInformation {
 
   /** @brief Inter-iteration dependent variables. */
   ArenaSet<int> inter_iteration_variables_;
-
-  /**
-   * @brief Holds the block ids of blocks that were peeled.
-   */
-  ArenaVector<int> peeled_blocks_;
-
-  /**
-   * @brief Internal utility used for peeling.
-   * @details This is guaranteed to succeed if IsPeelable returns true.
-   */
-  bool PeelHelperHead();
-
-  /** @brief The HGraph the loop belongs to. */
-  HGraph* graph_;
 };
 
 #endif  // ART_OPT_INFRASTRUCTURE_LOOP_INFORMATION_INSIDE_H_

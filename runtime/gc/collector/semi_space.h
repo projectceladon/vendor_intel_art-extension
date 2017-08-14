@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_RUNTIME_GC_COLLECTOR_SEMI_SPACE_H_
@@ -26,13 +24,11 @@
 #include "base/mutex.h"
 #include "garbage_collector.h"
 #include "gc_root.h"
-#include "gc/accounting/aging_table.h"
 #include "gc/accounting/heap_bitmap.h"
 #include "immune_spaces.h"
 #include "mirror/object_reference.h"
 #include "object_callbacks.h"
 #include "offsets.h"
-#include "stack.h"
 
 namespace art {
 
@@ -63,8 +59,8 @@ class SemiSpace : public GarbageCollector {
  public:
   // If true, use remembered sets in the generational mode.
   static constexpr bool kUseRememberedSet = true;
-  explicit SemiSpace(Heap* heap, bool generational = false,
-                     const std::string& name_prefix = "", bool need_aging_table = false, bool support_parallel = true);
+
+  explicit SemiSpace(Heap* heap, bool generational = false, const std::string& name_prefix = "");
 
   ~SemiSpace() {}
 
@@ -78,28 +74,18 @@ class SemiSpace : public GarbageCollector {
   void MarkReachableObjects()
       REQUIRES(Locks::mutator_lock_, Locks::heap_bitmap_lock_);
   virtual GcType GetGcType() const OVERRIDE {
-    return need_aging_table_ ? kGcTypeYoung : kGcTypePartial;
+    return kGcTypePartial;
   }
   virtual CollectorType GetCollectorType() const OVERRIDE {
     return generational_ ? kCollectorTypeGSS : kCollectorTypeSS;
   }
 
-  // Wake up suspended mutators due to allocation failures.
-  void NeedToWakeMutators();
   // Sets which space we will be copying objects to.
   void SetToSpace(space::ContinuousMemMapAllocSpace* to_space);
 
   // Set the space where we copy objects from.
   void SetFromSpace(space::ContinuousMemMapAllocSpace* from_space);
 
-  // Get from space.
-  space::ContinuousMemMapAllocSpace* GetFromSpace();
-  // Get to space.
-  space::ContinuousMemMapAllocSpace* GetToSpace();
-  // Get promote space.
-  space::ContinuousMemMapAllocSpace* GetPromoSpace();
-  // Used by parallel copying task to determine the promoted space.
-  bool IsCollectFromSpaceOnly();
   // Set whether or not we swap the semi spaces in the heap. This needs to be done with mutators
   // suspended.
   void SetSwapSemiSpaces(bool swap_semi_spaces) {
@@ -124,28 +110,23 @@ class SemiSpace : public GarbageCollector {
   virtual mirror::Object* MarkObject(mirror::Object* root) OVERRIDE
       REQUIRES(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
 
-  virtual void MarkHeapReference(mirror::HeapReference<mirror::Object>* obj_ptr) OVERRIDE
+  virtual void MarkHeapReference(mirror::HeapReference<mirror::Object>* obj_ptr,
+                                 bool do_atomic_update) OVERRIDE
       REQUIRES(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
 
   void ScanObject(mirror::Object* obj)
       REQUIRES(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
 
   void VerifyNoFromSpaceReferences(mirror::Object* obj)
-      SHARED_REQUIRES(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
 
-  void MarkThreadRoots()
-      REQUIRES(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
-  void MarkNonThreadRoots()
-      REQUIRES(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
-   void MarkConcurrentRoots()
-      REQUIRES(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
- // Marks the root set at the start of a garbage collection.
+  // Marks the root set at the start of a garbage collection.
   void MarkRoots()
       REQUIRES(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
 
   // Bind the live bits to the mark bits of bitmaps for spaces that are never collected, ie
   // the image. Mark that portion of the heap as immune.
-  virtual void BindBitmaps() SHARED_REQUIRES(Locks::mutator_lock_)
+  virtual void BindBitmaps() REQUIRES_SHARED(Locks::mutator_lock_)
       REQUIRES(!Locks::heap_bitmap_lock_);
 
   void UnBindBitmaps()
@@ -157,13 +138,13 @@ class SemiSpace : public GarbageCollector {
   // Sweeps unmarked objects to complete the garbage collection.
   virtual void Sweep(bool swap_bitmaps)
       REQUIRES(Locks::heap_bitmap_lock_)
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
   // Sweeps unmarked objects to complete the garbage collection.
   void SweepLargeObjects(bool swap_bitmaps) REQUIRES(Locks::heap_bitmap_lock_);
 
   void SweepSystemWeaks()
-      SHARED_REQUIRES(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
 
   virtual void VisitRoots(mirror::Object*** roots, size_t count, const RootInfo& info) OVERRIDE
       REQUIRES(Locks::mutator_lock_, Locks::heap_bitmap_lock_);
@@ -176,114 +157,49 @@ class SemiSpace : public GarbageCollector {
       REQUIRES(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
 
   // Schedules an unmarked object for reference processing.
-  void DelayReferenceReferent(mirror::Class* klass, mirror::Reference* reference)
-      SHARED_REQUIRES(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
-
-  // Inner class for parallel copying.
-  class ThreadRootMarkStack {
-   public:
-    ThreadRootMarkStack(size_t capacity);
-    inline size_t Capacity() const { return capacity_; }
-    // Get the mark stack size.
-    inline size_t Size() const { return size_; }
-    void Resize();
-    void PushBack(mirror::Object* obj)
-      SHARED_REQUIRES(Locks::mutator_lock_);
-    StackReference<mirror::Object>* GetMarkStack() const;
-    ~ThreadRootMarkStack();
-
-   private:
-    size_t capacity_;
-    // Incremental used for enlarge capacity.
-    size_t incremental_;
-    size_t size_;
-    StackReference<mirror::Object>* mark_stack_;
-    inline void CreateMarkStack(size_t capacity);
-    inline void RegenerateMarkStack();
-    inline void DeleteMarkStack();
-  };
-
-  typedef std::map<Thread*, ThreadRootMarkStack*> ThreadRootStacksMap;
+  void DelayReferenceReferent(ObjPtr<mirror::Class> klass, ObjPtr<mirror::Reference> reference)
+      REQUIRES_SHARED(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
 
  protected:
   // Returns null if the object is not marked, otherwise returns the forwarding address (same as
   // object for non movable things).
   virtual mirror::Object* IsMarked(mirror::Object* object) OVERRIDE
       REQUIRES(Locks::mutator_lock_)
-      SHARED_REQUIRES(Locks::heap_bitmap_lock_);
+      REQUIRES_SHARED(Locks::heap_bitmap_lock_);
 
-  virtual bool IsMarkedHeapReference(mirror::HeapReference<mirror::Object>* object) OVERRIDE
+  virtual bool IsNullOrMarkedHeapReference(mirror::HeapReference<mirror::Object>* object,
+                                           bool do_atomic_update) OVERRIDE
       REQUIRES(Locks::mutator_lock_)
-      SHARED_REQUIRES(Locks::heap_bitmap_lock_);
+      REQUIRES_SHARED(Locks::heap_bitmap_lock_);
 
   // Marks or unmarks a large object based on whether or not set is true. If set is true, then we
   // mark, otherwise we unmark.
   bool MarkLargeObject(const mirror::Object* obj)
       REQUIRES(Locks::heap_bitmap_lock_)
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
   // Expand mark stack to 2x its current size.
-  void ResizeMarkStack(size_t new_size) SHARED_REQUIRES(Locks::mutator_lock_);
+  void ResizeMarkStack(size_t new_size) REQUIRES_SHARED(Locks::mutator_lock_);
 
   // Returns true if we should sweep the space.
   virtual bool ShouldSweepSpace(space::ContinuousSpace* space) const;
 
   // Push an object onto the mark stack.
-  void MarkStackPush(mirror::Object* obj) SHARED_REQUIRES(Locks::mutator_lock_);
+  void MarkStackPush(mirror::Object* obj) REQUIRES_SHARED(Locks::mutator_lock_);
 
   void UpdateAndMarkModUnion()
       REQUIRES(Locks::heap_bitmap_lock_)
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
   // Recursively blackens objects on the mark stack.
   void ProcessMarkStack()
       REQUIRES(Locks::mutator_lock_, Locks::heap_bitmap_lock_);
 
   inline mirror::Object* GetForwardingAddressInFromSpace(mirror::Object* obj) const
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
-  inline bool IsMarkedParallel(mirror::Object* obj)
-      SHARED_REQUIRES(Locks::mutator_lock_, Locks::heap_bitmap_lock_);
   // Revoke all the thread-local buffers.
-  void RevokeAllThreadLocalBuffers() SHARED_REQUIRES(Locks::mutator_lock_);
-  // Get thread count for parallel copy.
-  size_t GetThreadCount() const;
-
-  // Used to fill a memory block when updating the forwarding pointer fails.
-  ALWAYS_INLINE void FillWithDummyObject(mirror::Object* dummy_obj, size_t byte_size)
-      SHARED_REQUIRES(Locks::mutator_lock_);
-
-  virtual mirror::Object* MarkNonForwardedObjectParallel(mirror::Object* obj,
-                                                         bool* win,
-                                                         void* task)
-      SHARED_REQUIRES(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
-
-  mirror::Object* TryInstallForwardingAddress(mirror::Object* obj,
-                                              space::ContinuousMemMapAllocSpace* dest_space,
-                                              size_t* bytes_allocated,
-                                              bool* win) ALWAYS_INLINE
-      SHARED_REQUIRES(Locks::mutator_lock_);
-
-  template<bool kPoisonReference>
-  void MarkParallel(mirror::ObjectReference<kPoisonReference, mirror::Object>* obj_ptr,
-                    void* task) ALWAYS_INLINE
-      SHARED_REQUIRES(Locks::mutator_lock_)
-      REQUIRES(Locks::heap_bitmap_lock_);
-
-  template<bool kPoisonReferences>
-  void MarkObjectIfNotInToSpaceParallel(mirror::ObjectReference<kPoisonReferences, mirror::Object>* obj_ptr,
-                                        void* task)
-      REQUIRES(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
-
-  // Process the mark stack parallel.
-  void ProcessMarkStackParallel(size_t thread_count)
-      REQUIRES(Locks::mutator_lock_, Locks::heap_bitmap_lock_);
-
-  template<typename MarkVisitor, typename ReferenceVisitor>
-  ALWAYS_INLINE void ScanObjectVisit(mirror::Object* obj,
-                                     const MarkVisitor& visitor,
-                                     const ReferenceVisitor& ref_visitor)
-      SHARED_REQUIRES(Locks::heap_bitmap_lock_, Locks::mutator_lock_);
+  void RevokeAllThreadLocalBuffers();
 
   // Current space, we check this space first to avoid searching for the appropriate space for an
   // object.
@@ -311,11 +227,14 @@ class SemiSpace : public GarbageCollector {
   // as a new garbage collector?
   const bool generational_;
 
+  // Used for the generational mode. the end/top of the bump
+  // pointer space at the end of the last collection.
+  uint8_t* last_gc_to_space_end_;
+
   // Used for the generational mode. During a collection, keeps track
   // of how many bytes of objects have been copied so far from the
   // bump pointer space to the non-moving space.
   uint64_t bytes_promoted_;
-  uint64_t bytes_wasted_;
 
   // Used for the generational mode. Keeps track of how many bytes of
   // objects have been copied so far from the bump pointer space to
@@ -328,7 +247,6 @@ class SemiSpace : public GarbageCollector {
 
   // Used for generational mode. When true, we only collect the from_space_.
   bool collect_from_space_only_;
-  bool force_copy_all_ = false;
 
   // The space which we are promoting into, only used for GSS.
   space::ContinuousMemMapAllocSpace* promo_dest_space_;
@@ -354,41 +272,11 @@ class SemiSpace : public GarbageCollector {
 
   // Whether or not we swap the semi spaces in the heap during the marking phase.
   bool swap_semi_spaces_;
-  // Whether or not record root using seperate mark stack for parallel copying.
-  bool marking_roots_;
 
-  // Whether or not we create the aging table to track the ages of living objects.
-  bool need_aging_table_;
-
-  AtomicInteger work_chunks_created_;
-  AtomicInteger work_chunks_deleted_;
-  Atomic<size_t> bytes_promoted_parallel_;
-  Atomic<size_t> bytes_wasted_promoted_parallel_;
-  Atomic<size_t> objects_promoted_parallel_;
-  Atomic<size_t> objects_moved_parallel_;
-  Atomic<size_t> bytes_moved_parallel_;
-  Atomic<size_t> dummy_bytes_;
-  Atomic<size_t> dummy_objects_;
-  Atomic<size_t> fallback_bytes_parallel_;
-  Atomic<size_t> fallback_objects_parallel_;
-  Atomic<size_t> wasted_bytes_;
-  accounting::AgingTable* from_age_table_;
-  accounting::AgingTable* to_age_table_;
-  size_t threshold_age_;
-
-  // Map stores the pair of thread and stack of the thread's roots.
-  ThreadRootStacksMap* thread_roots_stacks_;
-  ThreadRootMarkStack* thread_mark_stack_;
-  // Support parallel copy or not.
-  // Used for ZygoteCompact because we don't want gaps in zygote space.
-  bool support_parallel_;
-  bool support_parallel_default_;
  private:
   class BitmapSetSlowPathVisitor;
   class MarkObjectVisitor;
   class VerifyNoFromSpaceReferencesVisitor;
-  friend class SSBitmapSetSlowPathVisitor;
-  friend class MarkStackCopyTask;
   DISALLOW_IMPLICIT_CONSTRUCTORS(SemiSpace);
 };
 

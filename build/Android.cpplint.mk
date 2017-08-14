@@ -13,19 +13,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Modified by Intel Corporation
-#
 
 include $(VENDOR_ART_PATH)/build/Android.common_build.mk
 
 ART_CPPLINT := $(LOCAL_PATH)/tools/cpplint.py
 ART_CPPLINT_FILTER := --filter=-whitespace/line_length,-build/include,-readability/function,-readability/streams,-readability/todo,-runtime/references,-runtime/sizeof,-runtime/threadsafe_fn,-runtime/printf
-ART_CPPLINT_FLAGS := --quiet
+#ART_CPPLINT_FLAGS := --quiet --root=$(ANDROID_BUILD_TOP)
+ART_CPPLINT_FLAGS := --quiet 
+ART_CPPLINT_INGORED := \
+    runtime/elf.h \
+    runtime/openjdkjvmti/include/jvmti.h
+
 # This:
 #  1) Gets a list of all .h & .cc files in the art directory.
 #  2) Prepends '$(VENDOR_ART_PATH)/' to each of them to make the full name.
 #  3) removes $(VENDOR_ART_PATH)/runtime/elf.h from the list.
-ART_CPPLINT_SRC := $(filter-out $(LOCAL_PATH)/runtime/elf.h, $(addprefix $(LOCAL_PATH)/, $(call all-subdir-named-files,*.h) $(call all-subdir-named-files,*$(ART_CPP_EXTENSION))))
+ART_CPPLINT_SRC := $(filter-out $(patsubst %,$(LOCAL_PATH)/%,$(ART_CPPLINT_INGORED)), $(addprefix $(LOCAL_PATH)/, $(call all-subdir-named-files,*.h) $(call all-subdir-named-files,*$(ART_CPP_EXTENSION))))
 
 # "mm cpplint-art" to verify we aren't regressing
 .PHONY: cpplint-art

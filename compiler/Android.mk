@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Modified by Intel Corporation
-#
 
 LOCAL_PATH := $(call my-dir)
 
@@ -151,12 +149,7 @@ LIBART_COMPILER_SRC_FILES_x86_64 := \
 	utils/x86_64/managed_register_x86_64.cc \
 
 
-LIBART_COMPILER_CFLAGS += -fomit-frame-pointer
-
-ifneq (,$(findstring sofia,$(TARGET_BOARD_PLATFORM)))
-  # Mark this as a build for a SoFIA system.
-  LIBART_COMPILER_CFLAGS += -DSOFIA
-endif
+LIBART_COMPILER_CFLAGS :=
 
 LIBART_COMPILER_ENUM_OPERATOR_OUT_HEADER_FILES := \
   compiled_method.h \

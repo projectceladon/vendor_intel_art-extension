@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_RUNTIME_GC_COLLECTOR_STICKY_MARK_SWEEP_H_
@@ -32,24 +30,29 @@ class StickyMarkSweep FINAL : public PartialMarkSweep {
     return kGcTypeSticky;
   }
 
-  StickyMarkSweep(Heap* heap, bool is_concurrent, bool is_copying = false,
-                  const std::string& name_prefix = "");
+  StickyMarkSweep(Heap* heap, bool is_concurrent, const std::string& name_prefix = "");
   ~StickyMarkSweep() {}
+
+  virtual void MarkConcurrentRoots(VisitRootFlags flags)
+      OVERRIDE
+      REQUIRES(Locks::heap_bitmap_lock_)
+      REQUIRES(!mark_stack_lock_)
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
  protected:
   // Bind the live bits to the mark bits of bitmaps for all spaces, all spaces other than the
   // alloc space will be marked as immune.
-  void BindBitmaps() OVERRIDE SHARED_REQUIRES(Locks::mutator_lock_);
+  void BindBitmaps() OVERRIDE REQUIRES_SHARED(Locks::mutator_lock_);
 
   void MarkReachableObjects()
       OVERRIDE
       REQUIRES(Locks::heap_bitmap_lock_)
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
   void Sweep(bool swap_bitmaps)
       OVERRIDE
       REQUIRES(Locks::heap_bitmap_lock_)
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
  private:
   DISALLOW_IMPLICIT_CONSTRUCTORS(StickyMarkSweep);

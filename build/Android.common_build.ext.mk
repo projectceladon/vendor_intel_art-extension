@@ -1,20 +1,21 @@
+# INTEL CONFIDENTIAL
+# Copyright (c) 2015, Intel Corporation All Rights Reserved.
 #
-# Copyright (C) 2014 The Android Open Source Project
+# The source code contained or described herein and all documents related to the
+# source code ("Material") are owned by Intel Corporation or its suppliers or
+# licensors. Title to the Material remains with Intel Corporation or its suppliers
+# and licensors. The Material contains trade secrets and proprietary and
+# confidential information of Intel or its suppliers and licensors. The Material
+# is protected by worldwide copyright and trade secret laws and treaty provisions.
+# No part of the Material may be used, copied, reproduced, modified, published,
+# uploaded, posted, transmitted, distributed, or disclosed in any way without
+# Intel's prior express written permission.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#      http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# Modified by Intel Corporation
-#
+# No license under any patent, copyright, trade secret or other intellectual
+# property right is granted to or conferred upon you by disclosure or delivery of
+# the Materials, either expressly, by implication, inducement, estoppel or
+# otherwise. Any license under such intellectual property rights must be express
+# and approved by Intel in writing.
 
 ifndef ART_ANDROID_COMMON_BUILD_VENDOR_MK
 ART_ANDROID_COMMON_BUILD_VENDOR_MK = true
@@ -31,13 +32,13 @@ VENDOR_COMPILER_INCLUDES := \
 # simply add all vendor compiler includes in the general includes.
 ART_C_INCLUDES += $(VENDOR_COMPILER_INCLUDES)
 
-TIP_ID = $(shell cd $VENDOR_ART_PATH && git log | grep '^\s\+Change-Id:' \
+TIP_ID = $(shell cd vendor/intel/art-extension && git log | grep '^\s\+Change-Id:' \
   | head -1 | sed -r 's/^\s+Change-Id:\s*//' | head -c 6)
 
 # To understand what weekly build is base for current build, we get all
 # unique weekly build ids and number of their entries which corresponds to
 # actual number of patches from weekly.
-WWs = $(shell cd $VENDOR_ART_PATH && git log | grep 'Extension-Weekly:' \
+WWs = $(shell cd vendor/intel/art-extension && git log | grep 'Extension-Weekly:' \
   | sed -r 's/^\s+Extension-Weekly:\s*//' | sort -r | uniq -c | sed -r 's/^\s*//' \
   | sed -r 's/\s/-/')
 
@@ -55,7 +56,7 @@ ifeq (${WW},)
 ART_EXTENSION_VERSION = UNKNOWN.${TIP_ID}
 else
 # Calculate number of patches were added to weekly build with number WW.
-NUMBER_OF_PATCHES_ABOVE_WEEKLY = $(shell cd $VENDOR_ART_PATH && git log \
+NUMBER_OF_PATCHES_ABOVE_WEEKLY = $(shell cd vendor/intel/art-extension && git log \
   | sed -r '/^\s+Extension-Weekly:\s*${WW}/q' | grep '^\s\+Change-Id:' | head -n -1 | wc -l)
 
 ART_EXTENSION_VERSION = \

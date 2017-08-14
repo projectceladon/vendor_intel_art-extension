@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_RUNTIME_GC_ACCOUNTING_REMEMBERED_SET_H_
@@ -57,10 +55,9 @@ class RememberedSet {
 
   // Mark through all references to the target space.
   void UpdateAndMarkReferences(space::ContinuousSpace* target_space,
-                               collector::GarbageCollector* collector,
-                               bool use_livebitmap = true)
+                               collector::GarbageCollector* collector)
       REQUIRES(Locks::heap_bitmap_lock_)
-      SHARED_REQUIRES(Locks::mutator_lock_);
+      REQUIRES_SHARED(Locks::mutator_lock_);
 
   void Dump(std::ostream& os);
 

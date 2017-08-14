@@ -1,37 +1,47 @@
 /*
- * Copyright (C) 2015 Intel Corporation
+ * INTEL CONFIDENTIAL
+ * Copyright (c) 2015, Intel Corporation All Rights Reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * The source code contained or described herein and all documents related to the
+ * source code ("Material") are owned by Intel Corporation or its suppliers or
+ * licensors. Title to the Material remains with Intel Corporation or its suppliers
+ * and licensors. The Material contains trade secrets and proprietary and
+ * confidential information of Intel or its suppliers and licensors. The Material
+ * is protected by worldwide copyright and trade secret laws and treaty provisions.
+ * No part of the Material may be used, copied, reproduced, modified, published,
+ * uploaded, posted, transmitted, distributed, or disclosed in any way without
+ * Intel's prior express written permission.
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * No license under any patent, copyright, trade secret or other intellectual
+ * property right is granted to or conferred upon you by disclosure or delivery of
+ * the Materials, either expressly, by implication, inducement, estoppel or
+ * otherwise. Any license under such intellectual property rights must be express
+ * and approved by Intel in writing.
  *
  */
-
 #include "remove_unused_loops.h"
 
 #include "ext_utility.h"
+#include "graph_x86.h"
 #include "loop_formation.h"
 #include "loop_iterators.h"
+#if 0	//neeraj - resolve build errors
+#include "base/stringprintf.h"
+#else
+#include "android-base/stringprintf.h"
+using android::base::StringPrintf;
+#endif
 
 namespace art {
 
-void HRemoveUnusedLoops::Run() {
-  if (graph_->IsCompilingOsr()) {
-    PRINT_PASS_OSTREAM_MESSAGE(this, "Skip " << GetMethodName(graph_)
-                                      << " because of compilation in OSR mode");
-    return;
-  }
-  PRINT_PASS_OSTREAM_MESSAGE(this, "start " << GetMethodName(graph_));
+static bool debug_pass = false;
 
-  HGraph_X86* graph = GetGraphX86();
+void HRemoveUnusedLoops::Run() {
+  if (debug_pass) {
+    LOG(INFO) << "HRemoveUnusedLoops: start";
+  }
+
+  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
   HLoopInformation_X86 *graph_loop_info = graph->GetLoopInformation();
 
   // Walk all the inner loops in the graph.
@@ -40,15 +50,19 @@ void HRemoveUnusedLoops::Run() {
     HLoopInformation_X86* loop_info = it.Current();
     HBasicBlock* pre_header = loop_info->GetPreHeader();
 
-    PRINT_PASS_OSTREAM_MESSAGE(this, "Visit " << loop_info->GetHeader()->GetBlockId()
-                                     << ", preheader = " << pre_header->GetBlockId());
+    if (debug_pass) {
+      LOG(INFO) << "Visit " << loop_info->GetHeader()->GetBlockId()
+                << ", preheader = " << pre_header->GetBlockId();
+    }
 
     // The exit block from the loop.
     HBasicBlock* exit_block = loop_info->GetExitBlock();
 
     if (exit_block == nullptr) {
       // We need exactly 1 exit block from the loop.
-      PRINT_PASS_MESSAGE(this, "Too many or too few exit blocks");
+      if (debug_pass) {
+        LOG(INFO) << "Too many or too few exit blocks";
+      }
       continue;
     }
 
@@ -60,7 +74,6 @@ void HRemoveUnusedLoops::Run() {
 
     // Walk through the blocks in the loop.
     bool loop_is_empty = true;
-    external_loop_phis_.clear();
     for (HBlocksInLoopIterator it_loop(*loop_info); !it_loop.Done(); it_loop.Advance()) {
       HBasicBlock* loop_block = it_loop.Current();
 
@@ -77,23 +90,25 @@ void HRemoveUnusedLoops::Run() {
       }
     }
 
-    PRINT_PASS_OSTREAM_MESSAGE(this, "Loop end: is_empty = " << (loop_is_empty ? "true" : "false"));
+    if (debug_pass) {
+      LOG(INFO) << "Loop end: is_empty = " << (loop_is_empty ? "true" : "false");
+    }
 
     if (loop_is_empty) {
-      UpdateExternalPhis();
       RemoveLoop(loop_info, pre_header, exit_block);
       MaybeRecordStat(MethodCompilationStat::kIntelRemoveUnusedLoops);
       changed = true;
     }
   }
-  PRINT_PASS_OSTREAM_MESSAGE(this, "end " << GetMethodName(graph_));
+  if (debug_pass) {
+    LOG(INFO) << "HRemoveUnusedLoops: end";
+  }
+
   if (changed) {
     // We have to rebuild our loops properly, now that we have removed loops.
     HLoopFormation form_loops(graph_);
     form_loops.Run();
   }
-
-  external_loop_phis_.clear();
 }
 
 bool HRemoveUnusedLoops::CheckInstructionsInBlock(HLoopInformation_X86* loop_info,
@@ -105,11 +120,13 @@ bool HRemoveUnusedLoops::CheckInstructionsInBlock(HLoopInformation_X86* loop_inf
        !inst_it.Done();
        inst_it.Advance()) {
     HInstruction* instruction = inst_it.Current();
-    PRINT_PASS_OSTREAM_MESSAGE(this, "Look at: " << instruction
-                    << (instruction->HasSideEffects() ? " <has side effects>" : "")
-                    << (!instruction->CanBeMoved() ? " <can't be moved>" : "")
-                    << (instruction->CanThrow() ? " <can throw>" : "")
-                    << (instruction->IsControlFlow() ? " <is control flow>" : ""));
+    if (debug_pass) {
+      LOG(INFO) << "Look at: " << instruction
+                << (instruction->HasSideEffects() ? " <has side effects>" : "")
+                << (!instruction->CanBeMoved() ? " <can't be moved>" : "")
+                << (instruction->CanThrow() ? " <can throw>" : "")
+                << (instruction->IsControlFlow() ? " <is control flow>" : "");
+    }
 
     // Special case SuspendCheck.  We don't care about it.
     if (instruction->IsSuspendCheck()) {
@@ -125,7 +142,9 @@ bool HRemoveUnusedLoops::CheckInstructionsInBlock(HLoopInformation_X86* loop_inf
     if (instruction->HasSideEffects() || instruction->CanThrow() ||
         !instruction->CanBeMoved()) {
       // Not an empty loop.
-      PRINT_PASS_MESSAGE(this, "need this instruction");
+      if (debug_pass) {
+        LOG(INFO) << "need this instruction";
+      }
       return false;
     }
 
@@ -135,34 +154,21 @@ bool HRemoveUnusedLoops::CheckInstructionsInBlock(HLoopInformation_X86* loop_inf
       continue;
     }
 
-    bool no_side_effects = true;  // All instructions are okay.
-    std::unordered_set<HPhi*> worklist;
     const HUseList<HInstruction*>& uses = instruction->GetUses();
     for (auto it2 = uses.begin(), end2 = uses.end(); it2 != end2; ++it2) {
       HInstruction* insn = it2->GetUser();
       HBasicBlock* insn_block = insn->GetBlock();
       HLoopInformation* li = insn_block->GetLoopInformation();
-      PRINT_PASS_OSTREAM_MESSAGE(this, "Result is used by: " << insn);
-      if (li != loop_info) {
-        // We are being used in a different loop.  Is it REALLY used?
-        // Only special case Phis for this check.
-        HPhi* insn_as_phi = insn->AsPhi();
-        if (insn_as_phi != nullptr && !insn->HasUses()) {
-          PRINT_PASS_MESSAGE(this, "Used by Phi in different loop -- has no uses (removing)");
-          worklist.insert(insn_as_phi);
-        } else {
-          PRINT_PASS_MESSAGE(this, "Used in different loop");
-          no_side_effects = false;
-        }
+      if (debug_pass) {
+        LOG(INFO) << "Result is used by: " << insn;
       }
-    }
-    for (auto insn_as_phi : worklist) {
-      TryKillUseTree(this, insn_as_phi);
-      DCHECK(insn_as_phi->GetBlock() == nullptr) << insn_as_phi
-                                                 << " was not removed as expected!";
-    }
-    if (!no_side_effects) {
-      return false;  // Other insn may be skipped.
+      if (li != loop_info) {
+        // We are being used in a different loop.
+        if (debug_pass) {
+          LOG(INFO) << "Used in different loop";
+        }
+        return false;
+      }
     }
   }
 
@@ -170,54 +176,31 @@ bool HRemoveUnusedLoops::CheckInstructionsInBlock(HLoopInformation_X86* loop_inf
   return true;
 }
 
-static bool BothInputsAreFromOutsideInnerLoop(HPhi* phi,
-                                              HLoopInformation_X86* loop_info) {
-  // Only handle 2 input Phis.
-  if (phi->InputCount() != 2) {
-    return false;
-  }
-
-  // Check that the inputs are not within the loop.  Since we only handle
-  // inner loops, any input which has a different loop information is outside.
-  HLoopInformation* li = phi->InputAt(0)->GetBlock()->GetLoopInformation();
-  if (li == loop_info) {
-    return false;
-  }
-  li = phi->InputAt(1)->GetBlock()->GetLoopInformation();
-  return li != loop_info;
-}
-
 bool HRemoveUnusedLoops::CheckPhisInBlock(HLoopInformation_X86* loop_info,
                                          HBasicBlock* loop_block) {
-  // We are only looking at inner loops.
-  DCHECK(loop_info->IsInner());
-
   // Walk through the Phis in the loop, and see if the result
   // is used outside the loop.
   for (HInstructionIterator inst_it(loop_block->GetPhis());
        !inst_it.Done();
        inst_it.Advance()) {
-    HPhi* phi = inst_it.Current()->AsPhi();
-    DCHECK(phi != nullptr);
-    PRINT_PASS_OSTREAM_MESSAGE(this, "Look at: " << phi);
-    // Special case the case where both inputs are from outside the loop.
-    // Only valid in loop header.
-    if (phi->IsLoopHeaderPhi() && BothInputsAreFromOutsideInnerLoop(phi, loop_info)) {
-      PRINT_PASS_OSTREAM_MESSAGE(this, "Phi has 2 external inputs: "
-                                        << phi->InputAt(0) << ' ' << phi->InputAt(1));
-      external_loop_phis_.insert(phi);
-      continue;
+    HInstruction* instruction = inst_it.Current();
+    if (debug_pass) {
+      LOG(INFO) << "Look at: " << instruction;
     }
 
-    const HUseList<HInstruction*>& uses = phi->GetUses();
+    const HUseList<HInstruction*>& uses = instruction->GetUses();
     for (auto it2 = uses.begin(), end2 = uses.end(); it2 != end2; ++it2) {
       HInstruction* insn = it2->GetUser();
       HBasicBlock* insn_block = insn->GetBlock();
       HLoopInformation* li = insn_block->GetLoopInformation();
-      PRINT_PASS_OSTREAM_MESSAGE(this, "Result is used by: " << insn);
+      if (debug_pass) {
+        LOG(INFO) << "Result is used by: " << insn;
+      }
       if (li != loop_info) {
-        // We are being used in a different loop (could be out of the loop).
-        PRINT_PASS_MESSAGE(this, "Used in different loop");
+        // We are being used in a different loop.
+        if (debug_pass) {
+          LOG(INFO) << "Used in different loop";
+        }
         return false;
       }
     }
@@ -230,11 +213,12 @@ bool HRemoveUnusedLoops::CheckPhisInBlock(HLoopInformation_X86* loop_info,
 void HRemoveUnusedLoops::RemoveLoop(HLoopInformation_X86* loop_info,
                                    HBasicBlock* pre_header,
                                    HBasicBlock* exit_block) {
-  HGraph_X86* graph = GetGraphX86();
+  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
   HBasicBlock* loop_header = loop_info->GetHeader();
-  PRINT_PASS_OSTREAM_MESSAGE(this, "Remove loop blocks: "
-                                   << loop_header->GetBlockId()
-                                   << ", preheader = " << pre_header->GetBlockId());
+  if (debug_pass) {
+    LOG(INFO) << "Remove loop blocks: " << loop_header->GetBlockId()
+              << ", preheader = " << pre_header->GetBlockId();
+  }
 
   // TODO: Use kind of arena specific for optimization.
   ArenaVector<HBasicBlock*> blocks_in_loop(
@@ -248,13 +232,17 @@ void HRemoveUnusedLoops::RemoveLoop(HLoopInformation_X86* loop_info,
 
   // Change the successor to the preheader to the exit block.
   DCHECK_EQ(pre_header->GetSuccessors().size(), 1u);
-  PRINT_PASS_OSTREAM_MESSAGE(this, "Set preheader to successor " << exit_block->GetBlockId());
+  if (debug_pass) {
+    LOG(INFO) << "Set preheader to successor " << exit_block->GetBlockId();
+  }
   pre_header->ReplaceSuccessor(loop_header, exit_block);
   pre_header->ReplaceDominatedBlock(loop_header, exit_block);
   exit_block->SetDominator(pre_header);
 
   for (HBasicBlock* loop_block : blocks_in_loop) {
-    PRINT_PASS_OSTREAM_MESSAGE(this, "Remove block " << loop_block->GetBlockId());
+    if (debug_pass) {
+        LOG(INFO) << "Remove block " << loop_block->GetBlockId();
+    }
     graph->DeleteBlock(loop_block);
   }
 
@@ -266,13 +254,4 @@ void HRemoveUnusedLoops::RemoveLoop(HLoopInformation_X86* loop_info,
     tmp = tmp->GetParent();
   }
 }
-
-void HRemoveUnusedLoops::UpdateExternalPhis() {
-  for (auto it : external_loop_phis_) {
-    // Replace each phi with the value computed in the loop.
-    PRINT_PASS_OSTREAM_MESSAGE(this, "Replace Phi " << it << " with " << it->InputAt(1));
-    it->ReplaceWith(it->InputAt(1));
-  }
-}
-
 }  // namespace art

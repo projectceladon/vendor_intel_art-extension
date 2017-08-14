@@ -1,27 +1,30 @@
 /*
- * Copyright (C) 2015 Intel Corporation.
+ * INTEL CONFIDENTIAL
+ * Copyright (c) 2015, Intel Corporation All Rights Reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * The source code contained or described herein and all documents related to the
+ * source code ("Material") are owned by Intel Corporation or its suppliers or
+ * licensors. Title to the Material remains with Intel Corporation or its suppliers
+ * and licensors. The Material contains trade secrets and proprietary and
+ * confidential information of Intel or its suppliers and licensors. The Material
+ * is protected by worldwide copyright and trade secret laws and treaty provisions.
+ * No part of the Material may be used, copied, reproduced, modified, published,
+ * uploaded, posted, transmitted, distributed, or disclosed in any way without
+ * Intel's prior express written permission.
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * No license under any patent, copyright, trade secret or other intellectual
+ * property right is granted to or conferred upon you by disclosure or delivery of
+ * the Materials, either expressly, by implication, inducement, estoppel or
+ * otherwise. Any license under such intellectual property rights must be express
+ * and approved by Intel in writing.
  *
  */
 
 #ifndef ART_COMPILER_OPTIMIZING_EXTENSIONS_INFRASTRUCTURE_INDUCTION_VARIABLE_H_
 #define ART_COMPILER_OPTIMIZING_EXTENSIONS_INFRASTRUCTURE_INDUCTION_VARIABLE_H_
 
-#include <iosfwd>
-
-#include "constant_x86.h"
 #include "nodes.h"
+#include "constant_x86.h"
 
 namespace art {
 /*
@@ -30,20 +33,36 @@ namespace art {
  */
 class HInductionVariable {
  public:
+  int ssa_reg_;                   /**< @brief The ssa register defined by expression for IV. */
+  HConstant_X86 loop_increment_;  /**< @brief Loop increment. Only relevant for basic IV to keep the loop increment/decrement. */
+  HInstruction* linear_insn_;     /**< @brief HInstruction associated with the linear operation. */
+  HPhi* phi_insn_;                /**< @brief HPhi associated with the phi node. May be null but never for Basic IV. */
+
   /**
    * @brief Constructor for a Basic IV.
+   * @param ssa_sreg The ssa reg that is the define of linear operation.
    * @param increment The increment/decrement.
    * @param is_wide is the IV wide?
    * @param is_fp is the IV FP?
    * @param linear_insn The linear operation (cannot be null).
    * @param phi_insn The phi for this BIV (cannot be null).
    */
-  HInductionVariable(HConstant* increment, bool is_wide, bool is_fp,
+  HInductionVariable(int ssa_sreg, HConstant* increment, bool is_wide, bool is_fp,
                      HInstruction* linear_insn, HPhi* phi_insn) :
+    ssa_reg_(ssa_sreg),
     loop_increment_(increment, is_wide, is_fp),
     linear_insn_(linear_insn), phi_insn_(phi_insn) {
       DCHECK(linear_insn_ != nullptr);
       DCHECK(phi_insn_ != nullptr);
+  }
+
+  /**
+   * @brief Used to obtain the ssa register.
+   * @details For basic IVs, it provides same ssa register as GetBasicSsaReg.
+   * @return Returns the ssa register that is define of linear operation.
+   */
+  int GetSsaReg() const {
+    return ssa_reg_;
   }
 
   /**
@@ -178,19 +197,21 @@ class HInductionVariable {
     return IsBasic() && IsIncrementOne();
   }
 
-  void Dump(std::ostream& os) const;
+  void Dump() const {
+    if (IsFP()) {
+      LOG(INFO) << "IV: ssa_reg: " << ssa_reg_ <<
+        " wide: " << IsWide() << ", FP: " << IsFP() << ", loop increment: " << GetFPIncrement();
+    } else {
+      LOG(INFO) << "IV: ssa_reg: " << ssa_reg_ <<
+        " wide: " << IsWide() << ", FP: " << IsFP() << ", loop increment: " << GetIncrement();
+    }
+  }
 
   static void* operator new(size_t size ATTRIBUTE_UNUSED, ArenaAllocator* arena) {
     return arena->Alloc(sizeof(HInductionVariable), kArenaAllocMisc);
   }
 
- private:
-  // Loop increment. Only relevant for basic IV to keep the loop increment/decrement.
-  HConstant_X86 loop_increment_;
-  // HInstruction associated with the linear operation.
-  HInstruction* linear_insn_;
-  // HPhi associated with the phi node. May be null but never for Basic IV.
-  HPhi* phi_insn_;
+  static void operator delete(void* p ATTRIBUTE_UNUSED) {}  // Nop.
 };
 }  // namespace art
 #endif  // ART_COMPILER_OPTIMIZING_EXTENSIONS_INFRASTRUCTURE_INDUCTION_VARIABLE_H_

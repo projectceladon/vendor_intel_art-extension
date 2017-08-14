@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #include "logging.h"
@@ -23,13 +21,12 @@
 #include <sstream>
 
 #include "base/mutex.h"
-#include "runtime.h"
 #include "thread-inl.h"
 #include "utils.h"
 
 // Headers for LogMessage::LogLine.
-#ifdef __ANDROID__
-#include "cutils/log.h"
+#ifdef ART_TARGET_ANDROID
+#include <log/log.h>
 #else
 #include <sys/types.h>
 #include <unistd.h>
@@ -41,23 +38,9 @@ LogVerbosity gLogVerbosity;
 
 unsigned int gAborting = 0;
 
-static LogSeverity gMinimumLogSeverity = INFO;
 static std::unique_ptr<std::string> gCmdLine;
 static std::unique_ptr<std::string> gProgramInvocationName;
 static std::unique_ptr<std::string> gProgramInvocationShortName;
-
-// Print INTERNAL_FATAL messages directly instead of at destruction time. This only works on the
-// host right now: for the device, a stream buf collating output into lines and calling LogLine or
-// lower-level logging is necessary.
-#ifdef __ANDROID__
-static constexpr bool kPrintInternalFatalDirectly = false;
-#else
-static constexpr bool kPrintInternalFatalDirectly = !kIsTargetBuild;
-#endif
-
-static bool PrintDirectly(LogSeverity severity) {
-  return kPrintInternalFatalDirectly && severity == INTERNAL_FATAL;
-}
 
 const char* GetCmdLine() {
   return (gCmdLine.get() != nullptr) ? gCmdLine->c_str() : nullptr;
@@ -72,7 +55,7 @@ const char* ProgramInvocationShortName() {
                                                         : "art";
 }
 
-void InitLogging(char* argv[]) {
+void InitLogging(char* argv[], AbortFunction& abort_function) {
   if (gCmdLine.get() != nullptr) {
     return;
   }
@@ -96,234 +79,31 @@ void InitLogging(char* argv[]) {
     // TODO: fall back to /proc/self/cmdline when argv is null on Linux.
     gCmdLine.reset(new std::string("<unset>"));
   }
-  const char* tags = getenv("ANDROID_LOG_TAGS");
-  if (tags == nullptr) {
-    return;
-  }
 
-  std::vector<std::string> specs;
-  Split(tags, ' ', &specs);
-  for (size_t i = 0; i < specs.size(); ++i) {
-    // "tag-pattern:[vdiwefs]"
-    std::string spec(specs[i]);
-    if (spec.size() == 3 && StartsWith(spec, "*:")) {
-      switch (spec[2]) {
-        case 'v':
-          gMinimumLogSeverity = VERBOSE;
-          continue;
-        case 'd':
-          gMinimumLogSeverity = DEBUG;
-          continue;
-        case 'i':
-          gMinimumLogSeverity = INFO;
-          continue;
-        case 'w':
-          gMinimumLogSeverity = WARNING;
-          continue;
-        case 'e':
-          gMinimumLogSeverity = ERROR;
-          continue;
-        case 'f':
-          gMinimumLogSeverity = FATAL;
-          continue;
-        // liblog will even suppress FATAL if you say 's' for silent, but that's crazy!
-        case 's':
-          gMinimumLogSeverity = FATAL;
-          continue;
-      }
-    }
-    LOG(FATAL) << "unsupported '" << spec << "' in ANDROID_LOG_TAGS (" << tags << ")";
-  }
+#ifdef ART_TARGET_ANDROID
+#define INIT_LOGGING_DEFAULT_LOGGER android::base::LogdLogger()
+#else
+#define INIT_LOGGING_DEFAULT_LOGGER android::base::StderrLogger
+#endif
+  android::base::InitLogging(argv, INIT_LOGGING_DEFAULT_LOGGER,
+                             std::move<AbortFunction>(abort_function));
+#undef INIT_LOGGING_DEFAULT_LOGGER
 }
 
-// This indirection greatly reduces the stack impact of having
-// lots of checks/logging in a function.
-class LogMessageData {
- public:
-  LogMessageData(const char* file, unsigned int line, LogSeverity severity, int error)
-      : file_(file),
-        line_number_(line),
-        severity_(severity),
-        error_(error) {
-    const char* last_slash = strrchr(file, '/');
-    file = (last_slash == nullptr) ? file : last_slash + 1;
-  }
-
-  const char * GetFile() const {
-    return file_;
-  }
-
-  unsigned int GetLineNumber() const {
-    return line_number_;
-  }
-
-  LogSeverity GetSeverity() const {
-    return severity_;
-  }
-
-  int GetError() const {
-    return error_;
-  }
-
-  std::ostream& GetBuffer() {
-    return buffer_;
-  }
-
-  std::string ToString() const {
-    return buffer_.str();
-  }
-
- private:
-  std::ostringstream buffer_;
-  const char* const file_;
-  const unsigned int line_number_;
-  const LogSeverity severity_;
-  const int error_;
-
-  DISALLOW_COPY_AND_ASSIGN(LogMessageData);
-};
-
-
-LogMessage::LogMessage(const char* file, unsigned int line, LogSeverity severity, int error)
-  : data_(new LogMessageData(file, line, severity, error)) {
-  if (PrintDirectly(severity)) {
-    static constexpr char kLogCharacters[] = { 'N', 'V', 'D', 'I', 'W', 'E', 'F', 'F' };
-    static_assert(arraysize(kLogCharacters) == static_cast<size_t>(INTERNAL_FATAL) + 1,
-                  "Wrong character array size");
-    stream() << ProgramInvocationShortName() << " " << kLogCharacters[static_cast<size_t>(severity)]
-             << " " << getpid() << " " << ::art::GetTid() << " " << file << ":" <<  line << "]";
-  }
-}
-LogMessage::~LogMessage() {
-  std::string msg;
-
-  if (!PrintDirectly(data_->GetSeverity()) && data_->GetSeverity() != LogSeverity::NONE) {
-    if (data_->GetSeverity() < gMinimumLogSeverity) {
-      return;  // No need to format something we're not going to output.
-    }
-
-    // Finish constructing the message.
-    if (data_->GetError() != -1) {
-      data_->GetBuffer() << ": " << strerror(data_->GetError());
-    }
-    msg = data_->ToString();
-
-    // Do the actual logging with the lock held.
-    {
-      MutexLock mu(Thread::Current(), *Locks::logging_lock_);
-      if (msg.find('\n') == std::string::npos) {
-        LogLine(data_->GetFile(), data_->GetLineNumber(), data_->GetSeverity(), msg.c_str());
-      } else {
-        msg += '\n';
-        size_t i = 0;
-        while (i < msg.size()) {
-          size_t nl = msg.find('\n', i);
-          msg[nl] = '\0';
-          LogLine(data_->GetFile(), data_->GetLineNumber(), data_->GetSeverity(), &msg[i]);
-          // Undo zero-termination, so we retain the complete message.
-          msg[nl] = '\n';
-          i = nl + 1;
-        }
-      }
-    }
-  }
-
-  // Abort if necessary.
-  if (data_->GetSeverity() == FATAL) {
-    Runtime::Abort(msg.c_str());
-  }
-}
-
-std::ostream& LogMessage::stream() {
-  if (PrintDirectly(data_->GetSeverity())) {
-    return std::cerr;
-  }
-  return data_->GetBuffer();
-}
-
-#ifdef __ANDROID__
+#ifdef ART_TARGET_ANDROID
 static const android_LogPriority kLogSeverityToAndroidLogPriority[] = {
-  ANDROID_LOG_VERBOSE,  // NONE, use verbose as stand-in, will never be printed.
   ANDROID_LOG_VERBOSE, ANDROID_LOG_DEBUG, ANDROID_LOG_INFO, ANDROID_LOG_WARN,
   ANDROID_LOG_ERROR, ANDROID_LOG_FATAL, ANDROID_LOG_FATAL
 };
-static_assert(arraysize(kLogSeverityToAndroidLogPriority) == INTERNAL_FATAL + 1,
+static_assert(arraysize(kLogSeverityToAndroidLogPriority) == ::android::base::FATAL + 1,
               "Mismatch in size of kLogSeverityToAndroidLogPriority and values in LogSeverity");
-
-#define DALVIK_LOG_RETRY_DELIVERY "DALVIK_LOG_RETRY_DELIVERY"
-
-struct RetryDelivery {
-  unsigned int count;
-  unsigned int delay_us;
-};
-
-static RetryDelivery retry_delivery_init() {
-  RetryDelivery retry_delivery;
-  char* env = getenv(DALVIK_LOG_RETRY_DELIVERY);
-
-  if (env == nullptr ||
-      2 != sscanf(env, "%u/%u", &retry_delivery.count, &retry_delivery.delay_us)) {
-    retry_delivery.count = 0;
-    retry_delivery.delay_us = 0;
-  } else {
-    LOG_PRI(ANDROID_LOG_INFO, ProgramInvocationShortName(), "%s",
-            StringPrintf(DALVIK_LOG_RETRY_DELIVERY "=%u/%u",
-                         retry_delivery.count,
-                         retry_delivery.delay_us).c_str());
-    retry_delivery.delay_us *= 1000;
-  }
-  return retry_delivery;
-}
-
-static volatile struct RetryDelivery retry_delivery = retry_delivery_init();
 #endif
 
-void LogMessage::LogLine(const char* file, unsigned int line, LogSeverity log_severity,
-                         const char* message) {
-  if (log_severity == LogSeverity::NONE) {
-    return;
-  }
-
-#ifdef __ANDROID__
-  const char* tag = ProgramInvocationShortName();
-  int priority = kLogSeverityToAndroidLogPriority[static_cast<size_t>(log_severity)];
-
-  int retry = retry_delivery.count;
-  useconds_t delay = retry_delivery.delay_us;
-
-  while (true) {
-    int res;
-    if (priority == ANDROID_LOG_FATAL) {
-      res = LOG_PRI(priority, tag, "%s:%u] %s", file, line, message);
-    } else {
-      res = LOG_PRI(priority, tag, "%s", message);
-    }
-
-    if (res >= 0 || retry <= 0) {
-      // We successfully sent the message or exceeded the retry limit.
-      break;
-    }
-
-    --retry;
-    usleep(delay);
-    delay += delay;
-  }
-#else
-  static const char* log_characters = "NVDIWEFF";
-  CHECK_EQ(strlen(log_characters), INTERNAL_FATAL + 1U);
-  char severity = log_characters[log_severity];
-  fprintf(stderr, "%s %c %5d %5d %s:%u] %s\n",
-          ProgramInvocationShortName(), severity, getpid(), ::art::GetTid(), file, line, message);
-#endif
-}
-
-void LogMessage::LogLineLowStack(const char* file, unsigned int line, LogSeverity log_severity,
-                                 const char* message) {
-  if (log_severity == LogSeverity::NONE) {
-    return;
-  }
-
-#ifdef __ANDROID__
+void LogHelper::LogLineLowStack(const char* file,
+                                unsigned int line,
+                                LogSeverity log_severity,
+                                const char* message) {
+#ifdef ART_TARGET_ANDROID
   // Use android_writeLog() to avoid stack-based buffers used by android_printLog().
   const char* tag = ProgramInvocationShortName();
   int priority = kLogSeverityToAndroidLogPriority[static_cast<size_t>(log_severity)];
@@ -335,26 +115,19 @@ void LogMessage::LogLineLowStack(const char* file, unsigned int line, LogSeverit
     buf_size = strlen(file) + 1 /* ':' */ + std::numeric_limits<typeof(line)>::max_digits10 +
         2 /* "] " */ + strlen(message) + 1 /* terminating 0 */;
     buf = reinterpret_cast<char*>(malloc(buf_size));
-    if (buf != nullptr) {
-      snprintf(buf, buf_size, "%s:%u] %s", file, line, message);
-      message = buf;
-    }
   }
-
-  int retry = retry_delivery.count;
-  useconds_t delay = retry_delivery.delay_us;
-  while (android_writeLog(priority, tag, message) < 0 && --retry >= 0) {
-    usleep(delay);
-    delay += delay;
-  }
-
   if (buf != nullptr) {
+    snprintf(buf, buf_size, "%s:%u] %s", file, line, message);
+    android_writeLog(priority, tag, buf);
     free(buf);
+  } else {
+    android_writeLog(priority, tag, message);
   }
 #else
-  static constexpr char kLogCharacters[] = { 'N', 'V', 'D', 'I', 'W', 'E', 'F', 'F' };
-  static_assert(arraysize(kLogCharacters) == static_cast<size_t>(INTERNAL_FATAL) + 1,
-                "Wrong character array size");
+  static constexpr char kLogCharacters[] = { 'V', 'D', 'I', 'W', 'E', 'F', 'F' };
+  static_assert(
+      arraysize(kLogCharacters) == static_cast<size_t>(::android::base::FATAL) + 1,
+      "Wrong character array size");
 
   const char* program_name = ProgramInvocationShortName();
   TEMP_FAILURE_RETRY(write(STDERR_FILENO, program_name, strlen(program_name)));
@@ -368,16 +141,7 @@ void LogMessage::LogLineLowStack(const char* file, unsigned int line, LogSeverit
   TEMP_FAILURE_RETRY(write(STDERR_FILENO, "] ", 2));
   TEMP_FAILURE_RETRY(write(STDERR_FILENO, message, strlen(message)));
   TEMP_FAILURE_RETRY(write(STDERR_FILENO, "\n", 1));
-#endif
-}
-
-ScopedLogSeverity::ScopedLogSeverity(LogSeverity level) {
-  old_ = gMinimumLogSeverity;
-  gMinimumLogSeverity = level;
-}
-
-ScopedLogSeverity::~ScopedLogSeverity() {
-  gMinimumLogSeverity = old_;
+#endif  // ART_TARGET_ANDROID
 }
 
 }  // namespace art

@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #include "bit_vector.h"
@@ -62,9 +60,7 @@ BitVector::BitVector(const BitVector& src,
 }
 
 BitVector::~BitVector() {
-  if (allocator_ != nullptr) {
-    allocator_->Free(storage_);
-  }
+  allocator_->Free(storage_);
 }
 
 bool BitVector::SameBitsSet(const BitVector *src) const {

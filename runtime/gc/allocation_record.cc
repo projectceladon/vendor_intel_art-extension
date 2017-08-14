@@ -12,17 +12,17 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #include "allocation_record.h"
 
 #include "art_method-inl.h"
+#include "base/enums.h"
 #include "base/stl_util.h"
+#include "obj_ptr-inl.h"
 #include "stack.h"
 
-#ifdef __ANDROID__
+#ifdef ART_TARGET_ANDROID
 #include "cutils/properties.h"
 #endif
 
@@ -40,7 +40,7 @@ const char* AllocRecord::GetClassDescriptor(std::string* storage) const {
 }
 
 void AllocRecordObjectMap::SetProperties() {
-#ifdef __ANDROID__
+#ifdef ART_TARGET_ANDROID
   // Check whether there's a system property overriding the max number of records.
   const char* propertyName = "dalvik.vm.allocTrackerMax";
   char allocMaxString[PROPERTY_VALUE_MAX];
@@ -90,7 +90,7 @@ void AllocRecordObjectMap::SetProperties() {
       max_stack_depth_ = value;
     }
   }
-#endif
+#endif  // ART_TARGET_ANDROID
 }
 
 AllocRecordObjectMap::~AllocRecordObjectMap() {
@@ -114,13 +114,13 @@ void AllocRecordObjectMap::VisitRoots(RootVisitor* visitor) {
     for (size_t i = 0, depth = record.GetDepth(); i < depth; ++i) {
       const AllocRecordStackTraceElement& element = record.StackElement(i);
       DCHECK(element.GetMethod() != nullptr);
-      element.GetMethod()->VisitRoots(buffered_visitor, sizeof(void*));
+      element.GetMethod()->VisitRoots(buffered_visitor, kRuntimePointerSize);
     }
   }
 }
 
 static inline void SweepClassObject(AllocRecord* record, IsMarkedVisitor* visitor)
-    SHARED_REQUIRES(Locks::mutator_lock_)
+    REQUIRES_SHARED(Locks::mutator_lock_)
     REQUIRES(Locks::alloc_tracker_lock_) {
   GcRoot<mirror::Class>& klass = record->GetClassGcRoot();
   // This does not need a read barrier because this is called by GC.
@@ -129,8 +129,8 @@ static inline void SweepClassObject(AllocRecord* record, IsMarkedVisitor* visito
     // The class object can become null if we implement class unloading.
     // In that case we might still want to keep the class name string (not implemented).
     mirror::Object* new_object = visitor->IsMarked(old_object);
-    // For the above reason, the new_object may be null.
-    if (UNLIKELY(old_object != new_object && new_object != nullptr)) {
+    DCHECK(new_object != nullptr);
+    if (UNLIKELY(old_object != new_object)) {
       klass = GcRoot<mirror::Class>(new_object->AsClass());
     }
   }
@@ -181,15 +181,14 @@ void AllocRecordObjectMap::DisallowNewAllocationRecords() {
 }
 
 void AllocRecordObjectMap::BroadcastForNewAllocationRecords() {
-  CHECK(kUseReadBarrier);
   new_record_condition_.Broadcast(Thread::Current());
 }
 
 class AllocRecordStackVisitor : public StackVisitor {
  public:
   AllocRecordStackVisitor(Thread* thread, size_t max_depth, AllocRecordStackTrace* trace_out)
-      SHARED_REQUIRES(Locks::mutator_lock_)
-      : StackVisitor(thread, nullptr, StackVisitor::StackWalkKind::kIncludeInlinedFramesNoResolve),
+      REQUIRES_SHARED(Locks::mutator_lock_)
+      : StackVisitor(thread, nullptr, StackVisitor::StackWalkKind::kIncludeInlinedFrames),
         max_depth_(max_depth),
         trace_(trace_out) {}
 
@@ -202,7 +201,7 @@ class AllocRecordStackVisitor : public StackVisitor {
     ArtMethod* m = GetMethod();
     // m may be null if we have inlined methods of unresolved classes. b/27858645
     if (m != nullptr && !m->IsRuntimeMethod()) {
-      m = m->GetInterfaceMethodIfProxy(sizeof(void*));
+      m = m->GetInterfaceMethodIfProxy(kRuntimePointerSize);
       trace_->AddStackElement(AllocRecordStackTraceElement(m, GetDexPc()));
     }
     return true;
@@ -264,7 +263,7 @@ void AllocRecordObjectMap::SetAllocTrackingEnabled(bool enable) {
 }
 
 void AllocRecordObjectMap::RecordAllocation(Thread* self,
-                                            mirror::Object** obj,
+                                            ObjPtr<mirror::Object>* obj,
                                             size_t byte_count) {
   // Get stack trace outside of lock in case there are allocations during the stack walk.
   // b/27858645.
@@ -291,6 +290,9 @@ void AllocRecordObjectMap::RecordAllocation(Thread* self,
   // Wait for GC's sweeping to complete and allow new records
   while (UNLIKELY((!kUseReadBarrier && !allow_new_record_) ||
                   (kUseReadBarrier && !self->GetWeakRefAccessEnabled()))) {
+    // Check and run the empty checkpoint before blocking so the empty checkpoint will work in the
+    // presence of threads blocking for weak ref access.
+    self->CheckEmptyCheckpointFromWeakRefAccess(Locks::alloc_tracker_lock_);
     new_record_condition_.WaitHoldingLocks(self);
   }
 
@@ -306,7 +308,7 @@ void AllocRecordObjectMap::RecordAllocation(Thread* self,
   trace.SetTid(self->GetTid());
 
   // Add the record.
-  Put(*obj, AllocRecord(byte_count, (*obj)->GetClass(), std::move(trace)));
+  Put(obj->Ptr(), AllocRecord(byte_count, (*obj)->GetClass(), std::move(trace)));
   DCHECK_LE(Size(), alloc_record_max_);
 }
 

@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_COMPILER_OPTIMIZING_GVN_H_
@@ -30,9 +28,8 @@ class GVNOptimization : public HOptimization {
  public:
   GVNOptimization(HGraph* graph,
                   const SideEffectsAnalysis& side_effects,
-                  const char* pass_name = kGlobalValueNumberingPassName,
-                  OptimizingCompilerStats* stats = nullptr)
-      : HOptimization(graph, pass_name, stats), side_effects_(side_effects) {}
+                  const char* pass_name = kGlobalValueNumberingPassName)
+      : HOptimization(graph, pass_name), side_effects_(side_effects) {}
 
   void Run() OVERRIDE;
 

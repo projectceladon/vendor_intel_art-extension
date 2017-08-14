@@ -1,24 +1,34 @@
 /*
- * Copyright (C) 2015 Intel Corporation.
+ * INTEL CONFIDENTIAL
+ * Copyright (c) 2015, Intel Corporation All Rights Reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * The source code contained or described herein and all documents related to the
+ * source code ("Material") are owned by Intel Corporation or its suppliers or
+ * licensors. Title to the Material remains with Intel Corporation or its suppliers
+ * and licensors. The Material contains trade secrets and proprietary and
+ * confidential information of Intel or its suppliers and licensors. The Material
+ * is protected by worldwide copyright and trade secret laws and treaty provisions.
+ * No part of the Material may be used, copied, reproduced, modified, published,
+ * uploaded, posted, transmitted, distributed, or disclosed in any way without
+ * Intel's prior express written permission.
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * No license under any patent, copyright, trade secret or other intellectual
+ * property right is granted to or conferred upon you by disclosure or delivery of
+ * the Materials, either expressly, by implication, inducement, estoppel or
+ * otherwise. Any license under such intellectual property rights must be express
+ * and approved by Intel in writing.
  */
 
 #ifndef COMPILER_OPTIMIZING_EXTENSIONS_INFRASTRUCTURE_EXT_UTILITY_H
 #define COMPILER_OPTIMIZING_EXTENSIONS_INFRASTRUCTURE_EXT_UTILITY_H
 
+#if 0	//neeraj - resolve build errors
 #include "base/stringprintf.h"
+#else
+#include "android-base/stringprintf.h"
+using android::base::StringPrintf;
+#endif
+
 #include "driver/dex_compilation_unit.h"
 #include "nodes.h"
 #include <ostream>
@@ -44,81 +54,6 @@ class HInstruction;
         LOG(INFO) << pass->GetPassName() << ": " << __VA_ARGS__; \
       } \
     } while (false)
-
-  // PRINT_OSTREAM_MESSAGE(os, prefix, x << yy << zz);
-  #define PRINT_OSTREAM_MESSAGE(os, prefix, ...) \
-    do { \
-      os << prefix << ": " << __VA_ARGS__ << std::endl; \
-    } while (false)
-
-class HAllUseIterator {
- public:
-  explicit HAllUseIterator(HInstruction* insn) :
-      env_use_it_(insn->GetEnvUses().begin()),
-      env_use_it_end_(insn->GetEnvUses().end()),
-      use_it_(insn->GetUses().begin()),
-      use_it_end_(insn->GetUses().end()),
-      index_(0),
-      env_user_(nullptr),
-      user_(nullptr) {
-    Advance();
-  }
-
-  bool Done() {
-    return (use_it_ == use_it_end_) &&
-           (env_use_it_ == env_use_it_end_) &&
-           env_user_ == nullptr &&
-           user_ == nullptr;
-  }
-
-  HInstruction* Current() {
-    return IsEnv() ? env_user_->GetHolder() : user_;
-  }
-
-  bool IsEnv() {
-    return env_user_ != nullptr;
-  }
-
-  void Advance() {
-    if (use_it_ == use_it_end_) {
-      if (env_use_it_ == env_use_it_end_) {
-        env_user_ = nullptr;
-        user_ = nullptr;
-      } else {
-        index_ = env_use_it_->GetIndex();
-        env_user_ = env_use_it_->GetUser();
-        ++env_use_it_;
-      }
-    } else {
-      index_ = use_it_->GetIndex();
-      user_ = use_it_->GetUser();
-      ++use_it_;
-    }
-  }
-
-  void ReplaceInput(HInstruction* new_input) {
-    if (IsEnv()) {
-      DCHECK(new_input == nullptr || new_input->GetBlock() != nullptr);
-      env_user_->RemoveAsUserOfInput(index_);
-      env_user_->SetRawEnvAt(index_, new_input);
-      if (new_input != nullptr) {
-        new_input->AddEnvUseAt(env_user_, index_);
-      }
-    } else {
-      DCHECK(new_input->GetBlock() != nullptr);
-      user_->ReplaceInput(new_input, index_);
-    }
-  }
-
- private:
-  HUseList<HEnvironment*>::const_iterator env_use_it_;
-  HUseList<HEnvironment*>::const_iterator env_use_it_end_;
-  HUseList<HInstruction*>::const_iterator use_it_;
-  HUseList<HInstruction*>::const_iterator use_it_end_;
-  size_t index_;
-  HEnvironment* env_user_;
-  HInstruction* user_;
-};
 
   /**
    * @brief Facility to get the name of the current method.
@@ -222,97 +157,6 @@ class HAllUseIterator {
    * @param instruction The HInstruction to handle.
    */
   void RemoveFromEnvironmentUsers(HInstruction* instruction);
-
-  /**
-   * @brief Get the character equivalent of the type for print or debug purposes.
-   * @param type The type we want to get the equivalent of.
-   * @return The resulting character equivalent.
-   */
-  char GetTypeId(Primitive::Type type);
-
-  /**
-   * @brief Returns pretty method name for the invoke.
-   * @param call The invoke.
-   * @return Called method name as string.
-   */
-  std::string CalledMethodName(HInvokeStaticOrDirect* call);
-
-  /**
-   * @brief Dumps a basic block to logcat. For debugging purposes only!
-   * @param name The name of a block being dumped (to distinguish them).
-   * @param block The block to dump.
-   */
-  void DumpBasicBlock(const char* name, HBasicBlock* block);
-
-  /**
-   * @brief Dumps a loop to logcat. For debugging purposes only!
-   * @param loop The loop to dump.
-   */
-  void DumpLoop(HLoopInformation_X86* loop);
-
-  /**
-   * @brief Whether the expression can be safely removed.
-   * @param instruction The instruction to check.
-   * @return true, if the instruction can be safely removed from code.
-   */
-  bool CanExpressionBeRemoved(HInstruction* instruction);
-
-  /**
-    * @brief Tries to kill an instruction, its inputs, their inputs etc.
-    * @param pass The pass that removes the instruction.
-    * @param insn The instruction to remove.
-    * @param all_removed The output set that contains all removed instructions.
-    *                    May be nullptr, if we don't need to collect those instructions.
-    */
-  void TryKillUseTree(HOptimization_X86* pass,
-                      HInstruction* insn,
-                      std::unordered_set<HInstruction*>* all_removed = nullptr);
-
-  enum {
-    kHotMethodCount = 50,            // How often must a method be called to be hot?
-    kHotMethodBlockCountSum = 2000,  // Sum of all block counts for a method to be hot.
-    kColdBlockFactor = 3,            // A cold block is executed kColdBlockFactor times
-                                     // LESS than the entry block.
-    kColdLoopBlockFactor = 10,       // A cold block is executed kColdLoopBlockFactor times
-                                     // LESS than the loop header block.
-    kHotBlockFactor = 10,            // A hot block is executed kHotBlockFactor times
-                                     // MORE than the entry block.
-  };
-
-  enum BlockHotness {
-    kUnknown,   // No BB counts are available or the method has not been invoked.
-    kCold,      // Block is execute kColdBlockFactor less frequently than the method.
-    kWarm,      // Block is executed with the about the same as the method.
-    kHot,       // Block is executed kHotBlockFactor more frequently than the method.
-  };
-
-  /*
-   * @brief Return the 'hotness' of this basic block.
-   * @param block Block to check.
-   * @returns An indication of how often the block is executed per method invoke.
-   */
-  BlockHotness GetBlockHotness(HBasicBlock* block);
-
-  /*
-   * @brief Simple interface to interact at runtime on host/target.
-   */
-  class SetBoolValue {
-   public:
-    /*
-     * @brief Set a boolean based on a property or environment variable.
-     * @param property Boolean property on target ('true'/anything else)
-     * @param env_var Boolean environment variable on host (set or not set).
-     */
-    SetBoolValue(const char* property, const char* env_var);
-
-    // Return 'true' if the property/environment variable was set.
-    bool operator()() const {
-      return value_;
-    }
-
-   private:
-    bool value_;
-  };
 
 }  // namespace art
 #endif  // COMPILER_OPTIMIZING_EXTENSIONS_INFRASTRUCTURE_EXT_UTILITIES_H

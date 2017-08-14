@@ -1,59 +1,40 @@
 /*
- * Copyright (C) 2015 Intel Corporation.
+ * INTEL CONFIDENTIAL
+ * Copyright (c) 2015, Intel Corporation All Rights Reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * The source code contained or described herein and all documents related to the
+ * source code ("Material") are owned by Intel Corporation or its suppliers or
+ * licensors. Title to the Material remains with Intel Corporation or its suppliers
+ * and licensors. The Material contains trade secrets and proprietary and
+ * confidential information of Intel or its suppliers and licensors. The Material
+ * is protected by worldwide copyright and trade secret laws and treaty provisions.
+ * No part of the Material may be used, copied, reproduced, modified, published,
+ * uploaded, posted, transmitted, distributed, or disclosed in any way without
+ * Intel's prior express written permission.
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * No license under any patent, copyright, trade secret or other intellectual
+ * property right is granted to or conferred upon you by disclosure or delivery of
+ * the Materials, either expressly, by implication, inducement, estoppel or
+ * otherwise. Any license under such intellectual property rights must be express
+ * and approved by Intel in writing.
  */
 
-#include "abi_transition_helper.h"
-#include "aur.h"
 #include "base/dumpable.h"
 #include "base/timing_logger.h"
-#include "bb_simplifier.h"
 #include "code_generator.h"
-#include "commutative_trees_flipper.h"
-#include "constant_calculation_sinking.h"
-#include "constant_folding_x86.h"
-#include "devirtualization.h"
 #include "ext_utility.h"
 #include "driver/compiler_driver.h"
-#include "ext_utility.h"
-#include "form_bottom_loops.h"
+#include "driver/compiler_options.h"	//neeraj -- added to resolve build error
 #include "find_ivs.h"
 #include "graph_visualizer.h"
-#include "gvn_after_fbl.h"
-#include "inliner.h"
-#include "loadhoist_storesink.h"
 #include "loop_formation.h"
-#include "loop_full_unrolling.h"
-#ifndef SOFIA
-#include "non_temporal_move.h"
-#endif
 #include "optimization.h"
-#include "optimizing_compiler_stats.h"
-#include "osr_graph_rebuilder.h"
 #include "pass_framework.h"
-#include "peeling.h"
-#include "phi_cleanup.h"
-#include "pure_invokes_analysis.h"
-#include "remove_suspend.h"
 #include "remove_unused_loops.h"
-#include "scoped_thread_state_change.h"
-#include "sharpening_wrapper.h"
-#include "speculation_pass.h"
+//#include "scoped_thread_state_change.h"
+#include "scoped_thread_state_change-inl.h"	//neeraj -- added to resolve build error
 #include "thread.h"
-#include "trivial_loop_evaluator.h"
-#include "value_propagation_through_heap.h"
+
 
 namespace art {
 
@@ -62,8 +43,6 @@ enum PassInstrumentation {
   kPassInsertBefore,
   kPassInsertAfter,
   kPassReplace,
-  kPassAppend,
-  kPassPrepend,
 };
 
 /**
@@ -79,45 +58,9 @@ struct HCustomPassPlacement {
  * @brief Static array holding information about custom placements.
  */
 static HCustomPassPlacement kPassCustomPlacement[] = {
-  // Devirtualization is always inserted before sharpening. We also insert it twice to increase
-  // its effectiveness - before and after inlining.
-  { HDevirtualization::kDevirtualizationPassName,
-    HSharpening::kSharpeningPassName,
-    kPassInsertBefore },
-  { HDevirtualization::kDevirtualizationAfterInliningPassName,
-    HInliner::kInlinerPassName,
-    kPassInsertAfter },
-  { HSharpeningWrapper::kSharpeningAfterInliningPassName,
-    HDevirtualization::kDevirtualizationAfterInliningPassName,
-    kPassInsertAfter },
-  { "loop_peeling", "select_generator", kPassInsertBefore },
-  // We apply pure invoke analysis to methods with loops only.
-  // If this restriction is removed, it may go right after the
-  // sharpening after inlining.
-  { "pure_invokes_analysis", "loop_peeling", kPassInsertBefore },
-  { "value_propagation_through_heap", "pure_invokes_analysis", kPassInsertBefore },
-  { "osr_graph_rebuilder", "value_propagation_through_heap", kPassInsertBefore },
-  { "loop_formation_before_peeling", "osr_graph_rebuilder", kPassInsertBefore },
-  { "form_bottom_loops", "load_store_elimination", kPassInsertAfter },
-  { "loop_formation_before_bottom_loops", "form_bottom_loops", kPassInsertBefore },
-  { "GVN_after_form_bottom_loops", "form_bottom_loops", kPassInsertAfter },
-  { "phi_cleanup", "GVN_after_form_bottom_loops", kPassInsertAfter },
-  { "constant_folding_after_phi_cleanup", "phi_cleanup", kPassInsertAfter },
-  { "loop_formation", "constant_folding_after_phi_cleanup", kPassInsertAfter },
-  { "find_ivs", "loop_formation", kPassInsertAfter },
-  { "trivial_loop_evaluator", "find_ivs", kPassInsertAfter },
-  { "non_temporal_move", "trivial_loop_evaluator", kPassInsertAfter },
-  { "constant_calculation_sinking", "non_temporal_move", kPassInsertAfter },
-  { "remove_loop_suspend_checks", "constant_calculation_sinking", kPassInsertAfter },
-  { "loadhoist_storesink", "remove_loop_suspend_checks", kPassInsertAfter },
-  { "remove_unused_loops", "loadhoist_storesink", kPassInsertAfter },
-  { "loop_full_unrolling", "remove_unused_loops", kPassInsertAfter },
-  { "load_store_elimination", "value_propagation_through_heap", kPassInsertBefore },
-  { "bb_simplifier", "remove_unused_loops", kPassInsertBefore },
-  { "aur", "bb_simplifier", kPassInsertBefore },
-  { "phi_cleanup_after_aur", "aur", kPassInsertAfter },
-  { "commutative_trees_flipper", "dead_code_elimination_final", kPassInsertAfter },
-  { "abi_transition_helper", "", kPassAppend },
+  { "loop_formation", "instruction_simplifier_after_types", kPassInsertAfter},
+  { "find_ivs", "loop_formation", kPassInsertAfter},
+  { "remove_unused_loops", "find_ivs", kPassInsertAfter},
 };
 
 /**
@@ -140,14 +83,6 @@ static void AddX86Optimization(HOptimization* optimization,
 
   HCustomPassPlacement* placement = iter->second;
 
-  if (placement->directive == kPassAppend) {
-    list.push_back(optimization);
-    return;
-  } else if (placement->directive == kPassPrepend) {
-    list.insert(list.begin(), optimization);
-    return;
-  }
-
   // Find the right pass to change now.
   size_t len = list.size();
   size_t idx;
@@ -158,7 +93,7 @@ static void AddX86Optimization(HOptimization* optimization,
           list[idx] = optimization;
           break;
         case kPassInsertBefore:
-        case kPassInsertAfter: {
+        case kPassInsertAfter:
           // Add an empty element.
           list.push_back(nullptr);
 
@@ -170,7 +105,6 @@ static void AddX86Optimization(HOptimization* optimization,
           }
 
           // Push elements backwards.
-          DCHECK_NE(len, list.size());
           for (size_t idx2 = len; idx2 >= start; idx2--) {
             list[idx2] = list[idx2 - 1];
           }
@@ -178,19 +112,11 @@ static void AddX86Optimization(HOptimization* optimization,
           // Place the new element.
           list[start] = optimization;
           break;
-        }
-        default:
-          if (kIsDebugBuild) {
-            LOG(FATAL) << "Unexpected placement directive << " << placement->directive;
-          }
-          break;
       }
       // Done here.
       break;
     }
   }
-  // It must be the case that the custom placement was found.
-  DCHECK_NE(len, idx) << "couldn't insert " << optimization->GetPassName() << " relative to " << placement->pass_relative_to;
 }
 
 static void FillCustomPlacement(ArenaSafeMap<const char*, HCustomPassPlacement*>& placements) {
@@ -220,11 +146,28 @@ static void FillOptimizationList(HGraph* graph,
 }
 
 /**
- * @brief Remove the passes in the optimization list.
+ * @brief Apply the post optimization passes.
+ * @param post_opt_list post-optimization list.
+ * @param pass_observer the PassObserver.
+ */
+static void ApplyPostOpts(const ArenaVector<HOptimization*>& post_opt_list,
+                          PassObserver* pass_observer) {
+  for (auto post_opt : post_opt_list) {
+    if (post_opt != nullptr) {
+      RunOptWithPassScope scope(post_opt, pass_observer);
+      scope.Run();
+    }
+  }
+}
+
+/**
+ * @brief Remove the passes in the optimization and post-optimization lists.
  * @param opts the optimization vector.
+ * @param post_opts the post-optimization vector.
  * @param driver the compilation driver.
  */
 static void RemoveOptimizations(ArenaVector<HOptimization*>& opts,
+                                ArenaVector<HOptimization*>& post_opts,
                                 CompilerDriver* driver) {
   std::unordered_set<std::string> disabled_passes;
 
@@ -247,7 +190,7 @@ static void RemoveOptimizations(ArenaVector<HOptimization*>& opts,
 
   size_t opts_len = opts.size();
 
-  // We replace the opts with nullptr if we find a match.
+  // We replace the opts, post_opts with nullptr if we find a match.
   //   This is cheaper than rearranging the vectors.
   for (size_t opts_idx = 0; opts_idx < opts_len; opts_idx++) {
     HOptimization* opt = opts[opts_idx];
@@ -255,12 +198,23 @@ static void RemoveOptimizations(ArenaVector<HOptimization*>& opts,
       opts[opts_idx] = nullptr;
     }
   }
+
+  size_t post_opts_len = post_opts.size();
+
+  for (size_t post_opts_idx = 0; post_opts_idx < post_opts_len; post_opts_idx++) {
+    HOptimization* post_opt = post_opts[post_opts_idx];
+    if (disabled_passes.find(post_opt->GetPassName()) != disabled_passes.end()) {
+      post_opts[post_opts_idx] = nullptr;
+    }
+  }
 }
 
-void PrintPasses(ArenaVector<HOptimization*>& opts) {
+void PrintPasses(ArenaVector<HOptimization*>& opts,
+                 ArenaVector<HOptimization*>& post_opts) {
   size_t opts_len = opts.size();
+  size_t post_opts_len = post_opts.size();
 
-  // We replace the opts with nullptr if we find a match.
+  // We replace the opts, post_opts with nullptr if we find a match.
   //   This is cheaper than rearranging the vectors.
   LOG(INFO) << "Pass List:";
   if (opts_len == 0) {
@@ -273,9 +227,22 @@ void PrintPasses(ArenaVector<HOptimization*>& opts) {
       LOG(INFO) << "\t- " << opt->GetPassName();
     }
   }
+
+  LOG(INFO) << "Post-Opt List:";
+  if (post_opts_len == 0) {
+    LOG(INFO) << "\t<Empty>";
+  }
+
+  for (size_t post_opts_idx = 0; post_opts_idx < post_opts_len; post_opts_idx++) {
+    HOptimization* post_opt = post_opts[post_opts_idx];
+    if (post_opt != nullptr) {
+      LOG(INFO) << "\t- " << post_opt->GetPassName();
+    }
+  }
 }
 
 bool PrintPassesOnlyOnce(ArenaVector<HOptimization*>& opts,
+                         ArenaVector<HOptimization*>& post_opts,
                          CompilerDriver* driver) {
   bool need_print = driver->GetCompilerOptions().
                             GetPassManagerOptions()->GetPrintPassNames();
@@ -304,18 +271,38 @@ bool PrintPassesOnlyOnce(ArenaVector<HOptimization*>& opts,
     return false;
   }
 
-  PrintPasses(opts);
+  PrintPasses(opts, post_opts);
   return true;
+}
+
+/**
+ * @brief Fill the vector from an array.
+ * @param array the array of HOptimization.
+ * @param len the length of the array.
+ * @param vector the ArenaVector to fill.
+ */
+static void FillPassList(HOptimization_X86** array, size_t len, ArenaVector<HOptimization*>& vector) {
+  for (size_t i = 0; i < len; i++) {
+    HOptimization_X86* pass = array[i];
+
+    if (pass != nullptr) {
+      vector.push_back(pass);
+    }
+  }
 }
 
 /**
  * @brief Sets verbosity for passes.
  * @param optimizations the optimization array.
  * @param opts_len the length of optimizations array.
+ * @param post_optimizations the post-optimization array.
+ * @param post_opts_len the length of post-optimizations array.
  * @param driver the compilation driver.
  */
 void FillVerbose(HOptimization_X86* optimizations[],
                  size_t opts_len,
+                 HOptimization_X86* post_optimizations[],
+                 size_t post_opts_len,
                  CompilerDriver* driver) {
   std::unordered_set<std::string> print_passes;
   const bool print_all_passes = driver->GetCompilerOptions().
@@ -342,131 +329,70 @@ void FillVerbose(HOptimization_X86* optimizations[],
       }
     }
   }
+
+  for (size_t post_opts_idx = 0; post_opts_idx < post_opts_len; post_opts_idx++) {
+    HOptimization* post_opt = post_optimizations[post_opts_idx];
+    if (post_opt != nullptr) {
+      if (print_all_passes ||
+          print_passes.find(post_opt->GetPassName()) != print_passes.end()) {
+        post_optimizations[post_opts_idx]->SetVerbose(true);
+      }
+    }
+  }
 }
 
 void RunOptimizationsX86(HGraph* graph,
-                         CodeGenerator* codegen,
                          CompilerDriver* driver,
                          OptimizingCompilerStats* stats,
                          ArenaVector<HOptimization*>& opt_list,
-                         const DexCompilationUnit& dex_compilation_unit,
-                         PassObserver* pass_observer,
-                         StackHandleScopeCollection* handles) {
-  // Create the array for the opts.
-  ArenaAllocator* arena = graph->GetArena();
-  HLoopFormation* loop_formation = new (arena) HLoopFormation(graph);
-  HFindInductionVariables* find_ivs = new (arena) HFindInductionVariables(graph, stats);
-  HRemoveLoopSuspendChecks* remove_suspends = new (arena) HRemoveLoopSuspendChecks(graph, driver, stats);
-  HRemoveUnusedLoops* remove_unused_loops = new (arena) HRemoveUnusedLoops(graph, stats);
-  TrivialLoopEvaluator* tle = new (arena) TrivialLoopEvaluator(graph, driver, stats);
-  HConstantCalculationSinking* ccs = new (arena) HConstantCalculationSinking(graph, stats);
-#ifndef SOFIA
-  HNonTemporalMove* non_temporal_move = new (arena) HNonTemporalMove(graph, driver, stats);
-#endif
-  LoadHoistStoreSink* lhss = new (arena) LoadHoistStoreSink(graph, stats);
-  HValuePropagationThroughHeap* value_propagation_through_heap =
-      new (arena) HValuePropagationThroughHeap(graph, driver, stats);
-  HLoopFormation* formation_before_peeling =
-      new (arena) HLoopFormation(graph, "loop_formation_before_peeling");
-  HLoopPeeling* peeling = new (arena) HLoopPeeling(graph, driver, stats);
-  HPureInvokesAnalysis* pure_invokes_analysis = new (arena) HPureInvokesAnalysis(graph, stats);
-  HLoopFormation* formation_before_bottom_loops =
-      new (arena) HLoopFormation(graph, "loop_formation_before_bottom_loops");
-  HFormBottomLoops* form_bottom_loops =
-      new (arena) HFormBottomLoops(graph, dex_compilation_unit, handles, stats);
-  GVNAfterFormBottomLoops* gvn_after_fbl = new (arena) GVNAfterFormBottomLoops(graph);
-  HConstantFolding_X86* constant_folding =
-      new (arena) HConstantFolding_X86(graph, stats, "constant_folding_after_phi_cleanup");
-  HLoopFullUnrolling* loop_full_unrolling = new (arena) HLoopFullUnrolling(graph, driver, stats);
-  HAggressiveUseRemoverPass* aur = new (arena) HAggressiveUseRemoverPass(graph, driver, stats);
-  HPhiCleanup* phi_cleanup = new (arena) HPhiCleanup(graph, "phi_cleanup", stats);
-  HPhiCleanup* phi_cleanup_after_aur = new (arena) HPhiCleanup(graph, "phi_cleanup_after_aur", stats);
-  HDevirtualization* devirtualization = new (arena) HDevirtualization(graph,
-                                                                      dex_compilation_unit,
-                                                                      driver,
-                                                                      handles,
-                                                                      /* after_inlining */ false,
-                                                                      stats);
-  HDevirtualization* devirtualization2 = new (arena) HDevirtualization(graph,
-                                                                       dex_compilation_unit,
-                                                                       driver,
-                                                                       handles,
-                                                                       /* after_inlining */ true,
-                                                                       stats);
-  HSharpeningWrapper* sharpening2 = new (arena) HSharpeningWrapper(graph,
-                                                                   codegen,
-                                                                   dex_compilation_unit,
-                                                                   driver,
-                                                                   stats);
-  HAbiTransitionHelper* abi_helper = new (arena) HAbiTransitionHelper(graph, driver, stats);
-  HOsrGraphRebuilder* osr_graph_rebuilder = new (arena) HOsrGraphRebuilder(graph, stats);
-  HBBSimplifier* bb_simplifier = new (arena) HBBSimplifier(graph, stats);
-  HCommutativeTreesFlipper* commutative_trees_flipper =
-      new (arena) HCommutativeTreesFlipper(graph, stats);
+                         PassObserver* pass_observer) {
+  // We want our own list of passes with our own vector.
+  ArenaVector<HOptimization*> post_opt_list(graph->GetArena()->Adapter(kArenaAllocMisc));
+  ArenaSet<const char*> post_opt_request(graph->GetArena()->Adapter(kArenaAllocMisc));
 
+  // Create the array for the opts.
+  HLoopFormation loop_formation(graph);
+  HFindInductionVariables find_ivs(graph, stats);
+  HRemoveUnusedLoops remove_unused_loops(graph, stats);
   HOptimization_X86* opt_array[] = {
-    devirtualization,
-    devirtualization2,
-    sharpening2,
-    peeling,
-    pure_invokes_analysis,
-    value_propagation_through_heap,
-    osr_graph_rebuilder,
-    formation_before_peeling,
-    form_bottom_loops,
-    formation_before_bottom_loops,
-    gvn_after_fbl,
-    phi_cleanup,
-    constant_folding,
-    loop_formation,
-    find_ivs,
-    tle,
-#ifndef SOFIA
-    non_temporal_move,
-#endif
-    ccs,
-    remove_suspends,
-    lhss,
-    remove_unused_loops,
-    loop_full_unrolling,
-    bb_simplifier,
-    aur,
-    phi_cleanup_after_aur,
-    commutative_trees_flipper,
-    abi_helper,
+    &loop_formation,
+    &find_ivs,
+    &remove_unused_loops,
+  };
+
+  // Create the array for the post-opts.
+  HOptimization_X86* post_opt_array[] = {
+    nullptr,
   };
 
   // Fill verbose flags where we need it.
   FillVerbose(opt_array, arraysize(opt_array),
+              post_opt_array, arraysize(post_opt_array),
               driver);
 
   // Create the vector for the optimizations.
   FillOptimizationList(graph, opt_list, opt_array, arraysize(opt_array));
 
+  // Create the vector for the post opts.
+  FillPassList(post_opt_array, arraysize(post_opt_array), post_opt_list);
+
   // Finish by removing the ones we do not want.
-  RemoveOptimizations(opt_list, driver);
+  RemoveOptimizations(opt_list, post_opt_list, driver);
 
   // Print the pass list, if needed.
-  PrintPassesOnlyOnce(opt_list, driver);
+  PrintPassesOnlyOnce(opt_list, post_opt_list, driver);
 
   // Now execute the optimizations.
-  size_t phase_id = 0;
   for (auto optimization : opt_list) {
     if (optimization != nullptr) {
-      const char* name = optimization->GetPassName();
-      // if debug option --stop-optimizing-after is passed
-      // then check whether we need to stop optimization.
-      if (driver->GetCompilerOptions().IsConditionalCompilation()) {
-        if (driver->GetCompilerOptions().GetStopOptimizingAfter() < phase_id ||
-            driver->GetCompilerOptions().GetStopOptimizingAfter() ==
-            std::numeric_limits<uint32_t>::max()) {
-          break;
-        }
-        VLOG(compiler) << "Applying " << name << ", phase_id = " << phase_id;
+      {
+        RunOptWithPassScope scope(optimization, pass_observer);
+        scope.Run();
       }
-      RunOptWithPassScope scope(optimization, pass_observer);
-      scope.Run();
-      phase_id++;
+
+      // Apply post opts: for optimizing compiler, we assume the post-opts
+      //   know when to run or not to limit compile time.
+      ApplyPostOpts(post_opt_list, pass_observer);
     }
   }
 }

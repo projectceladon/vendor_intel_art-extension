@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Modified by Intel Corporation
-#
 
 include $(VENDOR_ART_PATH)/build/Android.common_build.mk
 
@@ -164,10 +162,6 @@ define build-art-executable
         art_out_binary_name := $$(LOCAL_MODULE)
       endif
     endif
-  endif
-
-  ifeq (true, $(BOOT_DEBUGGABLE))
-    LOCAL_CFLAGS += -DBOOT_DEBUGGABLE
   endif
 
   LOCAL_NATIVE_COVERAGE := $(ART_COVERAGE)

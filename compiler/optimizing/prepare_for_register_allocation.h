@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_COMPILER_OPTIMIZING_PREPARE_FOR_REGISTER_ALLOCATION_H_
@@ -49,7 +47,7 @@ class PrepareForRegisterAllocation : public HGraphDelegateVisitor {
   void VisitClinitCheck(HClinitCheck* check) OVERRIDE;
   void VisitCondition(HCondition* condition) OVERRIDE;
   void VisitInvokeStaticOrDirect(HInvokeStaticOrDirect* invoke) OVERRIDE;
-  void VisitNewInstance(HNewInstance* instruction) OVERRIDE;
+  void VisitDeoptimize(HDeoptimize* deoptimize) OVERRIDE;
 
   bool CanMoveClinitCheck(HInstruction* input, HInstruction* user) const;
   bool CanEmitConditionAt(HCondition* condition, HInstruction* user) const;

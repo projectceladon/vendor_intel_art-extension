@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Intel Corporation
+ * Copyright (C) 2014 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,11 +30,14 @@
 
 namespace art {
 
-class LoopHierarchyTest : public CommonCompilerTest {};
-
 static HGraph* TestCode(const uint16_t* data, ArenaAllocator* allocator) {
   // Build the graph.
-  HGraph_X86* graph = CreateX86CFG(allocator, data, Primitive::kPrimVoid);
+  HGraph_X86* graph = CreateGraph_X86_for_test(allocator);
+  HGraphBuilder builder(graph);
+  const DexFile::CodeItem* item = reinterpret_cast<const DexFile::CodeItem*>(data);
+  builder.BuildGraph(*item);
+  graph->BuildDominatorTree();
+  graph->AnalyzeNaturalLoops();
 
   // Run our pass.
   HLoopFormation formation(graph);
@@ -49,23 +52,23 @@ static void TestLoop(HGraph* graph,
                       bool is_inner,
                       bool has_siblings,
                       bool has_parent,
-                      uint32_t sibling_prev = 0,
-                      uint32_t sibling_next = 0) {
-  HBasicBlock* block = graph->GetBlocks()[block_id];
+                      int sibling_prev = 0,
+                      int sibling_next = 0) {
+  HBasicBlock* block = graph->GetBlocks().Get(block_id);
   HLoopInformation_X86* info = LOOPINFO_TO_LOOPINFO_X86(block->GetLoopInformation());
   ASSERT_NE(info, nullptr);
   ASSERT_EQ(info->GetInner() == nullptr, is_inner);
   ASSERT_EQ(info->GetNextSibling() != nullptr || info->GetPrevSibling() != nullptr, has_siblings);
 
   if (has_siblings) {
-    if (sibling_next != std::numeric_limits<uint32_t>::max()) {
+    if (sibling_next != -1) {
       HLoopInformation_X86* sibling = info->GetNextSibling();
       ASSERT_NE(sibling, nullptr);
       HBasicBlock* sibling_header = sibling->GetHeader();
       ASSERT_EQ(sibling_next, sibling_header->GetBlockId());
     }
 
-    if (sibling_prev != std::numeric_limits<uint32_t>::max()) {
+    if (sibling_prev != -1) {
       HLoopInformation_X86* sibling = info->GetPrevSibling();
       ASSERT_NE(sibling, nullptr);
       HBasicBlock* sibling_header = sibling->GetHeader();
@@ -76,7 +79,7 @@ static void TestLoop(HGraph* graph,
   ASSERT_EQ(info->GetDepth(), depth);
 }
 
-TEST_F(LoopHierarchyTest, Loop1) {
+TEST(LoopHierarchyTest, Loop1) {
   // Simple loop with one preheader and one back edge.
   // var a = 0;
   // while (a == a) {
@@ -97,7 +100,7 @@ TEST_F(LoopHierarchyTest, Loop1) {
   TestLoop(graph, 2, 0, true, false, false);
 }
 
-TEST_F(LoopHierarchyTest, InnerLoop) {
+TEST(LoopHierarchyTest, InnerLoop) {
   const uint16_t data[] = ONE_REGISTER_CODE_ITEM(
     Instruction::CONST_4 | 0 | 0,
     Instruction::IF_EQ, 6,
@@ -114,7 +117,7 @@ TEST_F(LoopHierarchyTest, InnerLoop) {
   TestLoop(graph, 3, 1, true, false, true);
 }
 
-TEST_F(LoopHierarchyTest, TwoLoops) {
+TEST(LoopHierarchyTest, TwoLoops) {
   const uint16_t data[] = ONE_REGISTER_CODE_ITEM(
     Instruction::CONST_4 | 0 | 0,
     Instruction::IF_EQ, 3,
@@ -127,11 +130,11 @@ TEST_F(LoopHierarchyTest, TwoLoops) {
   ArenaAllocator allocator(&arena);
   HGraph* graph = TestCode(data, &allocator);
 
-  TestLoop(graph, 2, 0, true, true, false, 4, std::numeric_limits<uint32_t>::max());
-  TestLoop(graph, 4, 0, true, true, false, std::numeric_limits<uint32_t>::max(), 2);
+  TestLoop(graph, 2, 0, true, true, false, 4, -1);
+  TestLoop(graph, 4, 0, true, true, false, -1, 2);
 }
 
-TEST_F(LoopHierarchyTest, NestedSibling) {
+TEST(LoopHierarchyTest, NestedSibling) {
   /**
    * Complicated test with a bit of everything here:
    * for () {
@@ -174,18 +177,18 @@ TEST_F(LoopHierarchyTest, NestedSibling) {
   ArenaAllocator allocator(&arena);
   HGraph* graph = TestCode(data, &allocator);
 
-  TestLoop(graph, 2, 1, false, true, true, 9, std::numeric_limits<uint32_t>::max());
-  TestLoop(graph, 3, 2, true, true, true, 5, std::numeric_limits<uint32_t>::max());
-  TestLoop(graph, 5, 2, true, true, true, std::numeric_limits<uint32_t>::max(), 3);
+  TestLoop(graph, 2, 1, false, true, true, 9, -1);
+  TestLoop(graph, 3, 2, true, true, true, 5, -1);
+  TestLoop(graph, 5, 2, true, true, true, -1, 3);
 
-  TestLoop(graph, 9, 1, false, true, true, std::numeric_limits<uint32_t>::max(), 2);
-  TestLoop(graph, 10, 2, true, true, true, std::numeric_limits<uint32_t>::max(), 12);
-  TestLoop(graph, 12, 2, true, true, true, 10, std::numeric_limits<uint32_t>::max());
+  TestLoop(graph, 9, 1, false, true, true, -1, 2);
+  TestLoop(graph, 10, 2, true, true, true, -1, 12);
+  TestLoop(graph, 12, 2, true, true, true, 10, -1);
 
   TestLoop(graph, 1, 0, false, false, false);
 }
 
-TEST_F(LoopHierarchyTest, DoWhileLoop) {
+TEST(LoopHierarchyTest, DoWhileLoop) {
   const uint16_t data[] = ONE_REGISTER_CODE_ITEM(
     Instruction::CONST_4 | 0 | 0,
     Instruction::GOTO | 0x0100,

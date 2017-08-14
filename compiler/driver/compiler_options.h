@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_COMPILER_DRIVER_COMPILER_OPTIONS_H_
@@ -27,20 +25,20 @@
 #include "compiler_filter.h"
 #include "dex/pass_manager.h"
 #include "globals.h"
+#include "optimizing/register_allocator.h"
 #include "utils.h"
 
 namespace art {
 
+namespace verifier {
+  class VerifierDepsTest;
+}
+
+class DexFile;
+
 class CompilerOptions FINAL {
  public:
-  enum ProfilingCounts {
-    kProfilingNone = 0,         // No method or basic block counting.
-    kProfilingMethod = 1,       // Collect Method counts.
-    kProfilingBasicBlocks = 2,  // Collect Basic Block counts.
-  };
-
   // Guide heuristics to determine whether to compile method if profile data not available.
-  static const CompilerFilter::Filter kDefaultCompilerFilter = CompilerFilter::kSpeed;
   static const size_t kDefaultHugeMethodThreshold = 10000;
   static const size_t kDefaultLargeMethodThreshold = 600;
   static const size_t kDefaultSmallMethodThreshold = 60;
@@ -49,15 +47,8 @@ class CompilerOptions FINAL {
   static constexpr double kDefaultTopKProfileThreshold = 90.0;
   static const bool kDefaultGenerateDebugInfo = false;
   static const bool kDefaultGenerateMiniDebugInfo = false;
-  static const bool kDefaultIncludePatchInformation = false;
-  static const size_t kDefaultInlineDepthLimit = 3;
   static const size_t kDefaultInlineMaxCodeUnits = 32;
-  static constexpr size_t kUnsetInlineDepthLimit = -1;
   static constexpr size_t kUnsetInlineMaxCodeUnits = -1;
-
-  // Default inlining settings when the space filter is used.
-  static constexpr size_t kSpaceFilterInlineDepthLimit = 3;
-  static constexpr size_t kSpaceFilterInlineMaxCodeUnits = 10;
 
   CompilerOptions();
   ~CompilerOptions();
@@ -68,13 +59,8 @@ class CompilerOptions FINAL {
                   size_t small_method_threshold,
                   size_t tiny_method_threshold,
                   size_t num_dex_methods_threshold,
-                  size_t inline_depth_limit,
                   size_t inline_max_code_units,
                   const std::vector<const DexFile*>* no_inline_from,
-                  size_t stop_compiling_after,
-                  size_t stop_optimizing_after,
-                  bool cond_compilation,
-                  bool include_patch_information,
                   double top_k_profile_threshold,
                   bool debuggable,
                   bool generate_debug_info,
@@ -82,26 +68,14 @@ class CompilerOptions FINAL {
                   bool implicit_so_checks,
                   bool implicit_suspend_checks,
                   bool compile_pic,
-                  ProfilingCounts profiling_counts_,
-                  bool use_exact_profiles,
                   const std::vector<std::string>* verbose_methods,
                   std::ostream* init_failure_output,
                   bool abort_on_hard_verifier_failure,
                   const std::string& dump_cfg_file_name,
                   bool dump_cfg_append,
-                  bool force_determinism);
-
-  ProfilingCounts GetProfilingCounts() const {
-    return profiling_counts_;
-  }
-
-  bool UseExactProfiles() const {
-    return use_exact_profiles_;
-  }
-
-  bool IsBootImage() const {
-    return is_boot_image_;
-  }
+                  bool force_determinism,
+                  RegisterAllocator::Strategy regalloc_strategy,
+                  const std::vector<std::string>* passes_to_run);
 
   CompilerFilter::Filter GetCompilerFilter() const {
     return compiler_filter_;
@@ -111,28 +85,32 @@ class CompilerOptions FINAL {
     compiler_filter_ = compiler_filter;
   }
 
-  bool VerifyAtRuntime() const {
-    return compiler_filter_ == CompilerFilter::kVerifyAtRuntime;
-  }
-
-  bool IsBytecodeCompilationEnabled() const {
-    return CompilerFilter::IsBytecodeCompilationEnabled(compiler_filter_);
+  bool IsAotCompilationEnabled() const {
+    return CompilerFilter::IsAotCompilationEnabled(compiler_filter_);
   }
 
   bool IsJniCompilationEnabled() const {
     return CompilerFilter::IsJniCompilationEnabled(compiler_filter_);
   }
 
+  bool IsQuickeningCompilationEnabled() const {
+    return CompilerFilter::IsQuickeningCompilationEnabled(compiler_filter_);
+  }
+
   bool IsVerificationEnabled() const {
     return CompilerFilter::IsVerificationEnabled(compiler_filter_);
   }
 
-  bool NeverVerify() const {
-    return compiler_filter_ == CompilerFilter::kVerifyNone;
+  bool AssumeClassesAreVerified() const {
+    return compiler_filter_ == CompilerFilter::kAssumeVerified;
   }
 
-  bool VerifyOnlyProfile() const {
-    return compiler_filter_ == CompilerFilter::kVerifyProfile;
+  bool VerifyAtRuntime() const {
+    return compiler_filter_ == CompilerFilter::kExtract;
+  }
+
+  bool IsAnyCompilationEnabled() const {
+    return CompilerFilter::IsAnyCompilationEnabled(compiler_filter_);
   }
 
   size_t GetHugeMethodThreshold() const {
@@ -171,30 +149,11 @@ class CompilerOptions FINAL {
     return num_dex_methods_threshold_;
   }
 
-  size_t GetInlineDepthLimit() const {
-    return inline_depth_limit_;
-  }
-  void SetInlineDepthLimit(size_t limit) {
-    inline_depth_limit_ = limit;
-  }
-
   size_t GetInlineMaxCodeUnits() const {
     return inline_max_code_units_;
   }
   void SetInlineMaxCodeUnits(size_t units) {
     inline_max_code_units_ = units;
-  }
-
-  size_t GetStopCompilingAfter() const {
-    return stop_compiling_after_;
-  }
-
-  size_t GetStopOptimizingAfter() const {
-    return stop_optimizing_after_;
-  }
-
-  bool IsConditionalCompilation() const {
-    return cond_compilation_;
   }
 
   double GetTopKProfileThreshold() const {
@@ -223,6 +182,10 @@ class CompilerOptions FINAL {
     return generate_mini_debug_info_;
   }
 
+  bool GetGenerateBuildId() const {
+    return generate_build_id_;
+  }
+
   bool GetImplicitNullChecks() const {
     return implicit_null_checks_;
   }
@@ -235,8 +198,12 @@ class CompilerOptions FINAL {
     return implicit_suspend_checks_;
   }
 
-  bool GetIncludePatchInformation() const {
-    return include_patch_information_;
+  bool IsBootImage() const {
+    return boot_image_;
+  }
+
+  bool IsAppImage() const {
+    return app_image_;
   }
 
   // Should the code be compiled as position independent?
@@ -287,22 +254,27 @@ class CompilerOptions FINAL {
     return force_determinism_;
   }
 
+  RegisterAllocator::Strategy GetRegisterAllocationStrategy() const {
+    return register_allocation_strategy_;
+  }
+
+  const std::vector<std::string>* GetPassesToRun() const {
+    return passes_to_run_;
+  }
+
  private:
-  void ParseStopCompilingAfter(const StringPiece& option, UsageFn Usage);
-  void ParseStopOptimizingAfter(const StringPiece& option, UsageFn Usage);
-  void ParseDisableOptMask(const StringPiece& option, UsageFn Usage);
   void ParseDumpInitFailures(const StringPiece& option, UsageFn Usage);
   void ParsePassOptions(const StringPiece& option, UsageFn Usage);
   void ParseDumpCfgPasses(const StringPiece& option, UsageFn Usage);
   void ParsePrintPasses(const StringPiece& option, UsageFn Usage);
   void ParseDisablePasses(const StringPiece& option, UsageFn Usage);
   void ParseInlineMaxCodeUnits(const StringPiece& option, UsageFn Usage);
-  void ParseInlineDepthLimit(const StringPiece& option, UsageFn Usage);
   void ParseNumDexMethods(const StringPiece& option, UsageFn Usage);
   void ParseTinyMethodMax(const StringPiece& option, UsageFn Usage);
   void ParseSmallMethodMax(const StringPiece& option, UsageFn Usage);
   void ParseLargeMethodMax(const StringPiece& option, UsageFn Usage);
   void ParseHugeMethodMax(const StringPiece& option, UsageFn Usage);
+  void ParseRegisterAllocationStrategy(const StringPiece& option, UsageFn Usage);
 
   CompilerFilter::Filter compiler_filter_;
   size_t huge_method_threshold_;
@@ -310,7 +282,6 @@ class CompilerOptions FINAL {
   size_t small_method_threshold_;
   size_t tiny_method_threshold_;
   size_t num_dex_methods_threshold_;
-  size_t inline_depth_limit_;
   size_t inline_max_code_units_;
 
   // Dex files from which we should not inline code.
@@ -318,23 +289,18 @@ class CompilerOptions FINAL {
   // prefer vector<> over a lookup-oriented container, such as set<>.
   const std::vector<const DexFile*>* no_inline_from_;
 
-  // Conditional compilation used for debug in run-time.
-  size_t stop_compiling_after_;
-  size_t stop_optimizing_after_;
-  bool cond_compilation_;
-  bool include_patch_information_;
+  bool boot_image_;
+  bool app_image_;
   // When using a profile file only the top K% of the profiled samples will be compiled.
   double top_k_profile_threshold_;
   bool debuggable_;
   bool generate_debug_info_;
   bool generate_mini_debug_info_;
+  bool generate_build_id_;
   bool implicit_null_checks_;
   bool implicit_so_checks_;
   bool implicit_suspend_checks_;
   bool compile_pic_;
-  ProfilingCounts profiling_counts_ = kProfilingNone;
-  bool use_exact_profiles_ = false;
-  bool is_boot_image_ = false;
 
   // Vector of methods to have verbose output enabled for.
   const std::vector<std::string>* verbose_methods_;
@@ -351,11 +317,24 @@ class CompilerOptions FINAL {
   std::string dump_cfg_file_name_;
   bool dump_cfg_append_;
 
-  // Whether the compiler should trade performance for determinism to guarantee exactly reproducable
+  // Whether the compiler should trade performance for determinism to guarantee exactly reproducible
   // outcomes.
   bool force_determinism_;
 
+  RegisterAllocator::Strategy register_allocation_strategy_;
+
+  // If not null, specifies optimization passes which will be run instead of defaults.
+  // Note that passes_to_run_ is not checked for correctness and providing an incorrect
+  // list of passes can lead to unexpected compiler behaviour. This is caused by dependencies
+  // between passes. Failing to satisfy them can for example lead to compiler crashes.
+  // Passing pass names which are not recognized by the compiler will result in
+  // compiler-dependant behavior.
+  const std::vector<std::string>* passes_to_run_;
+
   friend class Dex2Oat;
+  friend class DexToDexDecompilerTest;
+  friend class CommonCompilerTest;
+  friend class verifier::VerifierDepsTest;
 
   DISALLOW_COPY_AND_ASSIGN(CompilerOptions);
 };

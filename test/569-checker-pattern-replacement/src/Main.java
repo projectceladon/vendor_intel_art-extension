@@ -26,10 +26,10 @@ public class Main {
   }
 
   /// CHECK-START: void Main.nop(Second) inliner (before)
-  /// CHECK:                          InvokeStaticOrDirect
+  /// CHECK:                          InvokeVirtual
 
   /// CHECK-START: void Main.nop(Second) inliner (after)
-  /// CHECK-NOT:                      InvokeStaticOrDirect
+  /// CHECK-NOT:                      InvokeVirtual
 
   public static void nop(Second s) {
     s.nop();
@@ -58,7 +58,7 @@ public class Main {
   /// CHECK-DAG:  <<Second:l\d+>>     ParameterValue
   /// CHECK-DAG:  <<Value:j\d+>>      ParameterValue
   /// CHECK-DAG:  <<NullCk:l\d+>>     NullCheck [<<Second>>]
-  /// CHECK-DAG:  <<Invoke:j\d+>>     InvokeStaticOrDirect [<<NullCk>>,<<Value>>]
+  /// CHECK-DAG:  <<Invoke:j\d+>>     InvokeVirtual [<<NullCk>>,<<Value>>]
   /// CHECK-DAG:                      Return [<<Invoke>>]
 
   /// CHECK-START: long Main.returnArg1(Second, long) inliner (after)
@@ -90,7 +90,7 @@ public class Main {
   }
 
   /// CHECK-START: int Main.return7(Second) inliner (before)
-  /// CHECK:      {{i\d+}}            InvokeStaticOrDirect
+  /// CHECK:      {{i\d+}}            InvokeVirtual
 
   /// CHECK-START: int Main.return7(Second) inliner (before)
   /// CHECK-NOT:                      IntConstant 7
@@ -100,7 +100,7 @@ public class Main {
   /// CHECK-DAG:                      Return [<<Const7>>]
 
   /// CHECK-START: int Main.return7(Second) inliner (after)
-  /// CHECK-NOT:                      InvokeStaticOrDirect
+  /// CHECK-NOT:                      InvokeVirtual
 
   public static int return7(Second s) {
     return s.return7(null);
@@ -124,7 +124,7 @@ public class Main {
   }
 
   /// CHECK-START: java.lang.Object Main.returnNull(Second) inliner (before)
-  /// CHECK:      {{l\d+}}            InvokeStaticOrDirect
+  /// CHECK:      {{l\d+}}            InvokeVirtual
 
   /// CHECK-START: java.lang.Object Main.returnNull(Second) inliner (before)
   /// CHECK-NOT:                      NullConstant
@@ -134,59 +134,59 @@ public class Main {
   /// CHECK-DAG:                      Return [<<Null>>]
 
   /// CHECK-START: java.lang.Object Main.returnNull(Second) inliner (after)
-  /// CHECK-NOT:                      InvokeStaticOrDirect
+  /// CHECK-NOT:                      InvokeVirtual
 
   public static Object returnNull(Second s) {
     return s.returnNull();
   }
 
   /// CHECK-START: int Main.getInt(Second) inliner (before)
-  /// CHECK:      {{i\d+}}            InvokeStaticOrDirect
+  /// CHECK:      {{i\d+}}            InvokeVirtual
 
   /// CHECK-START: int Main.getInt(Second) inliner (after)
   /// CHECK:      {{i\d+}}            InstanceFieldGet
 
   /// CHECK-START: int Main.getInt(Second) inliner (after)
-  /// CHECK-NOT:                      InvokeStaticOrDirect
+  /// CHECK-NOT:                      InvokeVirtual
 
   public static int getInt(Second s) {
     return s.getInstanceIntField();
   }
 
   /// CHECK-START: double Main.getDouble(Second) inliner (before)
-  /// CHECK:      {{d\d+}}            InvokeStaticOrDirect
+  /// CHECK:      {{d\d+}}            InvokeVirtual
 
   /// CHECK-START: double Main.getDouble(Second) inliner (after)
   /// CHECK:      {{d\d+}}            InstanceFieldGet
 
   /// CHECK-START: double Main.getDouble(Second) inliner (after)
-  /// CHECK-NOT:                      InvokeStaticOrDirect
+  /// CHECK-NOT:                      InvokeVirtual
 
   public static double getDouble(Second s) {
     return s.getInstanceDoubleField(22);
   }
 
   /// CHECK-START: java.lang.Object Main.getObject(Second) inliner (before)
-  /// CHECK:      {{l\d+}}            InvokeStaticOrDirect
+  /// CHECK:      {{l\d+}}            InvokeVirtual
 
   /// CHECK-START: java.lang.Object Main.getObject(Second) inliner (after)
   /// CHECK:      {{l\d+}}            InstanceFieldGet
 
   /// CHECK-START: java.lang.Object Main.getObject(Second) inliner (after)
-  /// CHECK-NOT:                      InvokeStaticOrDirect
+  /// CHECK-NOT:                      InvokeVirtual
 
   public static Object getObject(Second s) {
     return s.getInstanceObjectField(-1L);
   }
 
   /// CHECK-START: java.lang.String Main.getString(Second) inliner (before)
-  /// CHECK:      {{l\d+}}            InvokeStaticOrDirect
+  /// CHECK:      {{l\d+}}            InvokeVirtual
 
   /// CHECK-START: java.lang.String Main.getString(Second) inliner (after)
   /// CHECK:      {{l\d+}}            InstanceFieldGet
 
   /// CHECK-START: java.lang.String Main.getString(Second) inliner (after)
-  /// CHECK-NOT:                      InvokeStaticOrDirect
+  /// CHECK-NOT:                      InvokeVirtual
 
   public static String getString(Second s) {
     return s.getInstanceStringField(null, "whatever", 1234L);
@@ -206,10 +206,10 @@ public class Main {
   }
 
   /// CHECK-START: double Main.getDoubleFromParam(Second) inliner (before)
-  /// CHECK:      {{d\d+}}            InvokeStaticOrDirect
+  /// CHECK:      {{d\d+}}            InvokeVirtual
 
   /// CHECK-START: double Main.getDoubleFromParam(Second) inliner (after)
-  /// CHECK:      {{d\d+}}            InvokeStaticOrDirect
+  /// CHECK:      {{d\d+}}            InvokeVirtual
 
   /// CHECK-START: double Main.getDoubleFromParam(Second) inliner (after)
   /// CHECK-NOT:                      InstanceFieldGet
@@ -219,10 +219,10 @@ public class Main {
   }
 
   /// CHECK-START: int Main.getStaticInt(Second) inliner (before)
-  /// CHECK:      {{i\d+}}            InvokeStaticOrDirect
+  /// CHECK:      {{i\d+}}            InvokeVirtual
 
   /// CHECK-START: int Main.getStaticInt(Second) inliner (after)
-  /// CHECK:      {{i\d+}}            InvokeStaticOrDirect
+  /// CHECK:      {{i\d+}}            InvokeVirtual
 
   /// CHECK-START: int Main.getStaticInt(Second) inliner (after)
   /// CHECK-NOT:                      InstanceFieldGet
@@ -233,13 +233,13 @@ public class Main {
   }
 
   /// CHECK-START: long Main.setLong(Second, long) inliner (before)
-  /// CHECK:                          InvokeStaticOrDirect
+  /// CHECK:                          InvokeVirtual
 
   /// CHECK-START: long Main.setLong(Second, long) inliner (after)
   /// CHECK:                          InstanceFieldSet
 
   /// CHECK-START: long Main.setLong(Second, long) inliner (after)
-  /// CHECK-NOT:                      InvokeStaticOrDirect
+  /// CHECK-NOT:                      InvokeVirtual
 
   public static long setLong(Second s, long value) {
     s.setInstanceLongField(-1, value);
@@ -247,7 +247,7 @@ public class Main {
   }
 
   /// CHECK-START: long Main.setLongReturnArg2(Second, long, int) inliner (before)
-  /// CHECK:                          InvokeStaticOrDirect
+  /// CHECK:                          InvokeVirtual
 
   /// CHECK-START: long Main.setLongReturnArg2(Second, long, int) inliner (after)
   /// CHECK-DAG:  <<Second:l\d+>>     ParameterValue
@@ -262,7 +262,7 @@ public class Main {
   /// CHECK-DAG:                      Return [<<Add>>]
 
   /// CHECK-START: long Main.setLongReturnArg2(Second, long, int) inliner (after)
-  /// CHECK-NOT:                      InvokeStaticOrDirect
+  /// CHECK-NOT:                      InvokeVirtual
 
   public static long setLongReturnArg2(Second s, long value, int arg2) {
     int result = s.setInstanceLongFieldReturnArg2(value, arg2);
@@ -284,10 +284,10 @@ public class Main {
   }
 
   /// CHECK-START: long Main.setLongThroughParam(Second, long) inliner (before)
-  /// CHECK:                          InvokeStaticOrDirect
+  /// CHECK:                          InvokeVirtual
 
   /// CHECK-START: long Main.setLongThroughParam(Second, long) inliner (after)
-  /// CHECK:                          InvokeStaticOrDirect
+  /// CHECK:                          InvokeVirtual
 
   /// CHECK-START: long Main.setLongThroughParam(Second, long) inliner (after)
   /// CHECK-NOT:                      InstanceFieldSet
@@ -298,10 +298,10 @@ public class Main {
   }
 
   /// CHECK-START: float Main.setStaticFloat(Second, float) inliner (before)
-  /// CHECK:                          InvokeStaticOrDirect
+  /// CHECK:                          InvokeVirtual
 
   /// CHECK-START: float Main.setStaticFloat(Second, float) inliner (after)
-  /// CHECK:                          InvokeStaticOrDirect
+  /// CHECK:                          InvokeVirtual
 
   /// CHECK-START: float Main.setStaticFloat(Second, float) inliner (after)
   /// CHECK-NOT:                      InstanceFieldSet

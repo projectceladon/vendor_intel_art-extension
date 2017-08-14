@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_RUNTIME_GC_COLLECTOR_PARTIAL_MARK_SWEEP_H_
@@ -32,15 +30,14 @@ class PartialMarkSweep : public MarkSweep {
     return kGcTypePartial;
   }
 
-  PartialMarkSweep(Heap* heap, bool is_concurrent, bool is_copying = false,
-                   const std::string& name_prefix = "");
+  PartialMarkSweep(Heap* heap, bool is_concurrent, const std::string& name_prefix = "");
   ~PartialMarkSweep() {}
 
  protected:
   // Bind the live bits to the mark bits of bitmaps for spaces that aren't collected for partial
   // collections, ie the Zygote space. Also mark this space is immune. Virtual as overridden by
   // StickyMarkSweep.
-  virtual void BindBitmaps() OVERRIDE SHARED_REQUIRES(Locks::mutator_lock_);
+  virtual void BindBitmaps() OVERRIDE REQUIRES_SHARED(Locks::mutator_lock_);
 
  private:
   DISALLOW_IMPLICIT_CONSTRUCTORS(PartialMarkSweep);

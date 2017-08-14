@@ -20,20 +20,27 @@
 #include <string>
 #include <vector>
 
+#include "android-base/stringprintf.h"
+
+#include "art_method-inl.h"
 #include "base/unix_file/fd_file.h"
 #include "class_linker-inl.h"
+#include "compiler_callbacks.h"
 #include "common_compiler_test.h"
 #include "debug/method_debug_info.h"
+#include "dex/quick_compiler_callbacks.h"
 #include "driver/compiler_options.h"
 #include "elf_writer.h"
 #include "elf_writer_quick.h"
 #include "gc/space/image_space.h"
 #include "image_writer.h"
+#include "linker/buffered_output_stream.h"
+#include "linker/file_output_stream.h"
 #include "linker/multi_oat_relative_patcher.h"
 #include "lock_word.h"
 #include "mirror/object-inl.h"
 #include "oat_writer.h"
-#include "scoped_thread_state_change.h"
+#include "scoped_thread_state_change-inl.h"
 #include "signal_catcher.h"
 #include "utils.h"
 
@@ -47,6 +54,7 @@ struct CompilationHelper {
   std::vector<std::unique_ptr<const DexFile>> extra_dex_files;
   std::vector<ScratchFile> image_files;
   std::vector<ScratchFile> oat_files;
+  std::vector<ScratchFile> vdex_files;
   std::string image_dir;
 
   void Compile(CompilerDriver* driver,
@@ -69,10 +77,30 @@ class ImageTest : public CommonCompilerTest {
   void Compile(ImageHeader::StorageMode storage_mode,
                CompilationHelper& out_helper,
                const std::string& extra_dex = "",
-               const std::string& image_class = "");
+               const std::initializer_list<std::string>& image_classes = {});
+
+  void SetUpRuntimeOptions(RuntimeOptions* options) OVERRIDE {
+    CommonCompilerTest::SetUpRuntimeOptions(options);
+    callbacks_.reset(new QuickCompilerCallbacks(
+        verification_results_.get(),
+        CompilerCallbacks::CallbackMode::kCompileBootImage));
+    options->push_back(std::make_pair("compilercallbacks", callbacks_.get()));
+  }
 
   std::unordered_set<std::string>* GetImageClasses() OVERRIDE {
     return new std::unordered_set<std::string>(image_classes_);
+  }
+
+  ArtMethod* FindCopiedMethod(ArtMethod* origin, mirror::Class* klass)
+      REQUIRES_SHARED(Locks::mutator_lock_) {
+    PointerSize pointer_size = class_linker_->GetImagePointerSize();
+    for (ArtMethod& m : klass->GetCopiedMethods(pointer_size)) {
+      if (strcmp(origin->GetName(), m.GetName()) == 0 &&
+          origin->GetSignature() == m.GetSignature()) {
+        return &m;
+      }
+    }
+    return nullptr;
   }
 
  private:
@@ -85,6 +113,9 @@ CompilationHelper::~CompilationHelper() {
   }
   for (ScratchFile& oat_file : oat_files) {
     oat_file.Unlink();
+  }
+  for (ScratchFile& vdex_file : vdex_files) {
+    vdex_file.Unlink();
   }
   const int rmdir_result = rmdir(image_dir.c_str());
   CHECK_EQ(0, rmdir_result);
@@ -124,12 +155,12 @@ void CompilationHelper::Compile(CompilerDriver* driver,
       dex_file->EnableWrite();
     }
   }
-
   {
     // Create a generic tmp file, to be the base of the .art and .oat temporary files.
     ScratchFile location;
     for (int i = 0; i < static_cast<int>(class_path.size()); ++i) {
-      std::string cur_location(StringPrintf("%s-%d.art", location.GetFilename().c_str(), i));
+      std::string cur_location =
+          android::base::StringPrintf("%s-%d.art", location.GetFilename().c_str(), i);
       image_locations.push_back(ScratchFile(cur_location));
     }
   }
@@ -148,10 +179,14 @@ void CompilationHelper::Compile(CompilerDriver* driver,
   }
 
   std::vector<std::string> oat_filenames;
+  std::vector<std::string> vdex_filenames;
   for (const std::string& image_filename : image_filenames) {
-    std::string oat_filename(image_filename.substr(0, image_filename.size() - strlen("art")) + "oat");
+    std::string oat_filename = ReplaceFileExtension(image_filename, "oat");
     oat_files.push_back(ScratchFile(OS::CreateEmptyFile(oat_filename.c_str())));
     oat_filenames.push_back(oat_filename);
+    std::string vdex_filename = ReplaceFileExtension(image_filename, "vdex");
+    vdex_files.push_back(ScratchFile(OS::CreateEmptyFile(vdex_filename.c_str())));
+    vdex_filenames.push_back(vdex_filename);
   }
 
   std::unordered_map<const DexFile*, size_t> dex_file_to_oat_index_map;
@@ -182,7 +217,7 @@ void CompilationHelper::Compile(CompilerDriver* driver,
       TimingLogger timings("ImageTest::WriteRead", false, false);
       TimingLogger::ScopedTiming t("CompileAll", &timings);
       driver->SetDexFilesForOatFile(class_path);
-      driver->CompileAll(class_loader, class_path, &timings);
+      driver->CompileAll(class_loader, class_path, /* verifier_deps */ nullptr, &timings);
 
       t.NewTiming("WriteElf");
       SafeMap<std::string, std::string> key_value_store;
@@ -204,7 +239,9 @@ void CompilationHelper::Compile(CompilerDriver* driver,
                                                       &driver->GetCompilerOptions(),
                                                       oat_file.GetFile()));
         elf_writers.back()->Start();
-        oat_writers.emplace_back(new OatWriter(/*compiling_boot_image*/true, &timings));
+        oat_writers.emplace_back(new OatWriter(/*compiling_boot_image*/true,
+                                               &timings,
+                                               /*profile_compilation_info*/nullptr));
       }
 
       std::vector<OutputStream*> rodata;
@@ -224,12 +261,13 @@ void CompilationHelper::Compile(CompilerDriver* driver,
         std::unique_ptr<MemMap> cur_opened_dex_files_map;
         std::vector<std::unique_ptr<const DexFile>> cur_opened_dex_files;
         bool dex_files_ok = oat_writers[i]->WriteAndOpenDexFiles(
+            kIsVdexEnabled ? vdex_files[i].GetFile() : oat_files[i].GetFile(),
             rodata.back(),
-            oat_files[i].GetFile(),
             driver->GetInstructionSet(),
             driver->GetInstructionSetFeatures(),
             &key_value_store,
             /* verify */ false,           // Dex files may be dex-to-dex-ed, don't verify.
+            /* update_input_vdex */ false,
             &cur_opened_dex_files_map,
             &cur_opened_dex_files);
         ASSERT_TRUE(dex_files_ok);
@@ -244,9 +282,18 @@ void CompilationHelper::Compile(CompilerDriver* driver,
           ASSERT_TRUE(cur_opened_dex_files.empty());
         }
       }
-
       bool image_space_ok = writer->PrepareImageAddressSpace();
       ASSERT_TRUE(image_space_ok);
+
+      if (kIsVdexEnabled) {
+        for (size_t i = 0, size = vdex_files.size(); i != size; ++i) {
+          std::unique_ptr<BufferedOutputStream> vdex_out(
+              MakeUnique<BufferedOutputStream>(
+                  MakeUnique<FileOutputStream>(vdex_files[i].GetFile())));
+          oat_writers[i]->WriteVerifierDeps(vdex_out.get(), nullptr);
+          oat_writers[i]->WriteChecksumsAndVdexHeader(vdex_out.get());
+        }
+      }
 
       for (size_t i = 0, size = oat_files.size(); i != size; ++i) {
         linker::MultiOatRelativePatcher patcher(driver->GetInstructionSet(),
@@ -254,15 +301,19 @@ void CompilationHelper::Compile(CompilerDriver* driver,
         OatWriter* const oat_writer = oat_writers[i].get();
         ElfWriter* const elf_writer = elf_writers[i].get();
         std::vector<const DexFile*> cur_dex_files(1u, class_path[i]);
-        oat_writer->PrepareLayout(driver, writer.get(), cur_dex_files, &patcher);
+        oat_writer->Initialize(driver, writer.get(), cur_dex_files);
+        oat_writer->PrepareLayout(&patcher);
         size_t rodata_size = oat_writer->GetOatHeader().GetExecutableOffset();
-        size_t text_size = oat_writer->GetSize() - rodata_size;
-        elf_writer->SetLoadedSectionSizes(rodata_size, text_size, oat_writer->GetBssSize());
+        size_t text_size = oat_writer->GetOatSize() - rodata_size;
+        elf_writer->PrepareDynamicSection(rodata_size,
+                                          text_size,
+                                          oat_writer->GetBssSize(),
+                                          oat_writer->GetBssRootsOffset());
 
         writer->UpdateOatFileLayout(i,
                                     elf_writer->GetLoadedSize(),
                                     oat_writer->GetOatDataOffset(),
-                                    oat_writer->GetSize());
+                                    oat_writer->GetOatSize());
 
         bool rodata_ok = oat_writer->WriteRodata(rodata[i]);
         ASSERT_TRUE(rodata_ok);
@@ -280,7 +331,6 @@ void CompilationHelper::Compile(CompilerDriver* driver,
 
         elf_writer->WriteDynamicSection();
         elf_writer->WriteDebugInfo(oat_writer->GetMethodDebugInfo());
-        elf_writer->WritePatchLocations(oat_writer->GetAbsolutePatchLocations());
 
         bool success = elf_writer->End();
         ASSERT_TRUE(success);
@@ -308,26 +358,27 @@ void CompilationHelper::Compile(CompilerDriver* driver,
 void ImageTest::Compile(ImageHeader::StorageMode storage_mode,
                         CompilationHelper& helper,
                         const std::string& extra_dex,
-                        const std::string& image_class) {
-  if (!image_class.empty()) {
+                        const std::initializer_list<std::string>& image_classes) {
+  for (const std::string& image_class : image_classes) {
     image_classes_.insert(image_class);
   }
   CreateCompilerDriver(Compiler::kOptimizing, kRuntimeISA, kIsTargetBuild ? 2U : 16U);
   // Set inline filter values.
-  compiler_options_->SetInlineDepthLimit(CompilerOptions::kDefaultInlineDepthLimit);
   compiler_options_->SetInlineMaxCodeUnits(CompilerOptions::kDefaultInlineMaxCodeUnits);
   image_classes_.clear();
   if (!extra_dex.empty()) {
     helper.extra_dex_files = OpenTestDexFiles(extra_dex.c_str());
   }
   helper.Compile(compiler_driver_.get(), storage_mode);
-  if (!image_class.empty()) {
+  if (image_classes.begin() != image_classes.end()) {
     // Make sure the class got initialized.
     ScopedObjectAccess soa(Thread::Current());
     ClassLinker* const class_linker = Runtime::Current()->GetClassLinker();
-    mirror::Class* klass = class_linker->FindSystemClass(Thread::Current(), image_class.c_str());
-    EXPECT_TRUE(klass != nullptr);
-    EXPECT_TRUE(klass->IsInitialized());
+    for (const std::string& image_class : image_classes) {
+      mirror::Class* klass = class_linker->FindSystemClass(Thread::Current(), image_class.c_str());
+      EXPECT_TRUE(klass != nullptr);
+      EXPECT_TRUE(klass->IsInitialized());
+    }
   }
 }
 
@@ -351,7 +402,6 @@ void ImageTest::TestWriteRead(ImageHeader::StorageMode storage_mode) {
     ASSERT_FALSE(space->IsImageSpace());
     ASSERT_TRUE(space != nullptr);
     ASSERT_TRUE(space->IsMallocSpace());
-
     image_file_sizes.push_back(file->GetLength());
   }
 
@@ -456,7 +506,7 @@ TEST_F(ImageTest, TestImageLayout) {
   // Compile multi-image with ImageLayoutA being the last image.
   {
     CompilationHelper helper;
-    Compile(ImageHeader::kStorageModeUncompressed, helper, "ImageLayoutA", "LMyClass;");
+    Compile(ImageHeader::kStorageModeUncompressed, helper, "ImageLayoutA", {"LMyClass;"});
     image_sizes = helper.GetImageObjectSectionSizes();
   }
   TearDown();
@@ -465,7 +515,7 @@ TEST_F(ImageTest, TestImageLayout) {
   // Compile multi-image with ImageLayoutB being the last image.
   {
     CompilationHelper helper;
-    Compile(ImageHeader::kStorageModeUncompressed, helper, "ImageLayoutB", "LMyClass;");
+    Compile(ImageHeader::kStorageModeUncompressed, helper, "ImageLayoutB", {"LMyClass;"});
     image_sizes_extra = helper.GetImageObjectSectionSizes();
   }
   // Make sure that the new stuff in the clinit in ImageLayoutB is in the last image and not in the
@@ -515,6 +565,65 @@ TEST_F(ImageTest, ImageHeaderIsValid) {
     ASSERT_FALSE(image_header.IsValid());
     strcpy(magic, "art\n000");  // bad version
     ASSERT_FALSE(image_header.IsValid());
+}
+
+// Test that pointer to quick code is the same in
+// a default method of an interface and in a copied method
+// of a class which implements the interface. This should be true
+// only if the copied method and the origin method are located in the
+// same oat file.
+TEST_F(ImageTest, TestDefaultMethods) {
+  CompilationHelper helper;
+  Compile(ImageHeader::kStorageModeUncompressed,
+      helper,
+      "DefaultMethods",
+      {"LIface;", "LImpl;", "LIterableBase;"});
+
+  PointerSize pointer_size = class_linker_->GetImagePointerSize();
+  Thread* self = Thread::Current();
+  ScopedObjectAccess soa(self);
+
+  // Test the pointer to quick code is the same in origin method
+  // and in the copied method form the same oat file.
+  mirror::Class* iface_klass = class_linker_->LookupClass(
+      self, "LIface;", ObjPtr<mirror::ClassLoader>());
+  ASSERT_NE(nullptr, iface_klass);
+  ArtMethod* origin = iface_klass->FindDeclaredVirtualMethod(
+      "defaultMethod", "()V", pointer_size);
+  ASSERT_NE(nullptr, origin);
+  const void* code = origin->GetEntryPointFromQuickCompiledCodePtrSize(pointer_size);
+  // The origin method should have a pointer to quick code
+  ASSERT_NE(nullptr, code);
+  ASSERT_FALSE(class_linker_->IsQuickToInterpreterBridge(code));
+  mirror::Class* impl_klass = class_linker_->LookupClass(
+      self, "LImpl;", ObjPtr<mirror::ClassLoader>());
+  ASSERT_NE(nullptr, impl_klass);
+  ArtMethod* copied = FindCopiedMethod(origin, impl_klass);
+  ASSERT_NE(nullptr, copied);
+  // the copied method should have pointer to the same quick code as the origin method
+  ASSERT_EQ(code, copied->GetEntryPointFromQuickCompiledCodePtrSize(pointer_size));
+
+  // Test the origin method has pointer to quick code
+  // but the copied method has pointer to interpreter
+  // because these methods are in different oat files.
+  mirror::Class* iterable_klass = class_linker_->LookupClass(
+      self, "Ljava/lang/Iterable;", ObjPtr<mirror::ClassLoader>());
+  ASSERT_NE(nullptr, iterable_klass);
+  origin = iterable_klass->FindDeclaredVirtualMethod(
+      "forEach", "(Ljava/util/function/Consumer;)V", pointer_size);
+  ASSERT_NE(nullptr, origin);
+  code = origin->GetEntryPointFromQuickCompiledCodePtrSize(pointer_size);
+  // the origin method should have a pointer to quick code
+  ASSERT_NE(nullptr, code);
+  ASSERT_FALSE(class_linker_->IsQuickToInterpreterBridge(code));
+  mirror::Class* iterablebase_klass = class_linker_->LookupClass(
+      self, "LIterableBase;", ObjPtr<mirror::ClassLoader>());
+  ASSERT_NE(nullptr, iterablebase_klass);
+  copied = FindCopiedMethod(origin, iterablebase_klass);
+  ASSERT_NE(nullptr, copied);
+  code = copied->GetEntryPointFromQuickCompiledCodePtrSize(pointer_size);
+  // the copied method should have a pointer to interpreter
+  ASSERT_TRUE(class_linker_->IsQuickToInterpreterBridge(code));
 }
 
 }  // namespace art

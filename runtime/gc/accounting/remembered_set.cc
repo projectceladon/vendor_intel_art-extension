@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #include "remembered_set.h"
@@ -28,8 +26,9 @@
 #include "gc/collector/semi_space.h"
 #include "gc/heap.h"
 #include "gc/space/space.h"
-#include "mirror/object-inl.h"
 #include "mirror/class-inl.h"
+#include "mirror/object-inl.h"
+#include "mirror/object-refvisitor-inl.h"
 #include "mirror/object_array-inl.h"
 #include "space_bitmap-inl.h"
 #include "thread.h"
@@ -68,19 +67,21 @@ class RememberedSetReferenceVisitor {
       : collector_(collector), target_space_(target_space),
         contains_reference_to_target_space_(contains_reference_to_target_space) {}
 
-  void operator()(mirror::Object* obj, MemberOffset offset, bool is_static ATTRIBUTE_UNUSED) const
-      SHARED_REQUIRES(Locks::mutator_lock_) {
+  void operator()(ObjPtr<mirror::Object> obj,
+                  MemberOffset offset,
+                  bool is_static ATTRIBUTE_UNUSED) const
+      REQUIRES_SHARED(Locks::mutator_lock_) {
     DCHECK(obj != nullptr);
     mirror::HeapReference<mirror::Object>* ref_ptr = obj->GetFieldObjectReferenceAddr(offset);
     if (target_space_->HasAddress(ref_ptr->AsMirrorPtr())) {
       *contains_reference_to_target_space_ = true;
-      collector_->MarkHeapReference(ref_ptr);
+      collector_->MarkHeapReference(ref_ptr, /*do_atomic_update*/ false);
       DCHECK(!target_space_->HasAddress(ref_ptr->AsMirrorPtr()));
     }
   }
 
-  void operator()(mirror::Class* klass, mirror::Reference* ref) const
-      SHARED_REQUIRES(Locks::mutator_lock_) REQUIRES(Locks::heap_bitmap_lock_) {
+  void operator()(ObjPtr<mirror::Class> klass, ObjPtr<mirror::Reference> ref) const
+      REQUIRES_SHARED(Locks::mutator_lock_) REQUIRES(Locks::heap_bitmap_lock_) {
     if (target_space_->HasAddress(ref->GetReferent())) {
       *contains_reference_to_target_space_ = true;
       collector_->DelayReferenceReferent(klass, ref);
@@ -88,14 +89,14 @@ class RememberedSetReferenceVisitor {
   }
 
   void VisitRootIfNonNull(mirror::CompressedReference<mirror::Object>* root) const
-      SHARED_REQUIRES(Locks::mutator_lock_) {
+      REQUIRES_SHARED(Locks::mutator_lock_) {
     if (!root->IsNull()) {
       VisitRoot(root);
     }
   }
 
   void VisitRoot(mirror::CompressedReference<mirror::Object>* root) const
-      SHARED_REQUIRES(Locks::mutator_lock_) {
+      REQUIRES_SHARED(Locks::mutator_lock_) {
     if (target_space_->HasAddress(root->AsMirrorPtr())) {
       *contains_reference_to_target_space_ = true;
       root->Assign(collector_->MarkObject(root->AsMirrorPtr()));
@@ -117,8 +118,8 @@ class RememberedSetObjectVisitor {
       : collector_(collector), target_space_(target_space),
         contains_reference_to_target_space_(contains_reference_to_target_space) {}
 
-  void operator()(mirror::Object* obj) const REQUIRES(Locks::heap_bitmap_lock_)
-      SHARED_REQUIRES(Locks::mutator_lock_) {
+  void operator()(ObjPtr<mirror::Object> obj) const REQUIRES(Locks::heap_bitmap_lock_)
+      REQUIRES_SHARED(Locks::mutator_lock_) {
     RememberedSetReferenceVisitor visitor(target_space_, contains_reference_to_target_space_,
                                           collector_);
     obj->VisitReferences(visitor, visitor);
@@ -131,19 +132,12 @@ class RememberedSetObjectVisitor {
 };
 
 void RememberedSet::UpdateAndMarkReferences(space::ContinuousSpace* target_space,
-                                            collector::GarbageCollector* collector,
-                                            bool use_livebitmap) {
+                                            collector::GarbageCollector* collector) {
   CardTable* card_table = heap_->GetCardTable();
   bool contains_reference_to_target_space = false;
   RememberedSetObjectVisitor obj_visitor(target_space, &contains_reference_to_target_space,
                                          collector);
   ContinuousSpaceBitmap* bitmap = space_->GetLiveBitmap();
-  if (!use_livebitmap) {
-    // For generational copying, when old enough objects are promoted to ros,
-    // it requires to use mark bitmap instead of old live bitmap.
-    ContinuousSpaceBitmap* mark_bitmap = space_->GetMarkBitmap();
-    bitmap = mark_bitmap;
-  }
   CardSet remove_card_set;
   for (uint8_t* const card_addr : dirty_cards_) {
     contains_reference_to_target_space = false;

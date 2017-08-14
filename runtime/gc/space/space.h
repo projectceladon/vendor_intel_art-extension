@@ -12,8 +12,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * Modified by Intel Corporation
  */
 
 #ifndef ART_RUNTIME_GC_SPACE_SPACE_H_
@@ -27,7 +25,6 @@
 #include "base/mutex.h"
 #include "gc/accounting/space_bitmap.h"
 #include "gc/collector/garbage_collector.h"
-#include "gc/object_byte_pair.h"
 #include "globals.h"
 #include "image.h"
 #include "mem_map.h"
@@ -255,7 +252,7 @@ class AllocSpace {
     const bool swap_bitmaps;
     space::Space* const space;
     Thread* const self;
-    ObjectBytePair freed;
+    collector::ObjectBytePair freed;
   };
 
   AllocSpace() {}
@@ -440,7 +437,7 @@ class ContinuousMemMapAllocSpace : public MemMapSpace, public AllocSpace {
     return mark_bitmap_.get();
   }
 
-  ObjectBytePair Sweep(bool swap_bitmaps);
+  collector::ObjectBytePair Sweep(bool swap_bitmaps);
   virtual accounting::ContinuousSpaceBitmap::SweepCallback* GetSweepCallback() = 0;
 
  protected:

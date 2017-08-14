@@ -1,38 +1,39 @@
 /*
- * Copyright (C) 2015 Intel Corporation.
+ * INTEL CONFIDENTIAL
+ * Copyright (c) 2015, Intel Corporation All Rights Reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * The source code contained or described herein and all documents related to the
+ * source code ("Material") are owned by Intel Corporation or its suppliers or
+ * licensors. Title to the Material remains with Intel Corporation or its suppliers
+ * and licensors. The Material contains trade secrets and proprietary and
+ * confidential information of Intel or its suppliers and licensors. The Material
+ * is protected by worldwide copyright and trade secret laws and treaty provisions.
+ * No part of the Material may be used, copied, reproduced, modified, published,
+ * uploaded, posted, transmitted, distributed, or disclosed in any way without
+ * Intel's prior express written permission.
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * No license under any patent, copyright, trade secret or other intellectual
+ * property right is granted to or conferred upon you by disclosure or delivery of
+ * the Materials, either expressly, by implication, inducement, estoppel or
+ * otherwise. Any license under such intellectual property rights must be express
+ * and approved by Intel in writing.
  *
  */
 
 #include "ext_utility.h"
-#include "graph_x86.h"
+
 #include "nodes.h"
 #include "optimization.h"
-#include "optimization_x86.h"
-#include "speculation.h"
-#include <sstream>
-#include "utils.h"
-
-#ifdef __ANDROID__
-#include "cutils/properties.h"
-#endif
 
 namespace art {
 
   std::string GetMethodName(const HGraph* graph) {
     DCHECK(graph != nullptr);
+#if 0	//neeraj - resolve build error
     return PrettyMethod(graph->GetMethodIdx(), graph->GetDexFile());
+#else
+     return graph->GetDexFile().PrettyMethod(graph->GetMethodIdx());
+#endif
   }
 
   void SplitStringIntoSet(const std::string& s, char delim, std::unordered_set<std::string>& tokens) {
@@ -45,10 +46,28 @@ namespace art {
     }
   }
 
+  static char GetTypeId(Primitive::Type type) {
+    // Note that Primitive::Descriptor would not work for us
+    // because it does not handle reference types (that is kPrimNot).
+    switch (type) {
+      case Primitive::kPrimBoolean: return 'z';
+      case Primitive::kPrimByte: return 'b';
+      case Primitive::kPrimChar: return 'c';
+      case Primitive::kPrimShort: return 's';
+      case Primitive::kPrimInt: return 'i';
+      case Primitive::kPrimLong: return 'j';
+      case Primitive::kPrimFloat: return 'f';
+      case Primitive::kPrimDouble: return 'd';
+      case Primitive::kPrimNot: return 'l';
+      case Primitive::kPrimVoid: return 'v';
+    }
+    LOG(FATAL) << "Unreachable";
+    return 'v';
+  }
+
   std::ostream& operator<<(std::ostream& os, HInstruction* instruction) {
     os << GetTypeId(instruction->GetType()) << instruction->GetId() << " ";
-    os << instruction->DebugName() << "@0x";
-    os << std::hex << instruction->GetDexPc() << std::dec << " ";
+    os << instruction->DebugName();
     switch (instruction->GetKind()) {
       case HInstruction::kIntConstant:
         os << ' ' << instruction->AsIntConstant()->GetValue();
@@ -73,42 +92,6 @@ namespace art {
       os << ']';
     }
     return os;
-  }
-
-  std::ostream& operator<<(std::ostream& os, const SpeculationRecoveryApproach& recovery) {
-    switch (recovery) {
-      case kRecoveryAny:
-        return os << "any";
-      case kRecoveryNotNeeded:
-        return os << "not-needed";
-      case kRecoveryDeopt:
-        return os << "deopt";
-      case kRecoveryCodeVersioning:
-        return os << "code-versioning";
-      case kRecoveryFault:
-        return os << "fault";
-      case kRecoveryCodeVersioningWithCounting:
-        return os << "code-versioning-counting";
-      default:
-        break;
-    }
-    return os << "unknown";
-  }
-
-  std::ostream& operator<<(std::ostream& os, const VersioningApproach& versioning) {
-    switch (versioning) {
-      case kVersioningAny:
-        return os << "any";
-      case kVersioningLocal:
-        return os << "local";
-      case kVersioningRange:
-        return os << "range";
-      case kVersioningLoop:
-        return os << "loop";
-      default:
-        break;
-    }
-    return os << "unknown";
   }
 
   IfCondition NegateCondition(IfCondition cond) {
@@ -298,190 +281,4 @@ namespace art {
       user->SetRawEnvAt(index, nullptr);
     }
   }
-
-  char GetTypeId(Primitive::Type type) {
-    // Note that Primitive::Descriptor would not work for us
-    // because it does not handle reference types (that is kPrimNot).
-    switch (type) {
-      case Primitive::kPrimBoolean: return 'z';
-      case Primitive::kPrimByte: return 'b';
-      case Primitive::kPrimChar: return 'c';
-      case Primitive::kPrimShort: return 's';
-      case Primitive::kPrimInt: return 'i';
-      case Primitive::kPrimLong: return 'j';
-      case Primitive::kPrimFloat: return 'f';
-      case Primitive::kPrimDouble: return 'd';
-      case Primitive::kPrimNot: return 'l';
-      case Primitive::kPrimVoid: return 'v';
-    }
-    LOG(FATAL) << "Unreachable";
-    return 'v';
-  }
-
-  std::string CalledMethodName(HInvokeStaticOrDirect* call) {
-    DCHECK(call != nullptr);
-    const MethodReference target_method = call->GetTargetMethod();
-    return PrettyMethod(target_method.dex_method_index,
-                        *target_method.dex_file);
-  }
-
-  void DumpBasicBlock(const char* name, HBasicBlock* block) {
-    if (block == nullptr) {
-      LOG(INFO) << "Block " << name << " is null";
-      return;
-    }
-
-    LOG(INFO) << "---- " << name << "(" << block->GetBlockId() << ") ----";
-    for (HInstructionIterator phi_it(block->GetPhis());
-         !phi_it.Done();
-         phi_it.Advance()) {
-      LOG(INFO) << "\t" << phi_it.Current();
-    }
-
-    LOG(INFO) << "\t   ---";
-
-    for (HInstructionIterator inst_it(block->GetInstructions());
-                          !inst_it.Done();
-                          inst_it.Advance()) {
-      LOG(INFO) << "\t" << inst_it.Current();
-    }
-    LOG(INFO) << "-----------";
-  }
-
-  void DumpLoop(HLoopInformation_X86* loop) {
-    LOG(INFO) << "Loop " << loop->GetHeader()->GetBlockId();
-    LOG(INFO) << "Pre-header " << loop->GetPreHeader()->GetBlockId();
-    LOG(INFO) << "Header " << loop->GetHeader()->GetBlockId();
-    for (HBasicBlock* back_block : loop->GetBackEdges()) {
-      LOG(INFO) << "BackEdge " << back_block->GetBlockId();
-    }
-    HBasicBlock* exit_block = loop->GetExitBlock(false);
-    if (exit_block != nullptr) {
-      LOG(INFO) << "Exit " << exit_block->GetBlockId();
-    }
-
-    DumpBasicBlock("Pre-header", loop->GetPreHeader());
-
-    for (HBlocksInLoopIterator bb_it(*loop); !bb_it.Done(); bb_it.Advance()) {
-      DumpBasicBlock("In-loop", bb_it.Current());
-    }
-
-    DumpBasicBlock("Exit", exit_block);
-  }
-
-  bool CanExpressionBeRemoved(HInstruction* instruction) {
-    return !instruction->GetSideEffects().HasSideEffectsExcludingGC()
-           && !instruction->CanThrow()
-           && !instruction->IsParameterValue()
-           && !instruction->HasUses()
-           && (!instruction->IsInvoke()  // Can remove pure invokes only.
-               || instruction->CanBeMoved());
-  }
-
-  void TryKillUseTree(HOptimization_X86* pass,
-                      HInstruction* insn,
-                      std::unordered_set<HInstruction*>* all_removed) {
-    DCHECK(pass != nullptr);
-    DCHECK(insn != nullptr);
-
-    // If we cannot remove even the first instruction, we will not remove
-    // anything. So let's do the fast check to avoid unneeded overhead.
-    if (!CanExpressionBeRemoved(insn)) {
-      return;
-    }
-
-    // We will swap these two sets between iterations.
-    std::unordered_set<HInstruction*> set_1;
-    std::unordered_set<HInstruction*> set_2;
-
-    // Start from current iteration.
-    set_1.insert(insn);
-
-    for (auto current_step = &set_1, next_step = &set_2;
-         !current_step->empty();
-         current_step->clear(), std::swap(current_step, next_step)) {
-      DCHECK(next_step->empty());
-
-      for (auto instruction : *current_step) {
-        HBasicBlock* block = instruction->GetBlock();
-        if (block == nullptr) {
-          // We have already removed this instruction.
-          continue;
-        }
-
-        // We removed this instruction as input. Now consider it for complete removal.
-        if (CanExpressionBeRemoved(instruction)) {
-          PRINT_PASS_OSTREAM_MESSAGE(pass, "Removing " << instruction << " because it is no"
-                                                       << " longer used by any other"
-                                                       << " instruction or environment.");
-
-          // After we eliminate this instruction, its inputs can become unused.
-          for (size_t i = 0; i < instruction->InputCount(); ++i) {
-            next_step->insert(instruction->InputAt(i));
-          }
-
-          for (HEnvironment* environment = instruction->GetEnvironment();
-              environment != nullptr;
-              environment = environment->GetParent()) {
-            for (size_t i = 0, e = environment->Size(); i < e; ++i) {
-              HInstruction* in_env = environment->GetInstructionAt(i);
-              if (in_env != nullptr) {
-                next_step->insert(in_env);
-              }
-            }
-          }
-
-          block->RemoveInstructionOrPhi(instruction);
-          if (all_removed != nullptr) {
-            all_removed->insert(instruction);
-          }
-        }
-      }
-    }
-  }
-
-BlockHotness GetBlockHotness(HBasicBlock* block) {
-  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(block->GetGraph());
-  if (graph->GetProfileCountKind() != HGraph_X86::kBasicBlockCounts) {
-    // We don't have enough information to tell.
-    return kUnknown;
-  }
-
-  const HBasicBlock* entry_block = graph->GetEntryBlock();
-  if (!entry_block->HasBlockCount() || entry_block->GetBlockCount() == 0 ||
-      !block->HasBlockCount()) {
-    // Still not enough to tell.
-    return kUnknown;
-  }
-  const uint64_t entry_count = entry_block->GetBlockCount();
-  const uint64_t block_count = block->GetBlockCount();
-  if (entry_count / kColdBlockFactor > block_count) {
-    return kCold;
-  }
-
-  if (block_count / kHotBlockFactor > entry_count) {
-    return kHot;
-  }
-
-  // Everything else must be warm.
-  return kWarm;
-}
-
-SetBoolValue::SetBoolValue(const char* property, const char* env_var) {
-#ifdef __ANDROID__
-  UNUSED(env_var);
-  value_ = false;
-  char buff[PROPERTY_VALUE_MAX];
-  if (property_get(property, buff, "") > 0) {
-    if (strcmp(buff, "true") == 0) {
-      value_ = true;
-    }
-  }
-#else
-  UNUSED(property);
-  char* p = getenv(env_var);
-  value_ = (p != nullptr);
-#endif
-}
-
 }  // namespace art
