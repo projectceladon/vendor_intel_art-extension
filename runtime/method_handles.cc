@@ -514,7 +514,7 @@ static inline bool DoCallPolymorphic(ArtMethod* called_method,
     }
   }
 
-  PerformCall(self, code_item, shadow_frame.GetMethod(), first_dest_reg, new_shadow_frame, result);
+  PerformCall(self, code_item, shadow_frame.GetMethod(), first_dest_reg, new_shadow_frame, result,called_method);
   if (self->IsExceptionPending()) {
     return false;
   }
@@ -607,7 +607,7 @@ static inline bool DoCallTransform(ArtMethod* called_method,
               shadow_frame.GetMethod(),
               0 /* first destination register */,
               new_shadow_frame,
-              result);
+              result,called_method);
   if (self->IsExceptionPending()) {
     return false;
   }
@@ -1091,7 +1091,7 @@ bool DoInvokePolymorphicExact(Thread* self,
                                          num_input_regs);
   self->EndAssertNoThreadSuspension(old_cause);
 
-  PerformCall(self, code_item, shadow_frame.GetMethod(), first_dest_reg, new_shadow_frame, result);
+  PerformCall(self, code_item, shadow_frame.GetMethod(), first_dest_reg, new_shadow_frame, result,called_method);
   if (self->IsExceptionPending()) {
     return false;
   }

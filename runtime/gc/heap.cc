@@ -254,6 +254,7 @@ Heap::Heap(size_t initial_size,
       total_wait_time_(0),
       verify_object_mode_(kVerifyObjectModeDisabled),
       disable_moving_gc_count_(0),
+	  moving_gc_count_(0),
       semi_space_collector_(nullptr),
       mark_compact_collector_(nullptr),
       concurrent_copying_collector_(nullptr),
@@ -2040,7 +2041,7 @@ HomogeneousSpaceCompactResult Heap::PerformHomogeneousSpaceCompact() {
     if (!SupportHomogeneousSpaceCompactAndCollectorTransitions()) {
       return kErrorUnsupported;
     }
-    collector_type_running_ = kCollectorTypeHomogeneousSpaceCompact;
+    SetCollectorTypeRunning(kCollectorTypeHomogeneousSpaceCompact);
   }
   if (Runtime::Current()->IsShuttingDown(self)) {
     // Don't allow heap transitions to happen if the runtime is shutting down since these can
@@ -2123,7 +2124,7 @@ void Heap::TransitionCollector(CollectorType collector_type) {
       // GC can be disabled if someone has a used GetPrimitiveArrayCritical but not yet released.
       if (!copying_transition || disable_moving_gc_count_ == 0) {
         // TODO: Not hard code in semi-space collector?
-        collector_type_running_ = copying_transition ? kCollectorTypeSS : collector_type;
+        SetCollectorTypeRunning(copying_transition ? kCollectorTypeSS : collector_type);
         break;
       }
     }
@@ -2673,7 +2674,7 @@ collector::GcType Heap::CollectGarbageInternal(collector::GcType gc_type,
     if (gc_disabled_for_shutdown_) {
       return collector::kGcTypeNone;
     }
-    collector_type_running_ = collector_type_;
+    SetCollectorTypeRunning(collector_type_);
   }
   if (gc_cause == kGcCauseForAlloc && runtime->HasStatsEnabled()) {
     ++runtime->GetStats()->gc_for_alloc_count;
@@ -2803,6 +2804,9 @@ void Heap::LogGC(GcCause gc_cause, collector::GarbageCollector* collector) {
 
 void Heap::FinishGC(Thread* self, collector::GcType gc_type) {
   MutexLock mu(self, *gc_complete_lock_);
+  if (IsMovingGc(collector_type_running_)) {
+    moving_gc_count_.FetchAndAddSequentiallyConsistent(1);
+  }
   collector_type_running_ = kCollectorTypeNone;
   if (gc_type != collector::kGcTypeNone) {
     last_gc_type_ = gc_type;

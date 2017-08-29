@@ -239,6 +239,7 @@ Runtime::Runtime()
       preinitialization_transaction_(nullptr),
       verify_(verifier::VerifyMode::kNone),
       allow_dex_file_fallback_(true),
+      jit_block_mode_(false),
       target_sdk_version_(0),
       implicit_null_checks_(false),
       implicit_so_checks_(false),
@@ -1064,6 +1065,8 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
 
   verify_ = runtime_options.GetOrDefault(Opt::Verify);
   allow_dex_file_fallback_ = !runtime_options.Exists(Opt::NoDexFileFallback);
+
+  jit_block_mode_ = runtime_options.Exists(Opt::JitBlockMode);
 
   no_sig_chain_ = runtime_options.Exists(Opt::NoSigChain);
   force_native_bridge_ = runtime_options.Exists(Opt::ForceNativeBridge);

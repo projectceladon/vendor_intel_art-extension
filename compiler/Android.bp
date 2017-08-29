@@ -89,13 +89,17 @@ art_cc_defaults {
         "optimizing/ssa_phi_elimination.cc",
         "optimizing/stack_map_stream.cc",
         // neeraj - added below intel sepcific "extensions" files
+        "optimizing/extensions/infrastructure/cloning.cc",
+        "optimizing/extensions/infrastructure/ext_alias.cc",
         "optimizing/extensions/infrastructure/ext_utility.cc",
         "optimizing/extensions/infrastructure/graph_x86.cc",
         "optimizing/extensions/infrastructure/loop_information.cc",
         "optimizing/extensions/infrastructure/pass_framework.cc",
         "optimizing/extensions/passes/find_ivs.cc",
         "optimizing/extensions/passes/loop_formation.cc",
+        "optimizing/extensions/passes/peeling.cc",
         "optimizing/extensions/passes/remove_unused_loops.cc",
+        "optimizing/extensions/passes/trivial_loop_evaluator.cc",
         // neeraj - end
         "trampolines/trampoline_compiler.cc",
         "utils/assembler.cc",

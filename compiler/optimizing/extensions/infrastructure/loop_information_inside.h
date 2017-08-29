@@ -36,6 +36,7 @@
 
 // Forward declaration.
 class HInductionVariable;
+class HOptimization_X86;
 
 class HLoopInformation_X86 : public HLoopInformation {
  public:
@@ -46,10 +47,20 @@ class HLoopInformation_X86 : public HLoopInformation {
       sibling_next_(nullptr), inner_(nullptr),
       test_suspend_(nullptr), suspend_(nullptr),
       iv_list_(graph->GetArena()->Adapter(kArenaAllocMisc)),
-      inter_iteration_variables_(graph->GetArena()->Adapter(kArenaAllocMisc)) {
+      inter_iteration_variables_(graph->GetArena()->Adapter(kArenaAllocMisc)),
+      peeled_blocks_(graph->GetArena()->Adapter(kArenaAllocMisc)),
+      graph_(graph) {
 #ifndef NDEBUG
         down_cast_checker_ = LOOPINFO_MAGIC;
 #endif
+  }
+
+  void ResetRelationships() {
+    depth_ = 0;
+    inner_ = nullptr;
+    outer_ = nullptr;
+    sibling_next_ = nullptr;
+    sibling_previous_ = nullptr;
   }
 
   /**
@@ -211,14 +222,20 @@ class HLoopInformation_X86 : public HLoopInformation {
   bool ExecutedPerIteration(HInstruction* candidate) const;
 
   /**
-   * @brief Does the loop only have one exit block?
-   * @return whether or not the loop has one single exit block.
+   * @brief Used to obtain number of loop exits edges.
+   * @return Returns the number of loop exit edges.
    */
-  bool HasOneExitBlock() const;
+  size_t GetLoopExitCount() const;
 
   /**
-   * @brief Get the exit block if there is only one.
-   * @return the exit block, nullptr if more than one.
+   * @brief Does the loop only have one exit edge?
+   * @return Returns whether or not the loop has one single exit edge.
+   */
+  bool HasOneExitEdge() const;
+
+  /**
+   * @brief Get the exit block if there is only one exit edge.
+   * @return Returns the exit block, nullptr if more than one.
    */
   HBasicBlock* GetExitBlock() const;
 
@@ -338,6 +355,77 @@ class HLoopInformation_X86 : public HLoopInformation {
     outer_ = nullptr;
   }
 
+  /**
+   * @brief Used to check if loop can be peeled.
+   * @param optim Useful during development of using the interface to understand
+   * why peeling failed.
+   * @return Returns true if loop peeling will surely succeed and false otherwise.
+   */
+  bool IsPeelable(HOptimization_X86* optim) const;
+
+  /**
+   * @brief Used to peel one iteration from the loop on top.
+   * @param optim Useful during development of using the interface to understand
+   * @details This method should be called when caller knows the loop is peelable.
+   */
+  void PeelHead(HOptimization_X86* optim) {
+    DCHECK_EQ(IsPeelable(optim), true);
+    bool peeled = PeelHelperHead();
+    CHECK(peeled);
+  }
+
+  /**
+   * @brief Used to peel one iteration from the loop on top.
+   * @details This method should be called when caller does not know if loop is peelable.
+   * @param optim Useful during development of using the interface to understand
+   * @return Returns true if peeling succeeds and false otherwise.
+   */
+  bool PeelHeadWithCheck(HOptimization_X86* optim) {
+    if (IsPeelable(optim)) {
+      return PeelHelperHead();
+    }
+    return false;
+  }
+
+  /**
+   * @brief Used to check whether a loop has already been peeled.
+   * @returns True if the loop has been peeled.
+   */
+  bool HasBeenPeeled() {
+    return !peeled_blocks_.empty();
+  }
+
+  /**
+   * @brief Used to check if loop has a catch handler block.
+   * @return Returns true if loop has catch block.
+   */
+  bool HasCatchHandler() const;
+
+  /**
+   * @brief This is used to get a list of ids for the peeled blocks.
+   * @details The reason this does not return a list of block pointers is because
+   * we do not want to maintain correctness of this list. Namely, other optimizations
+   * may remove/merge blocks and thus invalidate some blocks. The list returned here
+   * is for reference only to see if a known id was ever the result of peeling. This
+   * method can be used in testing to see which blocks were result of peeling.
+   * @return Returns the list of ids for the peeled blocks.
+   */
+  const ArenaVector<int>& GetPeeledBlockIds() {
+    return peeled_blocks_;
+  }
+
+  /**
+   * @brief Removes the loop from the graph it belongs to.
+   * @details This method takes care of handling graph and loop internal structures as well, especially:
+   * - Delete the basic blocks inside of the loop.
+   * If the loop is nested:
+   * - Remove the inner loop from its first parent.
+   * - Remove the loop's BBs from every outer loop level.
+   * Currently, only innermost loops are supported by this method.
+   * @return Returns true if the loop has been successfully removed from the graph, or false otherwise.
+   */
+  bool RemoveFromGraph();
+
  protected:
   /**
    * @brief Find the constant entry SSA associated to the Phi instruction.
@@ -380,6 +468,20 @@ class HLoopInformation_X86 : public HLoopInformation {
 
   /** @brief Inter-iteration dependent variables. */
   ArenaSet<int> inter_iteration_variables_;
+
+  /**
+   * @brief Holds the block ids of blocks that were peeled.
+   */
+  ArenaVector<int> peeled_blocks_;
+
+  /**
+   * @brief Internal utility used for peeling.
+   * @details This is guaranteed to succeed if IsPeelable returns true.
+   */
+  bool PeelHelperHead();
+
+  /** @brief The HGraph the loop belongs to. */
+  HGraph* graph_;
 };
 
 #endif  // ART_OPT_INFRASTRUCTURE_LOOP_INFORMATION_INSIDE_H_

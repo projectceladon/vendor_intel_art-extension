@@ -71,8 +71,14 @@ void HLoopFormation::Run() {
     }
   }
 
-  // Now add them together.
+  // Now clear data structures to make way for initialization.
   HGraph_X86* graph_x86 = GRAPH_TO_GRAPH_X86(graph_);
+  graph_x86->ClearLoopInformation();
+  for (auto loop : info_set) {
+    loop->ResetRelationships();
+  }
+
+  // Now add them together.
   while (queue.empty() == false) {
     HLoopInformation_X86* info = queue.top();
     graph_x86->AddLoopInformation(info);

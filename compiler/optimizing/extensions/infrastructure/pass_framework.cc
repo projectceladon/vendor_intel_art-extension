@@ -30,10 +30,12 @@
 #include "loop_formation.h"
 #include "optimization.h"
 #include "pass_framework.h"
+#include "peeling.h"
 #include "remove_unused_loops.h"
 //#include "scoped_thread_state_change.h"
 #include "scoped_thread_state_change-inl.h"	//neeraj -- added to resolve build error
 #include "thread.h"
+#include "trivial_loop_evaluator.h"
 
 
 namespace art {
@@ -57,10 +59,15 @@ struct HCustomPassPlacement {
 /**
  * @brief Static array holding information about custom placements.
  */
+/* neeraj - to check more - removed below optimizations (added in "ART-Extension: Support iteration peeling") to resolve incompatibility with O-Master
+   { "loop_peeling", "select_generator", kPassInsertBefore },
+   { "loop_formation_before_peeling", "loop_peeling", kPassInsertBefore },
+*/
 static HCustomPassPlacement kPassCustomPlacement[] = {
-  { "loop_formation", "instruction_simplifier_after_types", kPassInsertAfter},
-  { "find_ivs", "loop_formation", kPassInsertAfter},
-  { "remove_unused_loops", "find_ivs", kPassInsertAfter},
+  { "loop_formation", "instruction_simplifier_after_bce", kPassInsertAfter },
+  { "find_ivs", "loop_formation", kPassInsertAfter },
+  { "remove_unused_loops", "find_ivs", kPassInsertAfter },
+  { "trivial_loop_evaluator", "find_ivs", kPassInsertAfter},
 };
 
 /**
@@ -105,6 +112,7 @@ static void AddX86Optimization(HOptimization* optimization,
           }
 
           // Push elements backwards.
+          DCHECK_NE(len, list.size());
           for (size_t idx2 = len; idx2 >= start; idx2--) {
             list[idx2] = list[idx2 - 1];
           }
@@ -117,6 +125,8 @@ static void AddX86Optimization(HOptimization* optimization,
       break;
     }
   }
+  // It must be the case that the custom placement was found.
+  DCHECK_NE(len, idx) << "couldn't insert " << optimization->GetPassName() << " relative to " << placement->pass_relative_to;
 }
 
 static void FillCustomPlacement(ArenaSafeMap<const char*, HCustomPassPlacement*>& placements) {
@@ -354,10 +364,18 @@ void RunOptimizationsX86(HGraph* graph,
   HLoopFormation loop_formation(graph);
   HFindInductionVariables find_ivs(graph, stats);
   HRemoveUnusedLoops remove_unused_loops(graph, stats);
+  TrivialLoopEvaluator tle(graph, stats);
+  HLoopFormation formation_before_peeling(graph, "loop_formation_before_peeling");
+  HLoopPeeling peeling(graph, stats);
+  /* neeraj - to check more - removed below optimizations (added in "ART-Extension: Support iteration peeling") to resolve incompatibility with O-Master
+    &peeling,
+    &formation_before_peeling,
+  */
   HOptimization_X86* opt_array[] = {
     &loop_formation,
     &find_ivs,
     &remove_unused_loops,
+    &tle
   };
 
   // Create the array for the post-opts.
@@ -386,6 +404,8 @@ void RunOptimizationsX86(HGraph* graph,
   for (auto optimization : opt_list) {
     if (optimization != nullptr) {
       {
+        const char* name = optimization->GetPassName();
+        VLOG(compiler) << "Applying " << name;
         RunOptWithPassScope scope(optimization, pass_observer);
         scope.Run();
       }

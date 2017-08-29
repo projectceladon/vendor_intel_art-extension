@@ -21,8 +21,11 @@
 #include "base/bit_vector-inl.h"
 #include "side_effects_analysis.h"
 #include "utils.h"
+#include "ext_alias.h"
 
 namespace art {
+
+static constexpr int32_t kMaxGVNAliasSetters = 20;
 
 /**
  * A ValueSet holds instructions that can replace other instructions. It is updated
@@ -125,9 +128,58 @@ class ValueSet : public ArenaObject<kArenaAllocGvn> {
   }
 
   // Removes all instructions in the set affected by the given side effects.
-  void Kill(SideEffects side_effects) {
-    DeleteAllImpureWhich([side_effects](Node* node) {
-      return node->GetInstruction()->GetSideEffects().MayDependOn(side_effects);
+  void Kill(HInstruction* insn, SideEffects side_effects, AliasCheck& alias) {
+    DeleteAllImpureWhich([alias, insn, side_effects] (Node* node) mutable {
+      bool depends_on =
+        node->GetInstruction()->GetSideEffects().MayDependOn(side_effects);
+      if (depends_on && insn != nullptr) {
+        // What does aliasing think about this?
+        if (alias.Alias(insn, node->GetInstruction()) == AliasCheck::kNoAlias) {
+          depends_on = false;
+        }
+      }
+      return depends_on;
+    });
+  }
+
+  void KillLoop(HBasicBlock* block, SideEffects side_effects, AliasCheck& alias) {
+    // Walk through the loop, collecting instructions that change something.
+    std::vector<HInstruction*> setters;
+    for (HBlocksInLoopIterator it_loop(*block->GetLoopInformation());
+                               !it_loop.Done(); it_loop.Advance()) {
+      HBasicBlock* loop_block = it_loop.Current();
+      for (HInstructionIterator inst_it(loop_block->GetInstructions()); !inst_it.Done(); inst_it.Advance()) {
+        HInstruction* instruction = inst_it.Current();
+        if (instruction->GetSideEffects().HasSideEffects()) {
+          setters.push_back(instruction);
+        }
+      }
+    }
+
+    // Do we have too many instructions to look through?
+    if (setters.size() > kMaxGVNAliasSetters) {
+      // We don't want to.
+      Kill(nullptr, side_effects, alias);
+      return;
+    }
+
+    // Remove only those elements which are really killed by the loop.
+    DeleteAllImpureWhich([alias, setters, side_effects] (Node* node) mutable {
+      HInstruction* current_insn = node->GetInstruction();
+
+      if (!current_insn->GetSideEffects().MayDependOn(side_effects)) {
+        // Nothing to worry about.
+        return false;
+      }
+
+      // Walk through the setters, looking for a kill.
+      for (HInstruction* insn : setters) {
+        // What does aliasing think about this?  Assume it is okay.
+        if (alias.Alias(insn, current_insn) != AliasCheck::kNoAlias) {
+          return true;
+        }
+      }
+      return false;
     });
   }
 
@@ -402,6 +454,8 @@ class GlobalValueNumberer : public ValueObject {
   // visited/unvisited Boolean.
   ArenaBitVector visited_blocks_;
 
+  AliasCheck alias_;
+
   DISALLOW_COPY_AND_ASSIGN(GlobalValueNumberer);
 };
 
@@ -465,7 +519,7 @@ void GlobalValueNumberer::VisitBasicBlock(HBasicBlock* block) {
         } else {
           DCHECK(!block->GetLoopInformation()->IsIrreducible());
           DCHECK_EQ(block->GetDominator(), block->GetLoopInformation()->GetPreHeader());
-          set->Kill(side_effects_.GetLoopEffects(block));
+          set->KillLoop(block, side_effects_.GetLoopEffects(block), alias_);
         }
       } else if (predecessors.size() > 1) {
         for (HBasicBlock* predecessor : predecessors) {
@@ -501,11 +555,11 @@ void GlobalValueNumberer::VisitBasicBlock(HBasicBlock* block) {
         current->ReplaceWith(existing);
         current->GetBlock()->RemoveInstruction(current);
       } else {
-        set->Kill(current->GetSideEffects());
+        set->Kill(current, current->GetSideEffects(), alias_);
         set->Add(current);
       }
     } else {
-      set->Kill(current->GetSideEffects());
+      set->Kill(current, current->GetSideEffects(), alias_);
     }
     current = next;
   }

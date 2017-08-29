@@ -66,6 +66,10 @@ class HGraph_X86 : public HGraph {
     return loop_information_;
   }
 
+  void SetLoopInformation(HLoopInformation_X86* loop) {
+    loop_information_ = loop;
+  }
+
   /**
    * @brief Clear the loop information.
    */
@@ -93,7 +97,7 @@ class HGraph_X86 : public HGraph {
   /**
    * @brief Delete a block, cleaning up all the loose ends such as
    * successors, predecessors, etc.
-   * @param block Block to delete.
+   * @param block The HBasicBlock to delete from the graph.
    */
   void DeleteBlock(HBasicBlock* block);
 
@@ -109,6 +113,24 @@ class HGraph_X86 : public HGraph {
     return res;
   }
 #endif
+
+  /**
+   * @brief Used to create a new basic that is added to graph.
+   * @param dex_pc The dex pc of this block (optional).
+   * @return Returns the newly created block.
+   */
+  HBasicBlock* CreateNewBasicBlock(uint32_t dex_pc = kNoDexPc) {
+    HBasicBlock* new_block = new (arena_) HBasicBlock(this, dex_pc);
+    AddBlock(new_block);
+    return new_block;
+  }
+
+  /**
+   * @brief Split critial edge and set loop information splitter.
+   * @param from input of new critical edge.
+   * @param to output of new critical edge.
+   */
+  void SplitCriticalEdgeAndUpdateLoopInformation(HBasicBlock* from, HBasicBlock* to);
 
   /**
    * @brief Called after an optimization pass in order to rebuild domination

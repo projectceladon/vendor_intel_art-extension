@@ -88,6 +88,8 @@ enum MethodCompilationStat {
   kNotInlinedProxy,
   kIntelBIVFound,
   kIntelRemoveUnusedLoops,
+  kIntelLoopPeeled,
+  kIntelRemoveTrivialLoops,
   kLastStat
 };
 
@@ -206,6 +208,8 @@ class OptimizingCompilerStats {
       case kNotInlinedProxy: name = "NotInlinedProxy"; break;
       case kIntelBIVFound: return "kIntelBIVFound";
       case kIntelRemoveUnusedLoops: return "kIntelRemoveUnusedLoops";
+      case kIntelLoopPeeled: return "kIntelLoopPeeled";
+      case kIntelRemoveTrivialLoops: return "kIntelRemoveTrivialLoops";
 
       case kLastStat:
         LOG(FATAL) << "invalid stat "

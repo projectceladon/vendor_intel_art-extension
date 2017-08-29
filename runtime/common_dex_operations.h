@@ -24,6 +24,8 @@
 #include "runtime.h"
 #include "stack.h"
 #include "thread.h"
+#include "jit/jit.h"
+#include "jit/jit_code_cache.h"
 
 namespace art {
 
@@ -46,9 +48,23 @@ inline void PerformCall(Thread* self,
                         ArtMethod* caller_method,
                         const size_t first_dest_reg,
                         ShadowFrame* callee_frame,
-                        JValue* result)
+                        JValue* result, ArtMethod* called_method)
     REQUIRES_SHARED(Locks::mutator_lock_) {
   if (LIKELY(Runtime::Current()->IsStarted())) {
+    // Check if it is not yet compiled.
+    if (Runtime::Current()->IsJitBlockMode() == true) {
+      jit::Jit* const jit = Runtime::Current()->GetJit();
+      if (jit != nullptr) {
+        if (jit->GetCodeCache()->ContainsMethod(called_method) == false) {
+          VLOG(jit) << "Blocking mode enabled, compiling method " <<
+            called_method->PrettyMethod().c_str();
+
+          Runtime::Current()->GetJit()->CompileMethod(
+              called_method->GetInterfaceMethodIfProxy(static_cast<PointerSize>(sizeof(void*))), self, /* osr */ false);
+        }
+      }
+    }
+
     ArtMethod* target = callee_frame->GetMethod();
     if (ClassLinker::ShouldUseInterpreterEntrypoint(
         target,

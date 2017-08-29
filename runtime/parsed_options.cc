@@ -281,6 +281,10 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
       .Define("-Xzygote-max-boot-retry=_")
           .WithType<unsigned int>()
           .IntoKey(M::ZygoteMaxFailedBoots)
+      .Define("-Xjit-stress-mode")
+          .IntoKey(M::JitStressMode)
+      .Define("-Xjit-block-mode")
+          .IntoKey(M::JitBlockMode)
       .Define("-Xno-dex-file-fallback")
           .IntoKey(M::NoDexFileFallback)
       .Define("-Xno-sig-chain")
@@ -487,6 +491,11 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
   if (args.GetOrDefault(M::UseJitCompilation) && args.GetOrDefault(M::Interpret)) {
     Usage("-Xusejit:true and -Xint cannot be specified together");
     Exit(0);
+  }
+
+  if (args.Exists(M::JitStressMode)) {
+    args.Set(M::JITWarmupThreshold, 1U);
+    args.Set(M::JITCompileThreshold, 1U);
   }
 
   // Set a default boot class path if we didn't get an explicit one via command line.
