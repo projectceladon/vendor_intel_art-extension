@@ -128,6 +128,9 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
       .Define("-XX:ConcGCThreads=_")
           .WithType<unsigned int>()
           .IntoKey(M::ConcGCThreads)
+      .Define("-XX:FirstIterCopySize=_")
+          .WithType<unsigned int>()
+          .IntoKey(M::FirstIterCopySize)
       .Define("-Xss_")
           .WithType<Memory<1>>()
           .IntoKey(M::StackSize)
@@ -301,6 +304,18 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
           .IntoKey(M::Experimental)
       .Define("-Xforce-nb-testing")
           .IntoKey(M::ForceNativeBridge)
+	  .Define("-XX:GcProfile")
+          .WithValue(true)
+          .IntoKey(M::GcProfile)
+      .Define("-X:GcProfileDir:_")
+          .WithType<std::string>()
+          .IntoKey(M::GcProfileDir)
+      .Define("-XX:GcProfAlloc")
+          .WithValue(true)
+          .IntoKey(M::GcProfAlloc)
+      .Define("-XX:GcProfAtStart")
+          .WithValue(true)
+          .IntoKey(M::GcProfAtStart)
       .Define("-Xplugin:_")
           .WithType<std::vector<Plugin>>().AppendValues()
           .IntoKey(M::Plugins)
@@ -440,6 +455,12 @@ static void MaybeOverrideVerbosity() {
 bool ParsedOptions::DoParse(const RuntimeOptions& options,
                             bool ignore_unrecognized,
                             RuntimeArgumentMap* runtime_options) {
+  // Initialize Gc profiling parameters, turn off by default.
+  enable_gcprofile_ = false;
+  gcprofile_dir_ = "/data/local/tmp/gcprofile";
+  enable_succ_alloc_profile_ = false;
+  enable_gcprofile_at_start_ = false;
+
   for (size_t i = 0; i < options.size(); ++i) {
     if (true && options[0].first == "-Xzygote") {
       LOG(INFO) << "option[" << i << "]=" << options[i].first;
@@ -512,6 +533,9 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
   args.SetIfMissing(M::ParallelGCThreads, gc::Heap::kDefaultEnableParallelGC ?
       static_cast<unsigned int>(sysconf(_SC_NPROCESSORS_CONF) - 1u) : 0u);
 
+  // Default Parallel copying first iteration task size is 10.
+    args.SetIfMissing(M::FirstIterCopySize, 10u);
+
   // -verbose:
   {
     LogVerbosity *log_verbosity = args.Get(M::Verbose);
@@ -556,6 +580,13 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
     }
 
     args.Set(M::BackgroundGc, BackgroundGcOption { background_collector_type_ });
+
+    // If foregroud is SS/GSS, Enable Parallel GC.
+    if (collector_type_ == gc::kCollectorTypeGSS ||
+        collector_type_ == gc::kCollectorTypeSS) {
+        args.Set(M::ParallelGCThreads,
+            static_cast<unsigned int>(sysconf(_SC_NPROCESSORS_CONF) - 1u) );
+    }
   }
 
   // If a reference to the dalvik core.jar snuck in, replace it with
@@ -697,6 +728,7 @@ void ParsedOptions::Usage(const char* fmt, ...) {
   UsageMessage(stream, "  -XX:+DisableExplicitGC\n");
   UsageMessage(stream, "  -XX:ParallelGCThreads=integervalue\n");
   UsageMessage(stream, "  -XX:ConcGCThreads=integervalue\n");
+  UsageMessage(stream, "  -XX:FirstIterCopySize=integervalue\n");
   UsageMessage(stream, "  -XX:MaxSpinsBeforeThinLockInflation=integervalue\n");
   UsageMessage(stream, "  -XX:LongPauseLogThreshold=integervalue\n");
   UsageMessage(stream, "  -XX:LongGCLogThreshold=integervalue\n");
@@ -777,6 +809,10 @@ void ParsedOptions::Usage(const char* fmt, ...) {
   UsageMessage(stream, "  -Xjitdisableopt\n");
   UsageMessage(stream, "  -Xjitsuspendpoll\n");
   UsageMessage(stream, "  -XX:mainThreadStackSize=N\n");
+  UsageMessage(stream, "  -XX:GcProfile\n");
+  UsageMessage(stream, "  -XGcProfileDir:dirname\n");
+  UsageMessage(stream, "  -XX:GcProfAlloc\n");
+  UsageMessage(stream, "  -XX:GcProfAtStart\n");
   UsageMessage(stream, "\n");
 
   Exit((error) ? 1 : 0);

@@ -35,6 +35,7 @@
 #include "thread-inl.h"
 #include "utils.h"
 #include "verify_object.h"
+#include "gc/gcprofiler.h"
 
 namespace art {
 namespace gc {
@@ -133,6 +134,14 @@ inline mirror::Object* Heap::AllocObjectWithAllocator(Thread* self,
         return nullptr;
       }
     }
+
+    if (Runtime::Current()->EnabledGcProfile()) {
+      GcProfiler* gcProfiler = GcProfiler::GetInstance();
+      if (obj != nullptr && gcProfiler->ProfileSuccAllocInfo()) {
+        gcProfiler->InsertSuccAllocRecord(byte_count, klass.Ptr());
+      }
+    }
+
     DCHECK_GT(bytes_allocated, 0u);
     DCHECK_GT(usable_size, 0u);
     obj->SetClass(klass);
@@ -159,6 +168,12 @@ inline mirror::Object* Heap::AllocObjectWithAllocator(Thread* self,
   if (kIsDebugBuild && Runtime::Current()->IsStarted()) {
     CHECK_LE(obj->SizeOf(), usable_size);
   }
+
+  if (Runtime::Current()->EnabledGcProfile()) {
+    GcProfiler* gcProfiler = GcProfiler::GetInstance();
+    gcProfiler->AddAllocInfo(bytes_allocated);
+  }
+
   // TODO: Deprecate.
   if (kInstrumented) {
     if (Runtime::Current()->HasStatsEnabled()) {

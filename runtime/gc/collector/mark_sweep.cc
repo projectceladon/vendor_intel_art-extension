@@ -149,7 +149,13 @@ void MarkSweep::RunPhases() {
     GetHeap()->PreGcVerification(this);
     {
       ReaderMutexLock mu(self, *Locks::mutator_lock_);
-      MarkingPhase();
+      if (Runtime::Current()->EnabledGcProfile()) {
+        uint64_t mark_start = NanoTime();
+        MarkingPhase();
+        RegisterMark(NanoTime() - mark_start);
+      } else {
+        MarkingPhase();
+      }
     }
     ScopedPause pause(this);
     GetHeap()->PrePauseRosAllocVerification(this);
@@ -158,7 +164,13 @@ void MarkSweep::RunPhases() {
   } else {
     ScopedPause pause(this);
     GetHeap()->PreGcVerificationPaused(this);
-    MarkingPhase();
+    if (Runtime::Current()->EnabledGcProfile()) {
+      uint64_t mark_start = NanoTime();
+      MarkingPhase();
+      RegisterMark(NanoTime() - mark_start);
+    } else {
+      MarkingPhase();
+    }
     GetHeap()->PrePauseRosAllocVerification(this);
     PausePhase();
     RevokeAllThreadLocalBuffers();
@@ -166,7 +178,13 @@ void MarkSweep::RunPhases() {
   {
     // Sweeping always done concurrently, even for non concurrent mark sweep.
     ReaderMutexLock mu(self, *Locks::mutator_lock_);
-    ReclaimPhase();
+    if (Runtime::Current()->EnabledGcProfile()) {
+      uint64_t sweep_start = NanoTime();
+      ReclaimPhase();
+      RegisterSweep(NanoTime() - sweep_start);
+    } else {
+      ReclaimPhase();
+    }
   }
   GetHeap()->PostGcVerification(this);
   FinishPhase();

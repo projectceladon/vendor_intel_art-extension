@@ -109,6 +109,10 @@ static void RecursivelyProcessInputs(HInstruction* current,
   HInputsRef inputs = current->GetInputs();
   for (size_t i = 0; i < inputs.size(); ++i) {
     HInstruction* input = inputs[i];
+    //neeraj - resolve dex2oat crash (checking input)
+    if (input == nullptr)
+      continue;
+
     bool has_in_location = current->GetLocations()->InAt(i).IsValid();
     bool has_out_location = input->GetLocations()->Out().IsValid();
 

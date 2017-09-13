@@ -177,6 +177,7 @@ class Heap {
        size_t large_object_threshold,
        size_t parallel_gc_threads,
        size_t conc_gc_threads,
+       size_t first_iter_copy_size,
        bool low_memory_mode,
        size_t long_pause_threshold,
        size_t long_gc_threshold,
@@ -485,11 +486,12 @@ class Heap {
 
   void AddFinalizerReference(Thread* self, ObjPtr<mirror::Object>* object);
 
-  // Returns the number of bytes currently allocated.
   size_t GetBytesAllocated() const {
     return num_bytes_allocated_.LoadSequentiallyConsistent();
   }
-
+  size_t GetRevokeBytes() const {
+    return num_bytes_freed_revoke_.LoadSequentiallyConsistent();
+  }
   // Returns the number of objects currently allocated.
   size_t GetObjectsAllocated() const
       REQUIRES(!Locks::heap_bitmap_lock_);
@@ -570,9 +572,10 @@ class Heap {
   // Deflate monitors, ... and trim the spaces.
   void Trim(Thread* self) REQUIRES(!*gc_complete_lock_);
 
-  void RevokeThreadLocalBuffers(Thread* thread);
+  void RevokeThreadLocalBuffers(Thread* thread, bool record_free = true);
   void RevokeRosAllocThreadLocalBuffers(Thread* thread);
-  void RevokeAllThreadLocalBuffers();
+  void RevokeAllThreadLocalBuffers(bool record_free = true);
+  void AssertAllThreadLocalBuffersAreRevoked();
   void AssertThreadLocalBuffersAreRevoked(Thread* thread);
   void AssertAllBumpPointerSpaceThreadLocalBuffersAreRevoked();
   void RosAllocVerification(TimingLogger* timings, const char* name)
@@ -646,7 +649,6 @@ class Heap {
   space::RosAllocSpace* GetRosAllocSpace() const {
     return rosalloc_space_;
   }
-
   // Return the corresponding rosalloc space.
   space::RosAllocSpace* GetRosAllocSpace(gc::allocator::RosAlloc* rosalloc) const
       REQUIRES_SHARED(Locks::mutator_lock_);
@@ -677,6 +679,9 @@ class Heap {
   void DumpSpaces(std::ostream& stream) const REQUIRES_SHARED(Locks::mutator_lock_);
   std::string DumpSpaces() const REQUIRES_SHARED(Locks::mutator_lock_);
 
+// Safe version of pretty type of which check to make sure objects are heap addresses.
+  std::string SafeGetClassDescriptor(mirror::Class* klass) NO_THREAD_SAFETY_ANALYSIS;
+
   // GC performance measuring
   void DumpGcPerformanceInfo(std::ostream& os)
       REQUIRES(!*gc_complete_lock_);
@@ -694,6 +699,12 @@ class Heap {
   size_t GetConcGCThreadCount() const {
     return conc_gc_threads_;
   }
+  // For Parallel Copying collector.
+  // Get task size of the first iteration of copy task.
+  size_t GetFirstIterCopySize() const {
+    return first_iter_copy_size_;
+  }
+
   accounting::ModUnionTable* FindModUnionTableFromSpace(space::Space* space);
   void AddModUnionTable(accounting::ModUnionTable* mod_union_table);
 
@@ -809,6 +820,11 @@ class Heap {
   // Create a new alloc space and compact default alloc space to it.
   HomogeneousSpaceCompactResult PerformHomogeneousSpaceCompact() REQUIRES(!*gc_complete_lock_);
   bool SupportHomogeneousSpaceCompactAndCollectorTransitions() const;
+  void GCProfileSetDir(const std::string& dir);
+  void GCProfileStart();
+  void GCProfileEnd(bool drop_result);
+  void GCProfileEnableSuccAllocProfile(bool enable);
+  bool GCProfileRunning();
 
   // Install an allocation listener.
   void SetAllocationListener(AllocationListener* l);
@@ -957,6 +973,10 @@ class Heap {
                                                size_t alloc_size,
                                                bool grow);
 
+  // Returns true if the address passed in is within the address range of a continuous space.
+  bool IsValidContinuousSpaceObjectAddress(const mirror::Object* obj) const
+      REQUIRES_SHARED(Locks::mutator_lock_);
+
   // Run the finalizers. If timeout is non zero, then we use the VMRuntime version.
   void RunFinalization(JNIEnv* env, uint64_t timeout);
 
@@ -972,6 +992,8 @@ class Heap {
       REQUIRES_SHARED(Locks::mutator_lock_)
       REQUIRES(!*pending_task_lock_);
   bool IsGCRequestPending() const;
+  // Calculate the space size of GC, used by gc profiler.
+  uint32_t CalculateSpaceSize(bool compacting_gc);
 
   // Sometimes CollectGarbageInternal decides to run a different Gc than you requested. Returns
   // which type of Gc was actually ran.
@@ -1158,6 +1180,9 @@ class Heap {
 
   // How many GC threads we may use for unpaused parts of garbage collection.
   const size_t conc_gc_threads_;
+
+  // How many objects in the parallel copy task for first iteration.
+  const size_t first_iter_copy_size_;
 
   // Boolean for if we are in low memory mode.
   const bool low_memory_mode_;

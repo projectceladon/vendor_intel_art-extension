@@ -668,6 +668,10 @@ class Runtime {
     return env_snapshot_.GetSnapshot();
   }
 
+  bool EnabledGcProfile() {
+    return enable_gcprofile_;
+  }
+
   void AddSystemWeakHolder(gc::AbstractSystemWeakHolder* holder);
   void RemoveSystemWeakHolder(gc::AbstractSystemWeakHolder* holder);
 
@@ -861,6 +865,17 @@ class Runtime {
   // If true, then we dump the GC cumulative timings on shutdown.
   bool dump_gc_performance_on_shutdown_;
 
+  // Enable gc profile.
+  bool enable_gcprofile_;
+
+  // Dir path for saving gc profile data, used with setprop "-XGcProfileDir:filename".
+  std::string gcprofile_dir_;
+
+  // Enable gc profiling for success allocation info.
+  bool enable_succ_alloc_profile_;
+
+  // Enabling gc profiling at process start up. Must combine with setprop "-XX:GcProfile".
+  bool enable_gcprofile_at_start_;
   // Transaction used for pre-initializing classes at compilation time.
   Transaction* preinitialization_transaction_;
 

@@ -22,6 +22,7 @@
 #include "base/dumpable.h"
 #include "base/timing_logger.h"
 #include "code_generator.h"
+#include "constant_calculation_sinking.h"
 #include "ext_utility.h"
 #include "driver/compiler_driver.h"
 #include "driver/compiler_options.h"	//neeraj -- added to resolve build error
@@ -31,6 +32,7 @@
 #include "optimization.h"
 #include "pass_framework.h"
 #include "peeling.h"
+#include "remove_suspend.h"
 #include "remove_unused_loops.h"
 //#include "scoped_thread_state_change.h"
 #include "scoped_thread_state_change-inl.h"	//neeraj -- added to resolve build error
@@ -66,7 +68,9 @@ struct HCustomPassPlacement {
 static HCustomPassPlacement kPassCustomPlacement[] = {
   { "loop_formation", "instruction_simplifier_after_bce", kPassInsertAfter },
   { "find_ivs", "loop_formation", kPassInsertAfter },
-  { "remove_unused_loops", "find_ivs", kPassInsertAfter },
+  { "remove_loop_suspend_checks", "find_ivs", kPassInsertAfter},
+  { "remove_unused_loops", "remove_loop_suspend_checks", kPassInsertAfter },
+  { "constant_calculation_sinking", "find_ivs", kPassInsertAfter},
   { "trivial_loop_evaluator", "find_ivs", kPassInsertAfter},
 };
 
@@ -363,8 +367,10 @@ void RunOptimizationsX86(HGraph* graph,
   // Create the array for the opts.
   HLoopFormation loop_formation(graph);
   HFindInductionVariables find_ivs(graph, stats);
+  HRemoveLoopSuspendChecks remove_suspends(graph, stats);
   HRemoveUnusedLoops remove_unused_loops(graph, stats);
   TrivialLoopEvaluator tle(graph, stats);
+  HConstantCalculationSinking ccs(graph, stats);
   HLoopFormation formation_before_peeling(graph, "loop_formation_before_peeling");
   HLoopPeeling peeling(graph, stats);
   /* neeraj - to check more - removed below optimizations (added in "ART-Extension: Support iteration peeling") to resolve incompatibility with O-Master
@@ -374,6 +380,8 @@ void RunOptimizationsX86(HGraph* graph,
   HOptimization_X86* opt_array[] = {
     &loop_formation,
     &find_ivs,
+    &remove_suspends,
+    &ccs,
     &remove_unused_loops,
     &tle
   };

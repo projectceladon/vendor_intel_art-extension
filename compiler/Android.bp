@@ -95,10 +95,12 @@ art_cc_defaults {
         "optimizing/extensions/infrastructure/graph_x86.cc",
         "optimizing/extensions/infrastructure/loop_information.cc",
         "optimizing/extensions/infrastructure/pass_framework.cc",
+        "optimizing/extensions/passes/constant_calculation_sinking.cc",
         "optimizing/extensions/passes/find_ivs.cc",
         "optimizing/extensions/passes/loop_formation.cc",
         "optimizing/extensions/passes/peeling.cc",
         "optimizing/extensions/passes/remove_unused_loops.cc",
+        "optimizing/extensions/passes/remove_suspend.cc",
         "optimizing/extensions/passes/trivial_loop_evaluator.cc",
         // neeraj - end
         "trampolines/trampoline_compiler.cc",

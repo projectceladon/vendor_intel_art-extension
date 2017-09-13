@@ -131,6 +131,68 @@ inline uint32_t Object::GetMarkBit() {
 #endif
 }
 
+/*atul.b
+  Added function "GetReadBarrierPointer" from N-silver
+  As patch "Parallel Copying for GSS/SS" using that.
+*/
+inline Object* Object::GetReadBarrierPointer() {
+#ifdef USE_BAKER_READ_BARRIER
+  DCHECK(kUseBakerReadBarrier);
+  return reinterpret_cast<Object*>(GetLockWord(false).ReadBarrierState());
+#elif USE_BROOKS_READ_BARRIER
+  DCHECK(kUseBrooksReadBarrier);
+  return GetFieldObject<Object, kVerifyNone, kWithoutReadBarrier>(
+      OFFSET_OF_OBJECT_MEMBER(Object, x_rb_ptr_));
+#else
+  LOG(FATAL) << "Unreachable";
+  UNREACHABLE();
+#endif
+}
+
+/*atul.b
+  Added function "SetReadBarrierPointer" from N-silver
+  As patch "Parallel Copying for GSS/SS" using that.
+*/
+inline void Object::SetReadBarrierPointer(Object* rb_ptr) {
+#ifdef USE_BAKER_READ_BARRIER
+  DCHECK(kUseBakerReadBarrier);
+  DCHECK_EQ(reinterpret_cast<uint64_t>(rb_ptr) >> 32, 0U);
+  LockWord lw = GetLockWord(false);
+  lw.SetReadBarrierState(static_cast<uint32_t>(reinterpret_cast<uintptr_t>(rb_ptr)));
+  SetLockWord(lw, false);
+#elif USE_BROOKS_READ_BARRIER
+  DCHECK(kUseBrooksReadBarrier);
+  // We don't mark the card as this occurs as part of object allocation. Not all objects have
+  // backing cards, such as large objects.
+  SetFieldObjectWithoutWriteBarrier<false, false, kVerifyNone>(
+      OFFSET_OF_OBJECT_MEMBER(Object, x_rb_ptr_), rb_ptr);
+#else
+  LOG(FATAL) << "Unreachable";
+  UNREACHABLE();
+  UNUSED(rb_ptr);
+#endif
+}
+
+/*atul.b
+  Added function "AssertReadBarrierPointer" from N-silver
+  As patch "Parallel Copying for GSS/SS" using that.
+*/
+inline void Object::AssertReadBarrierPointer() const {
+  if (kUseBakerReadBarrier) {
+    Object* obj = const_cast<Object*>(this);
+    DCHECK(obj->GetReadBarrierPointer() == nullptr)
+        << "Bad Baker pointer: obj=" << reinterpret_cast<void*>(obj)
+        << " ptr=" << reinterpret_cast<void*>(obj->GetReadBarrierPointer());
+  } else {
+    CHECK(kUseBrooksReadBarrier);
+    Object* obj = const_cast<Object*>(this);
+    DCHECK_EQ(obj, obj->GetReadBarrierPointer())
+        << "Bad Brooks pointer: obj=" << reinterpret_cast<void*>(obj)
+        << " ptr=" << reinterpret_cast<void*>(obj->GetReadBarrierPointer());
+  }
+}
+
+
 inline void Object::SetReadBarrierState(uint32_t rb_state) {
   if (!kUseBakerReadBarrier) {
     LOG(FATAL) << "Unreachable";

@@ -95,6 +95,8 @@ class MANAGED LOCKABLE Object {
   template<VerifyObjectFlags kVerifyFlags = kDefaultVerifyFlags>
   void SetClass(ObjPtr<Class> new_klass) REQUIRES_SHARED(Locks::mutator_lock_);
 
+  Object* GetReadBarrierPointer() REQUIRES_SHARED(Locks::mutator_lock_);
+
   // Get the read barrier state with a fake address dependency.
   // '*fake_address_dependency' will be set to 0.
   ALWAYS_INLINE uint32_t GetReadBarrierState(uintptr_t* fake_address_dependency)
@@ -107,12 +109,13 @@ class MANAGED LOCKABLE Object {
 #ifndef USE_BAKER_OR_BROOKS_READ_BARRIER
   NO_RETURN
 #endif
+  void SetReadBarrierPointer(Object* rb_ptr) REQUIRES_SHARED(Locks::mutator_lock_);
   ALWAYS_INLINE void SetReadBarrierState(uint32_t rb_state) REQUIRES_SHARED(Locks::mutator_lock_);
 
   template<bool kCasRelease = false>
   ALWAYS_INLINE bool AtomicSetReadBarrierState(uint32_t expected_rb_state, uint32_t rb_state)
       REQUIRES_SHARED(Locks::mutator_lock_);
-
+  void AssertReadBarrierPointer() const REQUIRES_SHARED(Locks::mutator_lock_);
   ALWAYS_INLINE uint32_t GetMarkBit() REQUIRES_SHARED(Locks::mutator_lock_);
 
   ALWAYS_INLINE bool AtomicSetMarkBit(uint32_t expected_mark_bit, uint32_t mark_bit)

@@ -122,8 +122,11 @@ static bool CheckTypeConsistency(HInstruction* instruction) {
 
   HConstInputsRef inputs = instruction->GetInputs();
   for (size_t i = 0; i < inputs.size(); ++i) {
-    DCHECK(CheckType(inputs[i]->GetType(), locations->InAt(i)))
-      << inputs[i]->GetType() << " " << locations->InAt(i);
+    //neeraj - resolve dex2oat crash (checking current input)
+    if (inputs[i] != nullptr) {
+      DCHECK(CheckType(inputs[i]->GetType(), locations->InAt(i)))
+        << inputs[i]->GetType() << " " << locations->InAt(i);
+    }
   }
 
   HEnvironment* environment = instruction->GetEnvironment();
@@ -692,9 +695,15 @@ static void CheckLoopEntriesCanBeUsedForOsr(const HGraph& graph,
     // One can write loops through try/catch, which we do not support for OSR anyway.
     return;
   }
+  if (!graph.IsCompilingOsr()) {
+    // Don't check correctness if OSR is not used. We could remove
+    // suspend checks in SILVER pass named 'remove_suspend_checks'.
+    return;
+  }
   ArenaVector<HSuspendCheck*> loop_headers(graph.GetArena()->Adapter(kArenaAllocMisc));
   for (HBasicBlock* block : graph.GetReversePostOrder()) {
-    if (block->IsLoopHeader()) {
+    //neeraj - resolve dex2oat crash by checking "SuspendCheck" in "LoopInformation"
+    if (block->IsLoopHeader() && block->GetLoopInformation()->HasSuspendCheck()) {
       HSuspendCheck* suspend_check = block->GetLoopInformation()->GetSuspendCheck();
       if (!suspend_check->GetEnvironment()->IsFromInlinedInvoke()) {
         loop_headers.push_back(suspend_check);

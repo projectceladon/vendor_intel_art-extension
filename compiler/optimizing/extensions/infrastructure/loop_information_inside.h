@@ -43,6 +43,7 @@ class HLoopInformation_X86 : public HLoopInformation {
   HLoopInformation_X86(HBasicBlock* block, HGraph* graph) :
       HLoopInformation(block, graph),
       depth_(0), count_up_(false),
+      suppress_suspend_check_(false),
       outer_(nullptr), sibling_previous_(nullptr),
       sibling_next_(nullptr), inner_(nullptr),
       test_suspend_(nullptr), suspend_(nullptr),
@@ -314,12 +315,18 @@ class HLoopInformation_X86 : public HLoopInformation {
   bool HasTestSuspend() const { return test_suspend_ != nullptr; }
 
   /**
+   * @brief Should a SuspendCheck be inserted into this loop?
+   * @param value 'true' if no suspend check is needed in the loop.
+   */
+  void SetSuppressSuspendCheck(bool value) { suppress_suspend_check_ = value; }
+
+  /**
    * @brief Does this loop need to have a HSuspendCheck added?
    * @returns 'true' if a SuspendCheck should not be added.
    * @note If we have converted to HTestSuspend/HSuspend, we don't want
    * another HSuspendCheck to be added to the loop.
    */
-  bool DontAddSuspendCheck() const OVERRIDE { return HasTestSuspend(); }
+  bool DontAddSuspendCheck() const OVERRIDE { return suppress_suspend_check_ || HasTestSuspend(); }
 
 #ifndef NDEBUG
   static HLoopInformation_X86* DownCast(HLoopInformation* info) {
@@ -415,6 +422,20 @@ class HLoopInformation_X86 : public HLoopInformation {
   }
 
   /**
+   * @brief Determines whether the loop contains opcodes that can exit the block unexpectedly.
+   * @param ignore_suspends Should HSuspendCheck and HSuspend be ignored during the check?
+   * @return 'true' if any instruction in the loop has an environment.
+   */
+  bool CanSideExit(bool ignore_suspends = true) const;
+
+  /**
+   * @brief Estimate the number of cycles for one loop execution.
+   * @param cost Returned cycle estimation count.
+   * @return 'true' if the estimation was successful.
+   */
+  bool GetLoopCost(uint64_t* cost) const;
+
+  /**
    * @brief Removes the loop from the graph it belongs to.
    * @details This method takes care of handling graph and loop internal structures as well, especially:
    * - Delete the basic blocks inside of the loop.
@@ -448,6 +469,7 @@ class HLoopInformation_X86 : public HLoopInformation {
 
   int depth_;
   bool count_up_;
+  bool suppress_suspend_check_;
 
   HLoopInformation_X86* outer_;
   HLoopInformation_X86* sibling_previous_;

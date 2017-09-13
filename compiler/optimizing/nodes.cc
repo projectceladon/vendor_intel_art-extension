@@ -774,7 +774,10 @@ bool HBasicBlock::Dominates(HBasicBlock* other) const {
 static void UpdateInputsUsers(HInstruction* instruction) {
   HInputsRef inputs = instruction->GetInputs();
   for (size_t i = 0; i < inputs.size(); ++i) {
-    inputs[i]->AddUseAt(instruction, i);
+    //neeraj - resolve dex2oat crash for "HInstructionRHSMemory" instruction
+    if (instruction->InputAt(i) != nullptr) {
+      inputs[i]->AddUseAt(instruction, i);
+    }
   }
 }
 
@@ -1164,6 +1167,16 @@ void H##name::Accept(HGraphVisitor* visitor) {                                 \
 }
 
 FOR_EACH_CONCRETE_INSTRUCTION(DEFINE_ACCEPT)
+// FIXME: This commit lead to linkage error:
+// Author: Vladimir Marko <vmarko@google.com>
+// Date:   Mon Nov 23 19:49:34 2015 +0000
+//
+//     Rewrite HInstruction::Is/As<type>().
+// linker can't find symbol _ZTVN3art21HInstructionRHSMemoryE
+// The workaround is to define a method:
+// void HInstructionRHSMemory::Accept(HGraphVisitor* visitor)
+// { visitor->VisitInstructionRHSMemory(this);}
+FOR_EACH_INSTRUCTION_X86_COMMON(DEFINE_ACCEPT)
 
 #undef DEFINE_ACCEPT
 
