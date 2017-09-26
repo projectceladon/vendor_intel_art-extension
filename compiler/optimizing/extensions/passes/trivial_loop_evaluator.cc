@@ -713,6 +713,8 @@ void TrivialLoopEvaluator::UpdateRegisters(HLoopInformation_X86* loop,
         CHECK(constant_node);
       }
       user->SetRawEnvAt(input_index, constant_node);
+      //atul.b Fix Klocwork NULL dereferenced issue 112780
+      DCHECK(constant_node != nullptr);
       constant_node->AddEnvUseAt(user, input_index);
     }
   }

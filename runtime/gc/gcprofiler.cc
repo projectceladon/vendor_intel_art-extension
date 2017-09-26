@@ -433,6 +433,8 @@ GcProfiler::GcProfiler()
 GcProfiler::~GcProfiler() {
   delete succ_record_lock_;
   delete fail_record_lock_;
+  //atul.b Fix Klocwork Memory Leak issue 112887
+  delete gc_profiler_lock_;
 }
 
 // Start GC Profiler, init related variables.

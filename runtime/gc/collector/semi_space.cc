@@ -1206,6 +1206,8 @@ void SemiSpace::ProcessMarkStack() {
         obj = mark_stack_->PopBack();
       }
       if (collect_from_space_only_ && promo_dest_space_->HasAddress(obj)) {
+        //atul.b fix Klocwork Null pointer issue 112884
+        DCHECK(live_bitmap != nullptr);
         // obj has just been promoted. Mark the live bitmap for it,
         // which is delayed from MarkObject().
         DCHECK(!live_bitmap->Test(obj));
