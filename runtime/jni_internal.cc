@@ -1783,6 +1783,7 @@ class JNI {
     gc::Heap* heap = Runtime::Current()->GetHeap();
     if (heap->IsMovableObject(s) || s->IsCompressed()) {
       jchar* chars = new jchar[s->GetLength()];
+      CHECK(chars!=nullptr);
       if (s->IsCompressed()) {
         int32_t length = s->GetLength();
         for (int i = 0; i < length; ++i) {
@@ -1833,6 +1834,7 @@ class JNI {
       }
       int32_t length = s->GetLength();
       jchar* chars = new jchar[length];
+      CHECK(chars!=nullptr);
       for (int i = 0; i < length; ++i) {
         chars[i] = s->CharAt(i);
       }
