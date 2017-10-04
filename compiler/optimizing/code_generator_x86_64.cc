@@ -4876,6 +4876,12 @@ void LocationsBuilderX86_64::VisitArraySet(HArraySet* instruction) {
   locations->SetInAt(1, Location::RegisterOrConstant(instruction->InputAt(1)));
   if (Primitive::IsFloatingPointType(value_type)) {
     locations->SetInAt(2, Location::FpuRegisterOrConstant(instruction->InputAt(2)));
+  } else if (instruction->GetUseNonTemporalMove() &&
+             (value_type == Primitive::kPrimInt ||
+              value_type == Primitive::kPrimNot ||
+              value_type == Primitive::kPrimLong)) {
+    // Non-temporal move needs a register src.
+    locations->SetInAt(2, Location::RequiresRegister());
   } else {
     locations->SetInAt(2, Location::RegisterOrConstant(instruction->InputAt(2)));
   }
@@ -4900,6 +4906,7 @@ void InstructionCodeGeneratorX86_64::VisitArraySet(HArraySet* instruction) {
   uint32_t class_offset = mirror::Object::ClassOffset().Int32Value();
   uint32_t super_offset = mirror::Class::SuperClassOffset().Int32Value();
   uint32_t component_offset = mirror::Class::ComponentTypeOffset().Int32Value();
+  bool use_non_temporal = instruction->GetUseNonTemporalMove();
 
   switch (value_type) {
     case Primitive::kPrimBoolean:
@@ -5029,7 +5036,12 @@ void InstructionCodeGeneratorX86_64::VisitArraySet(HArraySet* instruction) {
       uint32_t offset = mirror::Array::DataOffset(sizeof(int32_t)).Uint32Value();
       Address address = CodeGeneratorX86_64::ArrayAddress(array, index, TIMES_4, offset);
       if (value.IsRegister()) {
-        __ movl(address, value.AsRegister<CpuRegister>());
+        if (use_non_temporal) {
+          // Generate the non-temporal move instead.
+          __ movntl(address, value.AsRegister<CpuRegister>());
+        } else {
+          __ movl(address, value.AsRegister<CpuRegister>());
+        }
       } else {
         DCHECK(value.IsConstant()) << value;
         int32_t v = CodeGenerator::GetInt32ValueOf(value.GetConstant());
@@ -5043,7 +5055,12 @@ void InstructionCodeGeneratorX86_64::VisitArraySet(HArraySet* instruction) {
       uint32_t offset = mirror::Array::DataOffset(sizeof(int64_t)).Uint32Value();
       Address address = CodeGeneratorX86_64::ArrayAddress(array, index, TIMES_8, offset);
       if (value.IsRegister()) {
-        __ movq(address, value.AsRegister<CpuRegister>());
+        if (use_non_temporal) {
+          // Generate the non-temporal move instead.
+          __ movntq(address, value.AsRegister<CpuRegister>());
+        } else {
+          __ movq(address, value.AsRegister<CpuRegister>());
+        }
         codegen_->MaybeRecordImplicitNullCheck(instruction);
       } else {
         int64_t v = value.GetConstant()->AsLongConstant()->GetValue();

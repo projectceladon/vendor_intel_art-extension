@@ -358,6 +358,9 @@ ShadowFrame* Thread::FindOrCreateDebuggerShadowFrame(size_t frame_id,
   }
   VLOG(deopt) << "Create pre-deopted ShadowFrame for " << ArtMethod::PrettyMethod(method);
   shadow_frame = ShadowFrame::CreateDeoptimizedFrame(num_vregs, nullptr, method, dex_pc);
+  if(shadow_frame==nullptr){
+   return nullptr;
+  }
   FrameIdToShadowFrame* record = FrameIdToShadowFrame::Create(frame_id,
                                                               shadow_frame,
                                                               tlsPtr_.frame_id_to_shadow_frame,

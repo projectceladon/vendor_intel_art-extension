@@ -293,7 +293,10 @@ inline const char* ArtField::GetTypeDescriptor() REQUIRES_SHARED(Locks::mutator_
 
 inline Primitive::Type ArtField::GetTypeAsPrimitiveType()
     REQUIRES_SHARED(Locks::mutator_lock_) {
-  return Primitive::GetType(GetTypeDescriptor()[0]);
+    //atul.b Fix Klocwork NULL dereferenced issue 112877
+    const char* getTypeDesc=GetTypeDescriptor();
+    DCHECK(getTypeDesc!=nullptr);
+    return Primitive::GetType(getTypeDesc[0]);
 }
 
 inline bool ArtField::IsPrimitiveType() REQUIRES_SHARED(Locks::mutator_lock_) {

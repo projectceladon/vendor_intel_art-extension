@@ -244,8 +244,22 @@ AliasCheck::AliasKind AliasCheck::Array_alias(HInstruction* x, HInstruction* y) 
   // Look at the type after looking at the base, as there are some cases where
   // the ArraySet is a long and the ArrayGet is a double.  This may be fixed in
   // a later AOSP.
-  Primitive::Type x_type = x->IsArrayGet() ? x->GetType() : x->AsArraySet()->GetComponentType();
-  Primitive::Type y_type = y->IsArrayGet() ? y->GetType() : y->AsArraySet()->GetComponentType();
+//Shalini to resolve KW issue 112753
+  Primitive::Type x_type ;
+  Primitive::Type y_type ;
+  if(x->IsArrayGet()){
+   x_type = x->GetType();
+  } else {
+  CHECK(x->AsArraySet() != nullptr);
+  x_type = x->AsArraySet()->GetComponentType();
+  }
+  if(y->IsArrayGet()){
+   y_type = y->GetType();
+  } else {
+  CHECK(y->AsArraySet()!= nullptr);
+  y_type = y->AsArraySet()->GetComponentType();
+  }
+
   if (x_type != y_type) {
     // Unfortunately dex format has aget and aput un-typed. It means that we cannot for sure
     // say whether it is fp-type or not. So we must not say they are not alias.
