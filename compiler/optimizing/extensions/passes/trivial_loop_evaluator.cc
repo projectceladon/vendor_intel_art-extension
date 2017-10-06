@@ -324,6 +324,9 @@ class TLEVisitor : public HGraphVisitor {
     Value right_value = GetValue(right);
     NOTHING_IF_ERROR;
 
+    // neeraj - fix klockwork 99356 issue (divide by zero)
+    DCHECK(right_value.i != 0);
+
     SWITCH_FOR_TYPES(instr, left->GetType(),
       values_.Overwrite(instr, Value(left_value.i / right_value.i)),
       values_.Overwrite(instr, Value(left_value.l / right_value.l)),
@@ -357,6 +360,9 @@ class TLEVisitor : public HGraphVisitor {
     Value left_value = GetValue(left);
     Value right_value = GetValue(right);
     NOTHING_IF_ERROR;
+
+    // neeraj - fix klockwork 99357 issue (divide by zero)
+    DCHECK(right_value.i != 0);
 
     SWITCH_FOR_TYPES(instr, left->GetType(),
       values_.Overwrite(instr, Value(right_value.i == -1 ? 0 : left_value.i % right_value.i)),
