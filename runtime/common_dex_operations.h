@@ -38,8 +38,8 @@ namespace interpreter {
 
   void ArtInterpreterToCompiledCodeBridge(Thread* self,
                                           ArtMethod* caller,
-                                          const DexFile::CodeItem* code_item,
                                           ShadowFrame* shadow_frame,
+                                          uint16_t arg_offset,
                                           JValue* result);
 }  // namespace interpreter
 
@@ -48,7 +48,9 @@ inline void PerformCall(Thread* self,
                         ArtMethod* caller_method,
                         const size_t first_dest_reg,
                         ShadowFrame* callee_frame,
-                        JValue* result, ArtMethod* called_method)
+                        JValue* result,
+			bool use_interpreter_entrypoint,
+			ArtMethod* called_method)
     REQUIRES_SHARED(Locks::mutator_lock_) {
   if (LIKELY(Runtime::Current()->IsStarted())) {
     // Check if it is not yet compiled.
@@ -65,14 +67,11 @@ inline void PerformCall(Thread* self,
       }
     }
 
-    ArtMethod* target = callee_frame->GetMethod();
-    if (ClassLinker::ShouldUseInterpreterEntrypoint(
-        target,
-        target->GetEntryPointFromQuickCompiledCode())) {
+    if (use_interpreter_entrypoint) {
       interpreter::ArtInterpreterToInterpreterBridge(self, code_item, callee_frame, result);
     } else {
       interpreter::ArtInterpreterToCompiledCodeBridge(
-          self, caller_method, code_item, callee_frame, result);
+          self, caller_method, callee_frame, first_dest_reg, result);
     }
   } else {
     interpreter::UnstartedRuntime::Invoke(self, code_item, callee_frame, result, first_dest_reg);
@@ -80,7 +79,7 @@ inline void PerformCall(Thread* self,
 }
 
 template<Primitive::Type field_type>
-static ALWAYS_INLINE void DoFieldGetCommon(Thread* self,
+static ALWAYS_INLINE bool DoFieldGetCommon(Thread* self,
                                            const ShadowFrame& shadow_frame,
                                            ObjPtr<mirror::Object> obj,
                                            ArtField* field,
@@ -103,6 +102,9 @@ static ALWAYS_INLINE void DoFieldGetCommon(Thread* self,
                                     shadow_frame.GetMethod(),
                                     shadow_frame.GetDexPC(),
                                     field);
+    if (UNLIKELY(self->IsExceptionPending())) {
+      return false;
+    }
   }
 
   switch (field_type) {
@@ -131,6 +133,7 @@ static ALWAYS_INLINE void DoFieldGetCommon(Thread* self,
       LOG(FATAL) << "Unreachable " << field_type;
       break;
   }
+  return true;
 }
 
 template<Primitive::Type field_type, bool do_assignability_check, bool transaction_active>
@@ -138,7 +141,7 @@ ALWAYS_INLINE bool DoFieldPutCommon(Thread* self,
                                     const ShadowFrame& shadow_frame,
                                     ObjPtr<mirror::Object> obj,
                                     ArtField* field,
-                                    const JValue& value)
+                                    JValue& value)
     REQUIRES_SHARED(Locks::mutator_lock_) {
   field->GetDeclaringClass()->AssertInitializedOrInitializingInThread(self);
 
@@ -146,15 +149,22 @@ ALWAYS_INLINE bool DoFieldPutCommon(Thread* self,
   // the field from the base of the object, we need to look for it first.
   instrumentation::Instrumentation* instrumentation = Runtime::Current()->GetInstrumentation();
   if (UNLIKELY(instrumentation->HasFieldWriteListeners())) {
-    StackHandleScope<1> hs(self);
-    // Wrap in handle wrapper in case the listener does thread suspension.
+    StackHandleScope<2> hs(self);
+    // Save this and return value (if needed) in case the instrumentation causes a suspend.
     HandleWrapperObjPtr<mirror::Object> h(hs.NewHandleWrapper(&obj));
     ObjPtr<mirror::Object> this_object = field->IsStatic() ? nullptr : obj;
-    instrumentation->FieldWriteEvent(self, this_object.Ptr(),
+    mirror::Object* fake_root = nullptr;
+    HandleWrapper<mirror::Object> ret(hs.NewHandleWrapper<mirror::Object>(
+        field_type == Primitive::kPrimNot ? value.GetGCRoot() : &fake_root));
+    instrumentation->FieldWriteEvent(self,
+                                     this_object.Ptr(),
                                      shadow_frame.GetMethod(),
                                      shadow_frame.GetDexPC(),
                                      field,
                                      value);
+    if (UNLIKELY(self->IsExceptionPending())) {
+      return false;
+    }
   }
 
   switch (field_type) {

@@ -46,6 +46,7 @@ class PrepareForRegisterAllocation : public HGraphDelegateVisitor {
   void VisitArraySet(HArraySet* instruction) OVERRIDE;
   void VisitClinitCheck(HClinitCheck* check) OVERRIDE;
   void VisitCondition(HCondition* condition) OVERRIDE;
+  void VisitConstructorFence(HConstructorFence* constructor_fence) OVERRIDE;
   void VisitInvokeStaticOrDirect(HInvokeStaticOrDirect* invoke) OVERRIDE;
   void VisitDeoptimize(HDeoptimize* deoptimize) OVERRIDE;
 

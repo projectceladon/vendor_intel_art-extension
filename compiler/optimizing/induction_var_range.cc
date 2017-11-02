@@ -373,21 +373,23 @@ bool InductionVarRange::IsFinite(HLoopInformation* loop, /*out*/ int64_t* tc) co
 
 bool InductionVarRange::IsUnitStride(HInstruction* context,
                                      HInstruction* instruction,
+                                     HGraph* graph,
                                      /*out*/ HInstruction** offset) const {
   HLoopInformation* loop = nullptr;
   HInductionVarAnalysis::InductionInfo* info = nullptr;
   HInductionVarAnalysis::InductionInfo* trip = nullptr;
   if (HasInductionInfo(context, instruction, &loop, &info, &trip)) {
     if (info->induction_class == HInductionVarAnalysis::kLinear &&
-        info->op_b->operation == HInductionVarAnalysis::kFetch &&
         !HInductionVarAnalysis::IsNarrowingLinear(info)) {
       int64_t stride_value = 0;
       if (IsConstant(info->op_a, kExact, &stride_value) && stride_value == 1) {
         int64_t off_value = 0;
-        if (IsConstant(info->op_b, kExact, &off_value) && off_value == 0) {
-          *offset = nullptr;
-        } else {
+        if (IsConstant(info->op_b, kExact, &off_value)) {
+          *offset = graph->GetConstant(info->op_b->type, off_value);
+        } else if (info->op_b->operation == HInductionVarAnalysis::kFetch) {
           *offset = info->op_b->fetch;
+        } else {
+          return false;
         }
         return true;
       }
@@ -1132,11 +1134,27 @@ bool InductionVarRange::GenerateLastValuePeriodic(HInductionVarAnalysis::Inducti
                                                   /*out*/bool* needs_taken_test) const {
   DCHECK(info != nullptr);
   DCHECK_EQ(info->induction_class, HInductionVarAnalysis::kPeriodic);
-  // Count period.
+  // Count period and detect all-invariants.
   int64_t period = 1;
-  for (HInductionVarAnalysis::InductionInfo* p = info;
-       p->induction_class == HInductionVarAnalysis::kPeriodic;
-       p = p->op_b, ++period) {}
+  bool all_invariants = true;
+  HInductionVarAnalysis::InductionInfo* p = info;
+  for (; p->induction_class == HInductionVarAnalysis::kPeriodic; p = p->op_b, ++period) {
+    DCHECK_EQ(p->op_a->induction_class, HInductionVarAnalysis::kInvariant);
+    if (p->op_a->operation != HInductionVarAnalysis::kFetch) {
+      all_invariants = false;
+    }
+  }
+  DCHECK_EQ(p->induction_class, HInductionVarAnalysis::kInvariant);
+  if (p->operation != HInductionVarAnalysis::kFetch) {
+    all_invariants = false;
+  }
+  // Don't rely on FP arithmetic to be precise, unless the full period
+  // consist of pre-computed expressions only.
+  if (info->type == Primitive::kPrimFloat || info->type == Primitive::kPrimDouble) {
+    if (!all_invariants) {
+      return false;
+    }
+  }
   // Handle any periodic(x, periodic(.., y)) for known maximum index value m.
   int64_t m = 0;
   if (IsConstant(trip->op_a, kExact, &m) && m >= 1) {

@@ -57,31 +57,6 @@ static void GetLocalsCb(void* context, const DexFile::LocalInfo& entry) {
                     entry.reg_)));
 }
 
-static uint32_t GetCodeItemSize(const DexFile::CodeItem& disk_code_item) {
-  uintptr_t code_item_start = reinterpret_cast<uintptr_t>(&disk_code_item);
-  uint32_t insns_size = disk_code_item.insns_size_in_code_units_;
-  uint32_t tries_size = disk_code_item.tries_size_;
-  if (tries_size == 0) {
-    uintptr_t insns_end = reinterpret_cast<uintptr_t>(&disk_code_item.insns_[insns_size]);
-    return insns_end - code_item_start;
-  } else {
-    // Get the start of the handler data.
-    const uint8_t* handler_data = DexFile::GetCatchHandlerData(disk_code_item, 0);
-    uint32_t handlers_size = DecodeUnsignedLeb128(&handler_data);
-    // Manually read each handler.
-    for (uint32_t i = 0; i < handlers_size; ++i) {
-      int32_t uleb128_count = DecodeSignedLeb128(&handler_data) * 2;
-      if (uleb128_count <= 0) {
-        uleb128_count = -uleb128_count + 1;
-      }
-      for (int32_t j = 0; j < uleb128_count; ++j) {
-        DecodeUnsignedLeb128(&handler_data);
-      }
-    }
-    return reinterpret_cast<uintptr_t>(handler_data) - code_item_start;
-  }
-}
-
 static uint32_t GetDebugInfoStreamSize(const uint8_t* debug_info_stream) {
   const uint8_t* stream = debug_info_stream;
   DecodeUnsignedLeb128(&stream);  // line_start
@@ -461,8 +436,8 @@ AnnotationItem* Collections::CreateAnnotationItem(const DexFile::AnnotationItem*
   }
   uint8_t visibility = annotation->visibility_;
   const uint8_t* annotation_data = annotation->annotation_;
-  EncodedValue* encoded_value =
-      ReadEncodedValue(&annotation_data, DexFile::kDexAnnotationAnnotation, 0);
+  std::unique_ptr<EncodedValue> encoded_value(
+      ReadEncodedValue(&annotation_data, DexFile::kDexAnnotationAnnotation, 0));
   // TODO: Calculate the size of the annotation.
   AnnotationItem* annotation_item =
       new AnnotationItem(visibility, encoded_value->ReleaseEncodedAnnotation());
@@ -686,7 +661,7 @@ CodeItem* Collections::CreateCodeItem(const DexFile& dex_file,
     }
   }
 
-  uint32_t size = GetCodeItemSize(disk_code_item);
+  uint32_t size = DexFile::GetCodeItemSize(disk_code_item);
   CodeItem* code_item = new CodeItem(
       registers_size, ins_size, outs_size, debug_info, insns_size, insns, tries, handler_list);
   code_item->SetSize(size);
@@ -715,10 +690,10 @@ CodeItem* Collections::CreateCodeItem(const DexFile& dex_file,
 }
 
 MethodItem* Collections::GenerateMethodItem(const DexFile& dex_file, ClassDataItemIterator& cdii) {
-  MethodId* method_item = GetMethodId(cdii.GetMemberIndex());
+  MethodId* method_id = GetMethodId(cdii.GetMemberIndex());
   uint32_t access_flags = cdii.GetRawMemberAccessFlags();
   const DexFile::CodeItem* disk_code_item = cdii.GetMethodCodeItem();
-  CodeItem* code_item = code_items_.GetExistingObject(cdii.GetMethodCodeItemOffset());;
+  CodeItem* code_item = code_items_.GetExistingObject(cdii.GetMethodCodeItemOffset());
   DebugInfoItem* debug_info = nullptr;
   if (disk_code_item != nullptr) {
     if (code_item == nullptr) {
@@ -732,7 +707,7 @@ MethodItem* Collections::GenerateMethodItem(const DexFile& dex_file, ClassDataIt
         disk_code_item, is_static, cdii.GetMemberIndex(), GetLocalsCb, debug_info);
     dex_file.DecodeDebugPositionInfo(disk_code_item, GetPositionsCb, debug_info);
   }
-  return new MethodItem(access_flags, method_item, code_item);
+  return new MethodItem(access_flags, method_id, code_item);
 }
 
 ClassData* Collections::CreateClassData(
@@ -744,14 +719,14 @@ ClassData* Collections::CreateClassData(
     ClassDataItemIterator cdii(dex_file, encoded_data);
     // Static fields.
     FieldItemVector* static_fields = new FieldItemVector();
-    for (uint32_t i = 0; cdii.HasNextStaticField(); i++, cdii.Next()) {
+    for (; cdii.HasNextStaticField(); cdii.Next()) {
       FieldId* field_item = GetFieldId(cdii.GetMemberIndex());
       uint32_t access_flags = cdii.GetRawMemberAccessFlags();
       static_fields->push_back(std::unique_ptr<FieldItem>(new FieldItem(access_flags, field_item)));
     }
     // Instance fields.
     FieldItemVector* instance_fields = new FieldItemVector();
-    for (uint32_t i = 0; cdii.HasNextInstanceField(); i++, cdii.Next()) {
+    for (; cdii.HasNextInstanceField(); cdii.Next()) {
       FieldId* field_item = GetFieldId(cdii.GetMemberIndex());
       uint32_t access_flags = cdii.GetRawMemberAccessFlags();
       instance_fields->push_back(
@@ -759,15 +734,13 @@ ClassData* Collections::CreateClassData(
     }
     // Direct methods.
     MethodItemVector* direct_methods = new MethodItemVector();
-    for (uint32_t i = 0; cdii.HasNextDirectMethod(); i++, cdii.Next()) {
-      direct_methods->push_back(
-          std::unique_ptr<MethodItem>(GenerateMethodItem(dex_file, cdii)));
+    for (; cdii.HasNextDirectMethod(); cdii.Next()) {
+      direct_methods->push_back(std::unique_ptr<MethodItem>(GenerateMethodItem(dex_file, cdii)));
     }
     // Virtual methods.
     MethodItemVector* virtual_methods = new MethodItemVector();
-    for (uint32_t i = 0; cdii.HasNextVirtualMethod(); i++, cdii.Next()) {
-      virtual_methods->push_back(
-          std::unique_ptr<MethodItem>(GenerateMethodItem(dex_file, cdii)));
+    for (; cdii.HasNextVirtualMethod(); cdii.Next()) {
+      virtual_methods->push_back(std::unique_ptr<MethodItem>(GenerateMethodItem(dex_file, cdii)));
     }
     class_data = new ClassData(static_fields, instance_fields, direct_methods, virtual_methods);
     class_data->SetSize(cdii.EndDataPointer() - encoded_data);
@@ -820,8 +793,10 @@ void Collections::CreateMethodHandleItem(const DexFile& dex_file, uint32_t i) {
       static_cast<DexFile::MethodHandleType>(disk_method_handle.method_handle_type_);
   bool is_invoke = type == DexFile::MethodHandleType::kInvokeStatic ||
                    type == DexFile::MethodHandleType::kInvokeInstance ||
-                   type == DexFile::MethodHandleType::kInvokeConstructor;
-  static_assert(DexFile::MethodHandleType::kLast == DexFile::MethodHandleType::kInvokeConstructor,
+                   type == DexFile::MethodHandleType::kInvokeConstructor ||
+                   type == DexFile::MethodHandleType::kInvokeDirect ||
+                   type == DexFile::MethodHandleType::kInvokeInterface;
+  static_assert(DexFile::MethodHandleType::kLast == DexFile::MethodHandleType::kInvokeInterface,
                 "Unexpected method handle types.");
   IndexedItem* field_or_method_id;
   if (is_invoke) {

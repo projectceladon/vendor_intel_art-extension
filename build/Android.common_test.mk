@@ -17,7 +17,7 @@
 ifndef ART_ANDROID_COMMON_TEST_MK
 ART_ANDROID_COMMON_TEST_MK = true
 
-include $(VENDOR_ART_PATH)/build/Android.common_path.mk
+include art/build/Android.common_path.mk
 
 # Directory used for temporary test files on the host.
 ifneq ($(TMPDIR),)
@@ -212,7 +212,7 @@ define build-art-test-dex
     LOCAL_SRC_FILES := $(call all-java-files-under, $(2))
     LOCAL_NO_STANDARD_LIBRARIES := true
     LOCAL_DEX_PREOPT := false
-    LOCAL_ADDITIONAL_DEPENDENCIES := $(VENDOR_ART_PATH)/build/Android.common_test.mk $(4)
+    LOCAL_ADDITIONAL_DEPENDENCIES := art/build/Android.common_test.mk $(4)
     LOCAL_MODULE_TAGS := tests
     LOCAL_JAVA_LIBRARIES := $(TARGET_CORE_JARS)
     LOCAL_MODULE_PATH := $(3)
@@ -230,7 +230,7 @@ define build-art-test-dex
     LOCAL_SRC_FILES := $(call all-java-files-under, $(2))
     LOCAL_NO_STANDARD_LIBRARIES := true
     LOCAL_DEX_PREOPT := false
-    LOCAL_ADDITIONAL_DEPENDENCIES := $(VENDOR_ART_PATH)/build/Android.common_test.mk $(4)
+    LOCAL_ADDITIONAL_DEPENDENCIES := art/build/Android.common_test.mk $(4)
     LOCAL_JAVA_LIBRARIES := $(HOST_CORE_JARS)
     LOCAL_DEX_PREOPT_IMAGE := $(HOST_CORE_IMG_LOCATION)
     ifneq ($(wildcard $(LOCAL_PATH)/$(2)/main.list),)
