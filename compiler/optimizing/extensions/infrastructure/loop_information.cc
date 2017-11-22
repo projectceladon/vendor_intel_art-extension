@@ -934,7 +934,7 @@ static void AddExitPhisAfterPeel(const HGraph_X86* graph, const HLoopInformation
 
   //neeraj - resolve build errors (using HUseList in place of HUseIterator)
   const HUseList<HInstruction*>& uses = orig->GetUses();
-  for (auto use_it = uses.begin(), end2 = uses.end(); use_it != end2; ++use_it) {
+  for (auto use_it = uses.begin(), end2 = uses.end(); use_it != end2; ) {
       HInstruction* user = use_it->GetUser();
     // We do not want to add phi nodes for uses inside the loop.
     if (!loop->Contains(*(user->GetBlock()))) {
@@ -962,17 +962,16 @@ static void AddExitPhisAfterPeel(const HGraph_X86* graph, const HLoopInformation
           new_phi->AddInput(clone);
         }
 
-         //neeraj - resolve build error
-        //size_t input_index = use_it.Current()->GetIndex();
+	// ReplaceInput modifies use_it, so do it now.
         size_t input_index = use_it->GetIndex();
+	++use_it;
         user->ReplaceInput(new_phi, input_index);
       }
     }
   }
 
-  //neeraj - resolve build errors (using HUseList in place of HUseIterator)
   const HUseList<HEnvironment*>& uses1 = orig->GetEnvUses();
-  for (auto use_it = uses1.begin(), end2 = uses1.end(); use_it != end2; ++use_it) {
+  for (auto use_it = uses1.begin(), end2 = uses1.end(); use_it != end2; ) {
       HEnvironment* user = use_it->GetUser();
     // We do not want to add phi nodes for uses inside the loop.
     if (!loop->Contains(*(user->GetHolder()->GetBlock()))) {
@@ -984,9 +983,9 @@ static void AddExitPhisAfterPeel(const HGraph_X86* graph, const HLoopInformation
         new_phi->AddInput(clone);
       }
 
-      //neeraj - resolve build error
-      //size_t input_index = use_it.Current()->GetIndex();
+      // Increment `use_it` now because `*use_it` may disappear thanks to user->RemoveAsUserOfInput().
       size_t input_index = use_it->GetIndex();
+      use_it++;
 
       user->RemoveAsUserOfInput(input_index);
       user->SetRawEnvAt(input_index, new_phi);

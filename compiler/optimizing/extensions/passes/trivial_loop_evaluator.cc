@@ -648,19 +648,12 @@ void TrivialLoopEvaluator::UpdateRegisters(HLoopInformation_X86* loop,
     TLEVisitor::Value constant = value.second;
     HConstant* constant_node = nullptr;
 
-#if 0  //neeraj - resolve build errors
-     // Go through each of the instruction's users.
-     for (HUseIterator<HInstruction*> it(insn->GetUses()); !it.Done(); it.Advance()) {
-       HUseListNode<HInstruction*>* current = it.Current();
-       HInstruction* user = current->GetUser();
-       size_t input_index = current->GetIndex();
-#else
     // Go through each of the instruction's users.
     const HUseList<HInstruction*>& uses = insn->GetUses();
-    for (auto it = uses.begin(), end2 = uses.end(); it != end2; ++it) {
-        HInstruction* user = it->GetUser();
-        size_t input_index = it->GetIndex();
-#endif
+    for (auto it = uses.begin(), end2 = uses.end(); it != end2; ) {
+      HInstruction* user = it->GetUser();
+      size_t input_index = it->GetIndex();
+      it++;
       // We do not care about users in the loop (we will kill them anyway).
       if (loop->Contains(*user->GetBlock())) {
         continue;
@@ -670,23 +663,15 @@ void TrivialLoopEvaluator::UpdateRegisters(HLoopInformation_X86* loop,
         constant_node = visitor.GetConstant(graph_, insn, constant);
         CHECK(constant_node);
       }
-      user->SetRawInputAt(input_index, constant_node);
-      constant_node->AddUseAt(user, input_index);
+      user->ReplaceInput(constant_node, input_index);
     }
 
-#if 0  //neeraj - resolve build errors
-     // Go through each of the environment's users.
-     for (HUseIterator<HEnvironment*> it(insn->GetEnvUses()); !it.Done(); it.Advance()) {
-       HUseListNode<HEnvironment*>* current = it.Current();
-       HEnvironment* user = current->GetUser();
-       size_t input_index = current->GetIndex();
-#else
     // Go through each of the environment's users.
     const HUseList<HEnvironment*>& uses1 = insn->GetEnvUses();
-    for (auto it = uses1.begin(), end2 = uses1.end(); it != end2; ++it) {
-        HEnvironment* user = it->GetUser();
-        size_t input_index = it->GetIndex();
-#endif
+    for (auto it = uses1.begin(), end2 = uses1.end(); it != end2; ) {
+      HEnvironment* user = it->GetUser();
+      size_t input_index = it->GetIndex();
+      it++;
       // We do not care about users in the loop (we will kill then anyway).
       if (loop->Contains(*user->GetHolder()->GetBlock())) {
         continue;
