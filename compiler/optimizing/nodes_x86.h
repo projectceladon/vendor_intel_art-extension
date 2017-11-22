@@ -156,6 +156,9 @@ class HX86BoundsCheckMemory : public HExpression<2> {
   DISALLOW_COPY_AND_ASSIGN(HX86BoundsCheckMemory);
 };
 
+// neeraj - modified according to O-Master (with O, InputCount is being returned as size of array & hence
+// HInstructionRHSMemory should be derived from HVariableInputSizeInstruction instead of HTemplateInstruction<3>,
+// otherwise it leads to input corruption for user instruction)
 class HInstructionRHSMemory : public HVariableInputSizeInstruction {
  public:
 

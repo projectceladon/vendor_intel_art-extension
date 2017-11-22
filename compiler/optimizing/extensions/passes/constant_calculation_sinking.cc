@@ -919,7 +919,8 @@ void HConstantCalculationSinking::DoConstantSinking(const std::vector<Accumulato
       for (auto use_it = uses2.begin(), end2 = uses2.end(); use_it != end2;) {
         HEnvironment* user = use_it->GetUser();
         size_t input_index = use_it->GetIndex();
-	++use_it;
+        ++use_it;
+        user->RemoveAsUserOfInput(input_index);
         user->SetRawEnvAt(input_index, to_replace);
         constant->AddEnvUseAt(user, input_index);
       }
