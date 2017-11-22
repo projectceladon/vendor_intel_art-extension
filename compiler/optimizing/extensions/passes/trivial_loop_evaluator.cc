@@ -159,7 +159,10 @@ class TLEVisitor : public HGraphVisitor {
     return eq(x, y) ? 0 : (x > y ? 1 : -1);
   }
 
-  int32_t Compare(HInstruction* instr, HInstruction* left, HInstruction* right, bool is_gt_bias) {
+  int32_t Compare(HInstruction* instr,
+                  HInstruction* left,
+                  HInstruction* right,
+                  ComparisonBias bias) {
     DCHECK_EQ(right->GetType(), right->GetType());
 
     Value left_value = GetValue(left);
@@ -171,16 +174,18 @@ class TLEVisitor : public HGraphVisitor {
     SWITCH_FOR_TYPES(instr, left->GetType(),
       res = left_value.i == right_value.i ? 0 : (left_value.i > right_value.i ? 1 : -1),
       res = left_value.l == right_value.l ? 0 : (left_value.l > right_value.l ? 1 : -1),
-      res = (isnan(left_value.f) || isnan(right_value.f)) ? (is_gt_bias ? 1 : -1)
+      res = (isnan(left_value.f) || isnan(right_value.f))
+            ? (bias == ComparisonBias::kGtBias ? 1 : -1)
             : FpEqual(left_value.f, right_value.f) ? 0 : (left_value.f > right_value.f ? 1 : -1),
-      res = (isnan(left_value.d) || isnan(right_value.d)) ? (is_gt_bias ? 1 : -1)
+      res = (isnan(left_value.d) || isnan(right_value.d))
+            ? (bias == ComparisonBias::kGtBias ? 1 : -1)
             : (FpEqual(left_value.d, right_value.d) ? 0 : (left_value.d > right_value.d ? 1 : -1)));
     return res;
   }
 
   void VisitCompare(HCompare* instr) OVERRIDE {
     NOTHING_IF_ERROR;
-    int32_t res = Compare(instr, instr->GetLeft(), instr->GetRight(), instr->IsGtBias());
+    int32_t res = Compare(instr, instr->GetLeft(), instr->GetRight(), instr->GetBias());
     NOTHING_IF_ERROR;
     values_.Overwrite(instr, Value(res));
   }
@@ -188,32 +193,32 @@ class TLEVisitor : public HGraphVisitor {
   void VisitEqual(HEqual* instr) OVERRIDE {
     NOTHING_IF_ERROR;
     values_.Overwrite(instr,
-      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->IsGtBias()) == 0 ? 1 : 0));
+      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->GetBias()) == 0 ? 1 : 0));
   }
   void VisitNotEqual(HNotEqual* instr) OVERRIDE {
     NOTHING_IF_ERROR;
     values_.Overwrite(instr,
-      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->IsGtBias()) != 0 ? 1 : 0));
+      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->GetBias()) != 0 ? 1 : 0));
   }
   void VisitLessThan(HLessThan* instr) OVERRIDE {
     NOTHING_IF_ERROR;
     values_.Overwrite(instr,
-      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->IsGtBias()) < 0 ? 1 : 0));
+      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->GetBias()) < 0 ? 1 : 0));
   }
   void VisitLessThanOrEqual(HLessThanOrEqual* instr) OVERRIDE {
     NOTHING_IF_ERROR;
     values_.Overwrite(instr,
-      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->IsGtBias()) <= 0 ? 1 : 0));
+      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->GetBias()) <= 0 ? 1 : 0));
   }
   void VisitGreaterThan(HGreaterThan* instr) OVERRIDE {
     NOTHING_IF_ERROR;
     values_.Overwrite(instr,
-      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->IsGtBias()) > 0 ? 1 : 0));
+      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->GetBias()) > 0 ? 1 : 0));
   }
   void VisitGreaterThanOrEqual(HGreaterThanOrEqual* instr) OVERRIDE {
     NOTHING_IF_ERROR;
     values_.Overwrite(instr,
-      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->IsGtBias()) >= 0 ? 1 : 0));
+      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->GetBias()) >= 0 ? 1 : 0));
   }
 
   template <typename F> void VisitUnsignedComparision(HCondition* instr, F comparator) {
