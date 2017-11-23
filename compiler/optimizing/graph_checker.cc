@@ -338,7 +338,6 @@ void GraphChecker::VisitInstruction(HInstruction* instruction) {
 
   // Ensure the inputs of `instruction` are defined in a block of the graph.
   for (HInstruction* input : instruction->GetInputs()) {
-    if (input != nullptr) {
       if (input->GetBlock() == nullptr) {
         AddError(StringPrintf("Input %d of instruction %d is not in any "
                               "basic block of the control-flow graph.",
@@ -355,7 +354,6 @@ void GraphChecker::VisitInstruction(HInstruction* instruction) {
                                 instruction->GetId()));
         }
       }
-    }
   }
 
   // Ensure the uses of `instruction` are defined in a block of the graph,
@@ -401,10 +399,10 @@ void GraphChecker::VisitInstruction(HInstruction* instruction) {
   for (size_t i = 0; i < input_records.size(); ++i) {
     const HUserRecord<HInstruction*>& input_record = input_records[i];
     HInstruction* input = input_record.GetInstruction();
-    if ((input != nullptr) && ((input_record.GetBeforeUseNode() == input->GetUses().end()) ||
+    if ((input_record.GetBeforeUseNode() == input->GetUses().end()) ||
         (input_record.GetUseNode() == input->GetUses().end()) ||
         !input->GetUses().ContainsNode(*input_record.GetUseNode()) ||
-        (input_record.GetUseNode()->GetIndex() != i))) {
+        (input_record.GetUseNode()->GetIndex() != i)) {
       AddError(StringPrintf("Instruction %s:%d has an invalid iterator before use entry "
                             "at input %u (%s:%d).",
                             instruction->DebugName(),
@@ -576,7 +574,17 @@ void GraphChecker::HandleLoop(HBasicBlock* loop_header) {
         loop_information->GetPreHeader()->GetSuccessors().size()));
   }
 
-  /* FIXME: These checks were disabled because they trigger after Loop SuspendCheck removal"
+  /*
+   * Let's leave these two checks blocked because we have a phase
+   * 'remove_loop_suspend_checks' which may eliminate SuspendCheck
+   * instructions. It either doesn't make sense to check
+   * 'suppress_suspend_check_' flag in 'LoopInformation_X86' which
+   * indicates removal SuspendCheck by 'remove_loop_suspend_checks'.
+   * Because, if we completely rebuild 'LoopInformation' after
+   * 'dead_code_elimination' or 'loadhoist_storesink' that follow
+   * 'remove_loop_suspend_checks', then flag 'suppress_suspend_check_'
+   * is cleared.
+
   if (loop_information->GetSuspendCheck() == nullptr) {
     AddError(StringPrintf(
         "Loop with header %d does not have a suspend check.",

@@ -293,16 +293,16 @@ class MemoryOperandVisitor : public HGraphVisitor {
     HInstructionRHSMemory* result = nullptr;
     switch (bin_op->GetKind()) {
       case HInstruction::kAdd:
-        result = new (arena) HAddRHSMemory(bin_op->GetType(), lhs, base, index, data_offset);
+        result = new (arena) HAddRHSMemory(bin_op->GetType(), lhs, base, index, data_offset, arena);
         break;
       case HInstruction::kSub:
-        result = new (arena) HSubRHSMemory(bin_op->GetType(), lhs, base, index, data_offset);
+        result = new (arena) HSubRHSMemory(bin_op->GetType(), lhs, base, index, data_offset, arena);
         break;
       case HInstruction::kMul:
-        result = new (arena) HMulRHSMemory(bin_op->GetType(), lhs, base, index, data_offset);
+        result = new (arena) HMulRHSMemory(bin_op->GetType(), lhs, base, index, data_offset, arena);
         break;
       case HInstruction::kDiv:
-        result = new (arena) HDivRHSMemory(bin_op->GetType(), lhs, base, index, data_offset);
+        result = new (arena) HDivRHSMemory(bin_op->GetType(), lhs, base, index, data_offset, arena);
         break;
       default:
         LOG(FATAL) << "Unexpected type " << bin_op->GetType();

@@ -156,10 +156,8 @@ class HX86BoundsCheckMemory : public HExpression<2> {
   DISALLOW_COPY_AND_ASSIGN(HX86BoundsCheckMemory);
 };
 
-class HInstructionRHSMemory : public HTemplateInstruction<3> {
+class HInstructionRHSMemory : public HVariableInputSizeInstruction {
  public:
-  //neeraj - resolve build error
-  size_t InputCount() const { return input_count_; }
 
   DECLARE_INSTRUCTION(InstructionRHSMemory);
 
@@ -170,14 +168,13 @@ class HInstructionRHSMemory : public HTemplateInstruction<3> {
   bool CanDoImplicitNullCheckOn(HInstruction* obj) const OVERRIDE {
     // We can do an implicit check if we don't have an index and the offset is small.
     return obj == InputAt(1) && from_static_ == false &&
-           offset_ < kPageSize && input_count_ == 2;
+           offset_ < kPageSize && InputCount() == 2;
   }
 
   void SetFromStatic() { from_static_ = true; }
 
   virtual size_t GetBaseInputIndex() const { return 1; }
 
-  //neeraj - resolve build error
   bool InstructionDataEquals(const HInstruction* other) const OVERRIDE {
     return GetOffset() == other->AsInstructionRHSMemory()->GetOffset()
            && from_static_ == other->AsInstructionRHSMemory()->from_static_;
@@ -193,12 +190,12 @@ class HInstructionRHSMemory : public HTemplateInstruction<3> {
                         HInstruction* base,
                         HInstruction* index,
                         size_t offset,
+                        ArenaAllocator* arena,
                         uint32_t dex_pc = kNoDexPc)
-    : HTemplateInstruction<3>(SideEffects::FieldReadOfType(type, false), dex_pc),
+    : HVariableInputSizeInstruction(SideEffects::FieldReadOfType(type, false), dex_pc, arena, (index == nullptr) ? 2 : 3, kArenaAllocMisc),
       type_(type),
       from_static_(false),
-      offset_(offset),
-      input_count_(index == nullptr ? 2 : 3) {
+      offset_(offset) {
       if (index != nullptr) {
         SetRawInputAt(2, index);
       }
@@ -210,7 +207,6 @@ class HInstructionRHSMemory : public HTemplateInstruction<3> {
   const Primitive::Type type_;
   bool from_static_;
   const size_t offset_;
-  uint32_t input_count_;
 
   DISALLOW_COPY_AND_ASSIGN(HInstructionRHSMemory);
 };
@@ -221,8 +217,9 @@ class HAddRHSMemory : public HInstructionRHSMemory {
                 HInstruction* lhs,
                 HInstruction* base,
                 HInstruction* index,
-                size_t offset)
-      : HInstructionRHSMemory(type, lhs, base, index, offset) {}
+                size_t offset,
+                ArenaAllocator* arena)
+      : HInstructionRHSMemory(type, lhs, base, index, offset, arena) {}
 
   DECLARE_INSTRUCTION(AddRHSMemory);
 
@@ -236,8 +233,9 @@ class HSubRHSMemory : public HInstructionRHSMemory {
                 HInstruction* lhs,
                 HInstruction* base,
                 HInstruction* index,
-                size_t offset)
-      : HInstructionRHSMemory(type, lhs, base, index, offset) {}
+                size_t offset,
+                ArenaAllocator* arena)
+      : HInstructionRHSMemory(type, lhs, base, index, offset, arena) {}
 
   DECLARE_INSTRUCTION(SubRHSMemory);
 
@@ -251,8 +249,9 @@ class HMulRHSMemory : public HInstructionRHSMemory {
                 HInstruction* lhs,
                 HInstruction* base,
                 HInstruction* index,
-                size_t offset)
-      : HInstructionRHSMemory(type, lhs, base, index, offset) {}
+                size_t offset,
+                ArenaAllocator* arena)
+      : HInstructionRHSMemory(type, lhs, base, index, offset, arena) {}
 
   DECLARE_INSTRUCTION(MulRHSMemory);
 
@@ -266,8 +265,9 @@ class HDivRHSMemory : public HInstructionRHSMemory {
                 HInstruction* lhs,
                 HInstruction* base,
                 HInstruction* index,
-                size_t offset)
-      : HInstructionRHSMemory(type, lhs, base, index, offset) {}
+                size_t offset,
+                ArenaAllocator* arena)
+      : HInstructionRHSMemory(type, lhs, base, index, offset, arena) {}
 
   DECLARE_INSTRUCTION(DivRHSMemory);
 
