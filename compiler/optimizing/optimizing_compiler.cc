@@ -813,7 +813,7 @@ void OptimizingCompiler::RunOptimizations(HGraph* graph,
   InstructionSimplifier* simplify2 = new (arena) InstructionSimplifier(
       graph, codegen, driver, stats, "instruction_simplifier$after_inlining");
   InstructionSimplifier* simplify3 = new (arena) InstructionSimplifier(
-      graph, codegen, driver, stats, "instruction_simplifier_after_bce");
+      graph, codegen, driver, stats, "instruction_simplifier$after_bce");
   InstructionSimplifier* simplify4 = new (arena) InstructionSimplifier(
       graph, codegen, driver, stats, "instruction_simplifier$before_codegen");
   IntrinsicsRecognizer* intrinsics = new (arena) IntrinsicsRecognizer(graph, stats);
