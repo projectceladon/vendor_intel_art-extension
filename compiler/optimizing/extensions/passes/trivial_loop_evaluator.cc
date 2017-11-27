@@ -380,18 +380,18 @@ class TLEVisitor : public HGraphVisitor {
         Value(FpRem(left_value.d, right_value.d, [] (double x, double y) -> double { return std::fmod(x, y); }))));
   }
 
-  int32_t ComputeShiftCount(HInstruction* instr) {
-    int32_t shift_count = 0;
-    Primitive::Type type = instr->GetType();
-    if (type == Primitive::kPrimInt) {
-      shift_count = GetValue(instr).i & kMaxIntShiftDistance;
-    } else if (type == Primitive::kPrimLong) {
-      shift_count = GetValue(instr).i & kMaxLongShiftDistance;
-    } else {
-      SetError(instr);
-    }
-    return shift_count;
-  }
+  int32_t ComputeShiftCount(HBinaryOperation* shift_instr) {
+     int32_t shift_count = 0;
+    Primitive::Type type = shift_instr->GetLeft()->GetType();
+     if (type == Primitive::kPrimInt) {
+      shift_count = GetValue(shift_instr->GetRight()).i & kMaxIntShiftDistance;
+     } else if (type == Primitive::kPrimLong) {
+      shift_count = GetValue(shift_instr->GetRight()).l & kMaxLongShiftDistance;
+     } else {
+      SetError(shift_instr);
+     }
+     return shift_count;
+   }
 
   void VisitShl(HShl* instr) OVERRIDE {
     NOTHING_IF_ERROR;
@@ -399,7 +399,7 @@ class TLEVisitor : public HGraphVisitor {
     Value left_value = GetValue(instr->GetLeft());
     NOTHING_IF_ERROR;
 
-    int32_t shift_count = ComputeShiftCount(instr->GetRight());
+    int32_t shift_count = ComputeShiftCount(instr);
     NOTHING_IF_ERROR;
     SWITCH_FOR_TYPES(instr, instr->GetLeft()->GetType(),
       values_.Overwrite(instr, Value(left_value.i << shift_count)),
@@ -414,7 +414,7 @@ class TLEVisitor : public HGraphVisitor {
     Value left_value = GetValue(instr->GetLeft());
     NOTHING_IF_ERROR;
 
-    int32_t shift_count = ComputeShiftCount(instr->GetRight());
+    int32_t shift_count = ComputeShiftCount(instr);
     NOTHING_IF_ERROR;
 
     SWITCH_FOR_TYPES(instr, instr->GetLeft()->GetType(),
@@ -430,7 +430,7 @@ class TLEVisitor : public HGraphVisitor {
     Value left_value = GetValue(instr->GetLeft());
     NOTHING_IF_ERROR;
 
-    int32_t shift_count = ComputeShiftCount(instr->GetRight());
+    int32_t shift_count = ComputeShiftCount(instr);
     NOTHING_IF_ERROR;
 
     SWITCH_FOR_TYPES(instr, instr->GetLeft()->GetType(),
