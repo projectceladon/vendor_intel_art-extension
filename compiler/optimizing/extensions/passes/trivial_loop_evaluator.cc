@@ -624,9 +624,9 @@ bool TrivialLoopEvaluator::EvaluateLoop(HLoopInformation_X86* loop, TLEVisitor& 
     HBasicBlock* bb = visitor.GetNextBasicBlock();
 
     // For iteration count checker.
-    if (bb == header) {
+    if (current_block == header) {
       current_iter++;
-      CHECK_LE(current_iter, loop_iterations);
+      DCHECK_LE(current_iter, loop_iterations);
     }
 
     // Set predecessor index to handle Phi nodes in the next bb.
