@@ -61,7 +61,6 @@ void RunOptimizationsX86(HGraph* graph,
 
 class RunOptWithPassScope {
  public:
-
   RunOptWithPassScope(HOptimization* opt, PassObserver* pass_observer)
       : opt_(opt),
         pass_observer_(pass_observer) { }

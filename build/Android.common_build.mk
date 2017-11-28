@@ -17,7 +17,7 @@
 ifndef ART_ANDROID_COMMON_BUILD_MK
 ART_ANDROID_COMMON_BUILD_MK = true
 
-include $(VENDOR_ART_PATH)/build/Android.common.mk
+include art/build/Android.common.mk
 
 # These can be overridden via the environment or by editing to
 # enable/disable certain build configuration.
@@ -52,6 +52,10 @@ ART_USE_READ_BARRIER ?= true
 ART_CPP_EXTENSION := .cc
 
 ART_USE_TLAB := true
+
+ifneq (,$(findstring sofia,$(TARGET_BOARD_PLATFORM)))
+  art_cflags += -DSOFIA
+endif
 
 ifndef LIBART_IMG_HOST_BASE_ADDRESS
   $(error LIBART_IMG_HOST_BASE_ADDRESS unset)

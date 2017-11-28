@@ -15,11 +15,11 @@
 
 LOCAL_PATH := $(call my-dir)
 
-include $(VENDOR_ART_PATH)/build/Android.common_test.mk
+include art/build/Android.common_test.mk
 
 # Dependencies for actually running a run-test.
 TEST_ART_RUN_TEST_DEPENDENCIES := \
-  $(DX) \
+  $(HOST_OUT_EXECUTABLES)/dx \
   $(HOST_OUT_EXECUTABLES)/jasmin \
   $(HOST_OUT_EXECUTABLES)/smali \
   $(HOST_OUT_EXECUTABLES)/dexmerger \
@@ -188,7 +188,7 @@ define define-test-art-host-or-target-run-test-group
 
   $$(build_target) : args := --$(1) --verbose
   $$(build_target) : test-art-$(1)-run-test-dependencies
-	./$(VENDOR_ART_PATH)/test/testrunner/testrunner.py $$(args)
+	./art/test/testrunner/testrunner.py $$(args)
   build_target :=
   args :=
 endef  # define-test-art-host-or-target-run-test-group

@@ -21,7 +21,7 @@
 # The main rules to build the default "boot" image are in
 # build/core/dex_preopt_libart.mk
 
-include $(VENDOR_ART_PATH)/build/Android.common_build.mk
+include art/build/Android.common_build.mk
 
 LOCAL_DEX2OAT_HOST_INSTRUCTION_SET_FEATURES_OPTION :=
 ifeq ($(DEX2OAT_HOST_INSTRUCTION_SET_FEATURES),)

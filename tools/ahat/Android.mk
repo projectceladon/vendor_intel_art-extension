@@ -16,7 +16,7 @@
 
 LOCAL_PATH := $(call my-dir)
 
-include $(VENDOR_ART_PATH)/build/Android.common_path.mk
+include art/build/Android.common_path.mk
 
 # --- ahat.jar ----------------
 include $(CLEAR_VARS)

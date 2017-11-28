@@ -509,9 +509,18 @@ void HInstructionCloner::VisitLessThanOrEqual(HLessThanOrEqual* instr) {
 void HInstructionCloner::VisitLoadClass(HLoadClass* instr) {
   if (cloning_enabled_) {
     HInstruction* input;
-    GetInputsForUnary(instr, &input);
+    // neeraj - modifying as per O-Master (HLoadClass inherits HInstruction with O-Master so input count can be zero)
+    if (instr->InputCount() == 0) {
+      input = nullptr;
+    }
+    else {
+      GetInputsForUnary(instr, &input);
+    }
+
+    if (input != nullptr)
+      DCHECK(input->IsCurrentMethod());
     HLoadClass* clone =
-        new (arena_) HLoadClass(static_cast<HCurrentMethod*>(input),
+        new (arena_) HLoadClass((input != nullptr)? static_cast<HCurrentMethod*>(input) : nullptr,
                                 instr->GetTypeIndex(),
                                 instr->GetDexFile(),
                                 instr->GetClass(),

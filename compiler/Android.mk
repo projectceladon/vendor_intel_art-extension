@@ -149,7 +149,7 @@ LIBART_COMPILER_SRC_FILES_x86_64 := \
 	utils/x86_64/managed_register_x86_64.cc \
 
 
-LIBART_COMPILER_CFLAGS :=
+LIBART_COMPILER_CFLAGS := -fomit-frame-pointer
 
 ifneq (,$(findstring sofia,$(TARGET_BOARD_PLATFORM)))
   # Mark this as a build for a SoFIA system.

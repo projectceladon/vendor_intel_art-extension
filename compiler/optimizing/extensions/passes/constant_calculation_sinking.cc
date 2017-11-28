@@ -21,7 +21,6 @@
 #include "loop_iterators.h"
 #include "ssa_phi_elimination.h"
 #include <cmath>
-
 namespace art {
 
 /*
@@ -34,15 +33,10 @@ void HConstantCalculationSinking::DeletePhiAndUsers(HPhi* phi) const {
   std::vector<HInstruction*> to_remove;
 
   // Add all phi users to list.
-#if 0  //neeraj - resolve build errors
-   for (HUseIterator<HInstruction*> use_it(phi->GetUses()); !use_it.Done(); use_it.Advance()) {
-     HUseListNode<HInstruction*>* user_node = use_it.Current();
-     HInstruction* user = user_node->GetUser();
-#else
+  // neeraj - Replace HUseIterator with HUseList iterator
   const HUseList<HInstruction*>& uses = phi->GetUses();
   for (auto use_it = uses.begin(), end2 = uses.end(); use_it != end2; ++use_it) {
-      HInstruction* user = use_it->GetUser();
-#endif
+    HInstruction* user = use_it->GetUser();
     if (phi != user) {
       to_remove.push_back(user);
     }
@@ -55,8 +49,9 @@ void HConstantCalculationSinking::DeletePhiAndUsers(HPhi* phi) const {
 
   // Remove all phi users.
   std::vector<HInstruction*>::const_iterator it;
-  for (it = to_remove.begin(); it != to_remove.end(); it++) {
+  for (it = to_remove.begin(); it != to_remove.end(); ) {
     HInstruction* insn = *it;
+    it++;
     HBasicBlock* block = insn->GetBlock();
     DCHECK(insn != nullptr);
     RemoveAsUser(insn);
@@ -74,15 +69,9 @@ void HConstantCalculationSinking::DeletePhiAndUsers(HPhi* phi) const {
  */
 bool HConstantCalculationSinking::HasNoDependenciesWithinLoop(HInstruction* candidate,
          HLoopInformation_X86* loop_info, HInstruction* phi) const {
-#if 0  //neeraj - resolve build error
-   for (HUseIterator<HInstruction*> it(candidate->GetUses()); !it.Done(); it.Advance()) {
-     HUseListNode<HInstruction*>* current = it.Current();
-     HInstruction* user = current->GetUser();
-#else
   const HUseList<HInstruction*>& uses = candidate->GetUses();
   for (auto it = uses.begin(), end2 = uses.end(); it != end2; ++it) {
       HInstruction* user = it->GetUser();
-#endif
     if (user != phi && loop_info->Contains(*user->GetBlock())) {
       return false;
     }
@@ -126,17 +115,9 @@ void HConstantCalculationSinking::FillAccumulator(HLoopInformation_X86* loop_inf
     // Check phi has only one user in loop and save the user found.
     uint32_t phi_users_in_loop = 0;
     bool phi_has_outside_loop_uses = false;
-#if 0  //neeraj - resolve build error
-     for (HUseIterator<HInstruction*> use_it(phi->GetUses());
-          !use_it.Done() && (phi_users_in_loop < 2);
-          use_it.Advance()) {
-       HUseListNode<HInstruction*>* current = use_it.Current();
-       HInstruction* user = current->GetUser();
-#else
-  const HUseList<HInstruction*>& uses = phi->GetUses();
-  for (auto use_it = uses.begin(), end2 = uses.end(); (use_it != end2) && (phi_users_in_loop < 2); ++use_it) {
+    const HUseList<HInstruction*>& uses = phi->GetUses();
+    for (auto use_it = uses.begin(), end2 = uses.end(); (use_it != end2) && (phi_users_in_loop < 2); ++use_it) {
       HInstruction* user = use_it->GetUser();
-#endif
 
       if (!loop_info->Contains(*(user->GetBlock()))) {
         phi_has_outside_loop_uses = true;
@@ -911,45 +892,35 @@ void HConstantCalculationSinking::DoConstantSinking(const std::vector<Accumulato
       }
 
       // Replace calculation result with constant or new instruction.
-#if 0  //neeraj - resolve build errors
-       for (HUseIterator<HInstruction*> use_it(phi->GetUses()); !use_it.Done(); use_it.Advance()) {
-         HInstruction* user = use_it.Current()->GetUser();
-#else
+      //neeraj - Replace HUseIterator with HUseList Iterator 
       const HUseList<HInstruction*>& uses = phi->GetUses();
-      for (auto use_it = uses.begin(), end2 = uses.end(); use_it != end2; ++use_it) {
-          HInstruction* user = use_it->GetUser();
-#endif
+      for (auto use_it = uses.begin(), end2 = uses.end(); use_it != end2; /*++use_it below*/) {
+        HInstruction* user = use_it->GetUser();
+        size_t index = use_it->GetIndex();
+        ++use_it;
+       
         if (!loop_info->ExecutedPerIteration(user)) {
-          user->ReplaceInput(to_replace, use_it->GetIndex());
+          user->ReplaceInput(to_replace, index);
         }
       }
 
-#if 0  //neeraj - resolve build errors
-       for (HUseIterator<HInstruction*> use_it(inst->GetUses()); !use_it.Done(); use_it.Advance()) {
-         HInstruction* user = use_it.Current()->GetUser();
-#else
       const HUseList<HInstruction*>& uses1 = inst->GetUses();
-      for (auto use_it = uses1.begin(), end2 = uses1.end(); use_it != end2; ++use_it) {
-          HInstruction* user = use_it->GetUser();
-#endif
+      for (auto use_it = uses1.begin(), end2 = uses1.end(); use_it != end2; /*++use_it below */) {
+        HInstruction* user = use_it->GetUser();
+        size_t index = use_it->GetIndex();
+        ++use_it;
         if (!loop_info->ExecutedPerIteration(user)) {
-          user->ReplaceInput(to_replace, use_it->GetIndex());
+          user->ReplaceInput(to_replace, index);
         }
       }
 
-#if 0  //neeraj - resolve build errors
-       // Update environment.
-       for (HUseIterator<HEnvironment*> use_it(phi->GetEnvUses()); !use_it.Done(); use_it.Advance()) {
-         HUseListNode<HEnvironment*>* current = use_it.Current();
-         HEnvironment* user = current->GetUser();
-         size_t input_index = current->GetIndex();
-#else
       // Update environment.
       const HUseList<HEnvironment*>& uses2 = phi->GetEnvUses();
-      for (auto use_it = uses2.begin(), end2 = uses2.end(); use_it != end2; ++use_it) {
+      for (auto use_it = uses2.begin(), end2 = uses2.end(); use_it != end2;) {
         HEnvironment* user = use_it->GetUser();
         size_t input_index = use_it->GetIndex();
-#endif
+        ++use_it;
+        user->RemoveAsUserOfInput(input_index);
         user->SetRawEnvAt(input_index, to_replace);
         constant->AddEnvUseAt(user, input_index);
       }

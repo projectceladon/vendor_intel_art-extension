@@ -934,7 +934,7 @@ static void AddExitPhisAfterPeel(const HGraph_X86* graph, const HLoopInformation
 
   //neeraj - resolve build errors (using HUseList in place of HUseIterator)
   const HUseList<HInstruction*>& uses = orig->GetUses();
-  for (auto use_it = uses.begin(), end2 = uses.end(); use_it != end2; ++use_it) {
+  for (auto use_it = uses.begin(), end2 = uses.end(); use_it != end2; ) {
       HInstruction* user = use_it->GetUser();
     // We do not want to add phi nodes for uses inside the loop.
     if (!loop->Contains(*(user->GetBlock()))) {
@@ -962,17 +962,16 @@ static void AddExitPhisAfterPeel(const HGraph_X86* graph, const HLoopInformation
           new_phi->AddInput(clone);
         }
 
-         //neeraj - resolve build error
-        //size_t input_index = use_it.Current()->GetIndex();
+	// ReplaceInput modifies use_it, so do it now.
         size_t input_index = use_it->GetIndex();
+	++use_it;
         user->ReplaceInput(new_phi, input_index);
       }
     }
   }
 
-  //neeraj - resolve build errors (using HUseList in place of HUseIterator)
   const HUseList<HEnvironment*>& uses1 = orig->GetEnvUses();
-  for (auto use_it = uses1.begin(), end2 = uses1.end(); use_it != end2; ++use_it) {
+  for (auto use_it = uses1.begin(), end2 = uses1.end(); use_it != end2; ) {
       HEnvironment* user = use_it->GetUser();
     // We do not want to add phi nodes for uses inside the loop.
     if (!loop->Contains(*(user->GetHolder()->GetBlock()))) {
@@ -984,9 +983,9 @@ static void AddExitPhisAfterPeel(const HGraph_X86* graph, const HLoopInformation
         new_phi->AddInput(clone);
       }
 
-      //neeraj - resolve build error
-      //size_t input_index = use_it.Current()->GetIndex();
+      // Increment `use_it` now because `*use_it` may disappear thanks to user->RemoveAsUserOfInput().
       size_t input_index = use_it->GetIndex();
+      use_it++;
 
       user->RemoveAsUserOfInput(input_index);
       user->SetRawEnvAt(input_index, new_phi);
@@ -1008,7 +1007,7 @@ static void FixLoopPhis(const HBasicBlock* header, const HInstructionCloner& clo
   std::map<HPhi*, std::vector<HPhi*>> replacement;
   for (HInstructionIterator it(header->GetPhis()); !it.Done(); it.Advance()) {
     HInstruction* phi = it.Current();
-    DCHECK (phi->IsLoopHeaderPhi());
+    DCHECK(phi->IsLoopHeaderPhi());
     DCHECK_EQ(phi->InputCount(), 2u);
     HInstruction* loop_input = phi->InputAt(1);
 
@@ -1101,7 +1100,6 @@ static void AddClonedInstructions(const HGraph_X86* graph,
 /**
  * @brief Used to clone instruction from main loop to use for peel.
  * @details Suspend checks and loop phis are treated specially.
- * @param graph The graph that contains loop being peeled.
  * @param loop The loop being peeled.
  * @param cloner The instance of instruction cloner.
  */

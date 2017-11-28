@@ -34,15 +34,16 @@
 
 #include "android-base/stringprintf.h"
 
+#include "arch/context-inl.h"
 #include "arch/context.h"
 #include "art_field-inl.h"
 #include "art_method-inl.h"
 #include "base/bit_utils.h"
 #include "base/memory_tool.h"
 #include "base/mutex.h"
+#include "base/systrace.h"
 #include "base/timing_logger.h"
 #include "base/to_str.h"
-#include "base/systrace.h"
 #include "class_linker-inl.h"
 #include "debugger.h"
 #include "dex_file-inl.h"
@@ -54,38 +55,41 @@
 #include "gc/allocator/rosalloc.h"
 #include "gc/heap.h"
 #include "gc/space/space-inl.h"
+#include "gc_root.h"
 #include "handle_scope-inl.h"
 #include "indirect_reference_table-inl.h"
+#include "interpreter/interpreter.h"
+#include "interpreter/shadow_frame.h"
+#include "java_frame_root_info.h"
 #include "java_vm_ext.h"
 #include "jni_internal.h"
-#include "mirror/class_loader.h"
 #include "mirror/class-inl.h"
+#include "mirror/class_loader.h"
 #include "mirror/object_array-inl.h"
 #include "mirror/stack_trace_element.h"
 #include "monitor.h"
 #include "native_stack_dump.h"
+#include "nativehelper/ScopedLocalRef.h"
+#include "nativehelper/ScopedUtfChars.h"
 #include "nth_caller_visitor.h"
 #include "oat_quick_method_header.h"
 #include "obj_ptr-inl.h"
 #include "object_lock.h"
-#include "quick_exception_handler.h"
 #include "quick/quick_method_frame_info.h"
+#include "quick_exception_handler.h"
 #include "read_barrier-inl.h"
 #include "reflection.h"
 #include "runtime.h"
 #include "runtime_callbacks.h"
 #include "scoped_thread_state_change-inl.h"
-#include "ScopedLocalRef.h"
-#include "ScopedUtfChars.h"
 #include "stack.h"
 #include "stack_map.h"
-#include "thread_list.h"
 #include "thread-inl.h"
+#include "thread_list.h"
 #include "utils.h"
 #include "verifier/method_verifier.h"
 #include "verify_object.h"
 #include "well_known_classes.h"
-#include "interpreter/interpreter.h"
 
 #if ART_USE_FUTEXES
 #include "linux/futex.h"
@@ -128,12 +132,12 @@ static void UnimplementedEntryPoint() {
 }
 
 void InitEntryPoints(JniEntryPoints* jpoints, QuickEntryPoints* qpoints);
-void UpdateReadBarrierEntrypoints(QuickEntryPoints* qpoints, bool is_marking);
+void UpdateReadBarrierEntrypoints(QuickEntryPoints* qpoints, bool is_active);
 
 void Thread::SetIsGcMarkingAndUpdateEntrypoints(bool is_marking) {
   CHECK(kUseReadBarrier);
   tls32_.is_gc_marking = is_marking;
-  UpdateReadBarrierEntrypoints(&tlsPtr_.quick_entrypoints, is_marking);
+  UpdateReadBarrierEntrypoints(&tlsPtr_.quick_entrypoints, /* is_active */ is_marking);
   ResetQuickAllocEntryPointsForThread(is_marking);
 }
 
@@ -572,7 +576,14 @@ void Thread::InstallImplicitProtection() {
       // Use a large local volatile array to ensure a large frame size. Do not use anything close
       // to a full page for ASAN. It would be nice to ensure the frame size is at most a page, but
       // there is no pragma support for this.
-      volatile char space[kPageSize - 256];
+      // Note: for ASAN we need to shrink the array a bit, as there's other overhead.
+      constexpr size_t kAsanMultiplier =
+#ifdef ADDRESS_SANITIZER
+          2u;
+#else
+          1u;
+#endif
+      volatile char space[kPageSize - (kAsanMultiplier * 256)];
       char sink ATTRIBUTE_UNUSED = space[zero];
       if (reinterpret_cast<uintptr_t>(space) >= target + kPageSize) {
         Touch(target);
@@ -1190,14 +1201,23 @@ static void UnsafeLogFatalForSuspendCount(Thread* self, Thread* thread) NO_THREA
 bool Thread::ModifySuspendCountInternal(Thread* self,
                                         int delta,
                                         AtomicInteger* suspend_barrier,
-                                        bool for_debugger) {
+                                        SuspendReason reason) {
   if (kIsDebugBuild) {
     DCHECK(delta == -1 || delta == +1 || delta == -tls32_.debug_suspend_count)
-          << delta << " " << tls32_.debug_suspend_count << " " << this;
+          << reason << " " << delta << " " << tls32_.debug_suspend_count << " " << this;
     DCHECK_GE(tls32_.suspend_count, tls32_.debug_suspend_count) << this;
     Locks::thread_suspend_count_lock_->AssertHeld(self);
     if (this != self && !IsSuspended()) {
       Locks::thread_list_lock_->AssertHeld(self);
+    }
+  }
+  // User code suspensions need to be checked more closely since they originate from code outside of
+  // the runtime's control.
+  if (UNLIKELY(reason == SuspendReason::kForUserCode)) {
+    Locks::user_code_suspension_lock_->AssertHeld(self);
+    if (UNLIKELY(delta + tls32_.user_code_suspend_count < 0)) {
+      LOG(ERROR) << "attempting to modify suspend count in an illegal way.";
+      return false;
     }
   }
   if (UNLIKELY(delta < 0 && tls32_.suspend_count <= 0)) {
@@ -1229,8 +1249,15 @@ bool Thread::ModifySuspendCountInternal(Thread* self,
   }
 
   tls32_.suspend_count += delta;
-  if (for_debugger) {
-    tls32_.debug_suspend_count += delta;
+  switch (reason) {
+    case SuspendReason::kForDebugger:
+      tls32_.debug_suspend_count += delta;
+      break;
+    case SuspendReason::kForUserCode:
+      tls32_.user_code_suspend_count += delta;
+      break;
+    case SuspendReason::kInternal:
+      break;
   }
 
   if (tls32_.suspend_count == 0) {
@@ -1414,15 +1441,35 @@ class BarrierClosure : public Closure {
   Barrier barrier_;
 };
 
-void Thread::RequestSynchronousCheckpoint(Closure* function) {
+bool Thread::RequestSynchronousCheckpoint(Closure* function) {
   if (this == Thread::Current()) {
     // Asked to run on this thread. Just run.
     function->Run(this);
-    return;
+    return true;
   }
   Thread* self = Thread::Current();
 
   // The current thread is not this thread.
+
+  if (GetState() == ThreadState::kTerminated) {
+    return false;
+  }
+
+  // Note: we're holding the thread-list lock. The thread cannot die at this point.
+  struct ScopedThreadListLockUnlock {
+    explicit ScopedThreadListLockUnlock(Thread* self_in) RELEASE(*Locks::thread_list_lock_)
+        : self_thread(self_in) {
+      Locks::thread_list_lock_->AssertHeld(self_thread);
+      Locks::thread_list_lock_->Unlock(self_thread);
+    }
+
+    ~ScopedThreadListLockUnlock() ACQUIRE(*Locks::thread_list_lock_) {
+      Locks::thread_list_lock_->AssertNotHeld(self_thread);
+      Locks::thread_list_lock_->Lock(self_thread);
+    }
+
+    Thread* self_thread;
+  };
 
   for (;;) {
     // If this thread is runnable, try to schedule a checkpoint. Do some gymnastics to not hold the
@@ -1435,8 +1482,11 @@ void Thread::RequestSynchronousCheckpoint(Closure* function) {
         installed = RequestCheckpoint(&barrier_closure);
       }
       if (installed) {
+        // Relinquish the thread-list lock, temporarily. We should not wait holding any locks.
+        ScopedThreadListLockUnlock stllu(self);
+        ScopedThreadSuspension sts(self, ThreadState::kWaiting);
         barrier_closure.Wait(self);
-        return;
+        return true;
       }
       // Fall-through.
     }
@@ -1445,34 +1495,45 @@ void Thread::RequestSynchronousCheckpoint(Closure* function) {
     // Note: ModifySuspendCountInternal also expects the thread_list_lock to be held in
     //       certain situations.
     {
-      MutexLock mu(self, *Locks::thread_list_lock_);
       MutexLock mu2(self, *Locks::thread_suspend_count_lock_);
 
-      if (!ModifySuspendCount(self, +1, nullptr, false)) {
+      if (!ModifySuspendCount(self, +1, nullptr, SuspendReason::kInternal)) {
         // Just retry the loop.
         sched_yield();
         continue;
       }
     }
 
-    while (GetState() == ThreadState::kRunnable) {
-      // We became runnable again. Wait till the suspend triggered in ModifySuspendCount
-      // moves us to suspended.
-      sched_yield();
+    {
+      ScopedThreadListLockUnlock stllu(self);
+      {
+        ScopedThreadSuspension sts(self, ThreadState::kWaiting);
+        while (GetState() == ThreadState::kRunnable) {
+          // We became runnable again. Wait till the suspend triggered in ModifySuspendCount
+          // moves us to suspended.
+          sched_yield();
+        }
+      }
+
+      function->Run(this);
     }
 
-    function->Run(this);
-
     {
-      MutexLock mu(self, *Locks::thread_list_lock_);
       MutexLock mu2(self, *Locks::thread_suspend_count_lock_);
 
       DCHECK_NE(GetState(), ThreadState::kRunnable);
-      bool updated = ModifySuspendCount(self, -1, nullptr, false);
+      bool updated = ModifySuspendCount(self, -1, nullptr, SuspendReason::kInternal);
       DCHECK(updated);
     }
 
-    return;  // We're done, break out of the loop.
+    {
+      // Imitate ResumeAll, the thread may be waiting on Thread::resume_cond_ since we raised its
+      // suspend count. Now the suspend_count_ is lowered so we must do the broadcast.
+      MutexLock mu2(self, *Locks::thread_suspend_count_lock_);
+      Thread::resume_cond_->Broadcast(self);
+    }
+
+    return true;  // We're done, break out of the loop.
   }
 }
 
@@ -1979,7 +2040,6 @@ void Thread::Shutdown() {
 Thread::Thread(bool daemon)
     : tls32_(daemon),
       wait_monitor_(nullptr),
-      interrupted_(false),
       custom_tls_(nullptr),
       can_call_into_java_(true) {
   wait_mutex_ = new Mutex("a thread wait mutex");
@@ -1991,6 +2051,7 @@ Thread::Thread(bool daemon)
                 "art::Thread has a size which is not a multiple of 4.");
   tls32_.state_and_flags.as_struct.flags = 0;
   tls32_.state_and_flags.as_struct.state = kNative;
+  tls32_.interrupted.StoreRelaxed(false);
   memset(&tlsPtr_.held_mutexes[0], 0, sizeof(tlsPtr_.held_mutexes));
   std::fill(tlsPtr_.rosalloc_runs,
             tlsPtr_.rosalloc_runs + kNumRosAllocThreadLocalSizeBracketsInThread,
@@ -2088,6 +2149,10 @@ void Thread::Destroy() {
     ScopedObjectAccess soa(self);
     // We may need to call user-supplied managed code, do this before final clean-up.
     HandleUncaughtExceptions(soa);
+    Runtime* runtime = Runtime::Current();
+    if (runtime != nullptr) {
+      runtime->GetRuntimeCallbacks()->ThreadDeath(self);
+    }
     RemoveFromThreadGroup(soa);
 
     // this.nativePeer = 0;
@@ -2098,11 +2163,6 @@ void Thread::Destroy() {
       jni::DecodeArtField(WellKnownClasses::java_lang_Thread_nativePeer)
           ->SetLong<false>(tlsPtr_.opeer, 0);
     }
-    Runtime* runtime = Runtime::Current();
-    if (runtime != nullptr) {
-      runtime->GetRuntimeCallbacks()->ThreadDeath(self);
-    }
-
 
     // Thread.join() is implemented as an Object.wait() on the Thread.lock object. Signal anyone
     // who is waiting.
@@ -2175,7 +2235,7 @@ Thread::~Thread() {
   TearDownAlternateSignalStack();
 }
 
-void Thread::HandleUncaughtExceptions(ScopedObjectAccess& soa) {
+void Thread::HandleUncaughtExceptions(ScopedObjectAccessAlreadyRunnable& soa) {
   if (!IsExceptionPending()) {
     return;
   }
@@ -2195,7 +2255,7 @@ void Thread::HandleUncaughtExceptions(ScopedObjectAccess& soa) {
   tlsPtr_.jni_env->ExceptionClear();
 }
 
-void Thread::RemoveFromThreadGroup(ScopedObjectAccess& soa) {
+void Thread::RemoveFromThreadGroup(ScopedObjectAccessAlreadyRunnable& soa) {
   // this.group.removeThread(this);
   // group can be null if we're in the compiler or a test.
   ObjPtr<mirror::Object> ogroup = jni::DecodeArtField(WellKnownClasses::java_lang_Thread_group)
@@ -2284,24 +2344,26 @@ bool Thread::IsJWeakCleared(jweak obj) const {
 
 // Implements java.lang.Thread.interrupted.
 bool Thread::Interrupted() {
-  MutexLock mu(Thread::Current(), *wait_mutex_);
-  bool interrupted = IsInterruptedLocked();
-  SetInterruptedLocked(false);
+  DCHECK_EQ(Thread::Current(), this);
+  // No other thread can concurrently reset the interrupted flag.
+  bool interrupted = tls32_.interrupted.LoadSequentiallyConsistent();
+  if (interrupted) {
+    tls32_.interrupted.StoreSequentiallyConsistent(false);
+  }
   return interrupted;
 }
 
 // Implements java.lang.Thread.isInterrupted.
 bool Thread::IsInterrupted() {
-  MutexLock mu(Thread::Current(), *wait_mutex_);
-  return IsInterruptedLocked();
+  return tls32_.interrupted.LoadSequentiallyConsistent();
 }
 
 void Thread::Interrupt(Thread* self) {
   MutexLock mu(self, *wait_mutex_);
-  if (interrupted_) {
+  if (tls32_.interrupted.LoadSequentiallyConsistent()) {
     return;
   }
-  interrupted_ = true;
+  tls32_.interrupted.StoreSequentiallyConsistent(true);
   NotifyLocked(self);
 }
 
@@ -2721,7 +2783,7 @@ void Thread::ThrowNewWrappedException(const char* exception_class_descriptor,
     }
   }
   ArtMethod* exception_init_method =
-      exception_class->FindDeclaredDirectMethod("<init>", signature, cl->GetImagePointerSize());
+      exception_class->FindConstructor(signature, cl->GetImagePointerSize());
 
   CHECK(exception_init_method != nullptr) << "No <init>" << signature << " in "
       << PrettyDescriptor(exception_class_descriptor);
@@ -2814,6 +2876,7 @@ void Thread::DumpThreadOffset(std::ostream& os, uint32_t offset) {
   DO_THREAD_OFFSET(SelfOffset<ptr_size>(), "self")
   DO_THREAD_OFFSET(StackEndOffset<ptr_size>(), "stack_end")
   DO_THREAD_OFFSET(ThinLockIdOffset<ptr_size>(), "thin_lock_thread_id")
+  DO_THREAD_OFFSET(IsGcMarkingOffset<ptr_size>(), "is_gc_marking")
   DO_THREAD_OFFSET(TopOfManagedStackOffset<ptr_size>(), "top_quick_frame_method")
   DO_THREAD_OFFSET(TopShadowFrameOffset<ptr_size>(), "top_shadow_frame")
   DO_THREAD_OFFSET(TopHandleScopeOffset<ptr_size>(), "top_handle_scope")
@@ -3429,11 +3492,10 @@ void Thread::VisitRoots(RootVisitor* visitor) {
     verifier->VisitRoots(visitor, RootInfo(kRootNativeStack, thread_id));
   }
   // Visit roots on this thread's stack
-  Context* context = GetLongJumpContext();
+  RuntimeContextType context;
   RootCallbackVisitor visitor_to_callback(visitor, thread_id);
-  ReferenceMapVisitor<RootCallbackVisitor, kPrecise> mapper(this, context, visitor_to_callback);
+  ReferenceMapVisitor<RootCallbackVisitor, kPrecise> mapper(this, &context, visitor_to_callback);
   mapper.template WalkStack<StackVisitor::CountTransitions::kNo>(false);
-  ReleaseLongJumpContext(context);
   for (instrumentation::InstrumentationStackFrame& frame : *GetInstrumentationStack()) {
     visitor->VisitRootIfNonNull(&frame.this_object_, RootInfo(kRootVMInternal, thread_id));
   }
@@ -3456,11 +3518,13 @@ class VerifyRootVisitor : public SingleRootVisitor {
 };
 
 void Thread::VerifyStackImpl() {
-  VerifyRootVisitor visitor;
-  std::unique_ptr<Context> context(Context::Create());
-  RootCallbackVisitor visitor_to_callback(&visitor, GetThreadId());
-  ReferenceMapVisitor<RootCallbackVisitor> mapper(this, context.get(), visitor_to_callback);
-  mapper.WalkStack();
+  if (Runtime::Current()->GetHeap()->IsObjectValidationEnabled()) {
+    VerifyRootVisitor visitor;
+    std::unique_ptr<Context> context(Context::Create());
+    RootCallbackVisitor visitor_to_callback(&visitor, GetThreadId());
+    ReferenceMapVisitor<RootCallbackVisitor> mapper(this, context.get(), visitor_to_callback);
+    mapper.WalkStack();
+  }
 }
 
 // Set the stack end to that to be used during a stack overflow
@@ -3628,6 +3692,11 @@ mirror::Object* Thread::GetPeerFromOtherThread() const {
     peer = art::ReadBarrier::Mark(peer);
   }
   return peer;
+}
+
+void Thread::SetReadBarrierEntrypoints() {
+  // Make sure entrypoints aren't null.
+  UpdateReadBarrierEntrypoints(&tlsPtr_.quick_entrypoints, /* is_active*/ true);
 }
 
 }  // namespace art

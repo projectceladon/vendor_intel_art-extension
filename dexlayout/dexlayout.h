@@ -26,6 +26,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "dex_file_layout.h"
 #include "dex_ir.h"
 #include "mem_map.h"
 
@@ -58,7 +59,8 @@ class Options {
   bool show_section_headers_ = false;
   bool show_section_statistics_ = false;
   bool verbose_ = false;
-  bool verify_output_ = false;
+  // TODO: Set verify_output_ back to false by default. Was set to true for debugging b/62840842.
+  bool verify_output_ = true;
   bool visualize_pattern_ = false;
   OutputFormat output_format_ = kOutputPlain;
   const char* output_dex_directory_ = nullptr;
@@ -82,6 +84,10 @@ class DexLayout {
   void SetHeader(dex_ir::Header* header) { header_ = header; }
 
   MemMap* GetAndReleaseMemMap() { return mem_map_.release(); }
+
+  const DexLayoutSections& GetSections() const {
+    return dex_sections_;
+  }
 
  private:
   void DumpAnnotationSetItem(dex_ir::AnnotationSetItem* set_item);
@@ -128,6 +134,7 @@ class DexLayout {
   FILE* out_file_;
   dex_ir::Header* header_;
   std::unique_ptr<MemMap> mem_map_;
+  DexLayoutSections dex_sections_;
 
   DISALLOW_COPY_AND_ASSIGN(DexLayout);
 };

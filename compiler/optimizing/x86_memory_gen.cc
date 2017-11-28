@@ -293,16 +293,16 @@ class MemoryOperandVisitor : public HGraphVisitor {
     HInstructionRHSMemory* result = nullptr;
     switch (bin_op->GetKind()) {
       case HInstruction::kAdd:
-        result = new (arena) HAddRHSMemory(bin_op->GetType(), lhs, base, index, data_offset);
+        result = new (arena) HAddRHSMemory(bin_op->GetType(), lhs, base, index, data_offset, arena);
         break;
       case HInstruction::kSub:
-        result = new (arena) HSubRHSMemory(bin_op->GetType(), lhs, base, index, data_offset);
+        result = new (arena) HSubRHSMemory(bin_op->GetType(), lhs, base, index, data_offset, arena);
         break;
       case HInstruction::kMul:
-        result = new (arena) HMulRHSMemory(bin_op->GetType(), lhs, base, index, data_offset);
+        result = new (arena) HMulRHSMemory(bin_op->GetType(), lhs, base, index, data_offset, arena);
         break;
       case HInstruction::kDiv:
-        result = new (arena) HDivRHSMemory(bin_op->GetType(), lhs, base, index, data_offset);
+        result = new (arena) HDivRHSMemory(bin_op->GetType(), lhs, base, index, data_offset, arena);
         break;
       default:
         LOG(FATAL) << "Unexpected type " << bin_op->GetType();
@@ -325,8 +325,12 @@ class MemoryOperandVisitor : public HGraphVisitor {
     DCHECK_EQ(array->GetType(), Primitive::kPrimNot);
 
     // Don't apply this optimization when the array is nullptr.
-    if (array->IsConstant() || (array->IsNullCheck() && array->InputAt(0)->IsConstant())) {
-      return;
+    HInstruction* array_base = array;
+    while (array_base->IsNullCheck() || array_base->IsBoundType()) {
+      array_base = array_base->InputAt(0);
+    }
+    if (array_base->IsConstant()) {
+     return;
     }
 
     // Is there a null check that could be an implicit check?

@@ -56,7 +56,7 @@ class TLEVisitor : public HGraphVisitor {
 
 #define NOTHING_IF_ERROR if (is_error_) return
 #define SWITCH_FOR_TYPES(instr, condition, int_case, long_case, float_case, double_case) \
-        do { switch(condition) { \
+        do { switch (condition) { \
           case Primitive::kPrimInt: int_case; break; \
           case Primitive::kPrimLong: long_case; break; \
           case Primitive::kPrimFloat: float_case; break; \
@@ -112,30 +112,26 @@ class TLEVisitor : public HGraphVisitor {
         values_.Overwrite(instr, Value(static_cast<int32_t>(in_value.i))),
         values_.Overwrite(instr, Value(static_cast<int64_t>(in_value.i))),
         values_.Overwrite(instr, Value(static_cast<float>(in_value.i))),
-        values_.Overwrite(instr, Value(static_cast<double>(in_value.i)))
-      ),
+        values_.Overwrite(instr, Value(static_cast<double>(in_value.i)))),
       // long case.
       SWITCH_FOR_TYPES(instr, out_type,
         values_.Overwrite(instr, Value(static_cast<int32_t>(in_value.l))),
         values_.Overwrite(instr, Value(static_cast<int64_t>(in_value.l))),
         values_.Overwrite(instr, Value(static_cast<float>(in_value.l))),
-        values_.Overwrite(instr, Value(static_cast<double>(in_value.l)))
-      ),
+        values_.Overwrite(instr, Value(static_cast<double>(in_value.l)))),
       // float case.
       SWITCH_FOR_TYPES(instr, out_type,
         values_.Overwrite(instr, Value(INTEGRAL_TO_FP_CONV(kPrimIntMax, kPrimIntMin, int32_t, in_value.f))),
         values_.Overwrite(instr, Value(INTEGRAL_TO_FP_CONV(kPrimLongMax, kPrimLongMin, int64_t, in_value.f))),
         values_.Overwrite(instr, Value(static_cast<float>(in_value.f))),
-        values_.Overwrite(instr, Value(static_cast<double>(in_value.f)))
-      ),
+        values_.Overwrite(instr, Value(static_cast<double>(in_value.f)))),
       // double case.
       SWITCH_FOR_TYPES(instr, out_type,
         values_.Overwrite(instr, Value(INTEGRAL_TO_FP_CONV(kPrimIntMax, kPrimIntMin, int32_t, in_value.d))),
         values_.Overwrite(instr, Value(INTEGRAL_TO_FP_CONV(kPrimLongMax, kPrimLongMin, int64_t, in_value.d))),
         values_.Overwrite(instr, Value(static_cast<float>(in_value.d))),
         values_.Overwrite(instr, Value(static_cast<double>(in_value.d)))
-      )
-    );
+      ));
 
     switch (orig_out_type) {
       case Primitive::kPrimByte:
@@ -163,7 +159,10 @@ class TLEVisitor : public HGraphVisitor {
     return eq(x, y) ? 0 : (x > y ? 1 : -1);
   }
 
-  int32_t Compare(HInstruction* instr, HInstruction* left, HInstruction* right, bool is_gt_bias) {
+  int32_t Compare(HInstruction* instr,
+                  HInstruction* left,
+                  HInstruction* right,
+                  ComparisonBias bias) {
     DCHECK_EQ(right->GetType(), right->GetType());
 
     Value left_value = GetValue(left);
@@ -175,17 +174,18 @@ class TLEVisitor : public HGraphVisitor {
     SWITCH_FOR_TYPES(instr, left->GetType(),
       res = left_value.i == right_value.i ? 0 : (left_value.i > right_value.i ? 1 : -1),
       res = left_value.l == right_value.l ? 0 : (left_value.l > right_value.l ? 1 : -1),
-      res = (isnan(left_value.f) || isnan(right_value.f)) ? (is_gt_bias ? 1 : -1)
+      res = (isnan(left_value.f) || isnan(right_value.f))
+            ? (bias == ComparisonBias::kGtBias ? 1 : -1)
             : FpEqual(left_value.f, right_value.f) ? 0 : (left_value.f > right_value.f ? 1 : -1),
-      res = (isnan(left_value.d) || isnan(right_value.d)) ? (is_gt_bias ? 1 : -1)
-            : (FpEqual(left_value.d, right_value.d) ? 0 : (left_value.d > right_value.d ? 1 : -1))
-    );
+      res = (isnan(left_value.d) || isnan(right_value.d))
+            ? (bias == ComparisonBias::kGtBias ? 1 : -1)
+            : (FpEqual(left_value.d, right_value.d) ? 0 : (left_value.d > right_value.d ? 1 : -1)));
     return res;
   }
 
   void VisitCompare(HCompare* instr) OVERRIDE {
     NOTHING_IF_ERROR;
-    int32_t res = Compare(instr, instr->GetLeft(), instr->GetRight(), instr->IsGtBias());
+    int32_t res = Compare(instr, instr->GetLeft(), instr->GetRight(), instr->GetBias());
     NOTHING_IF_ERROR;
     values_.Overwrite(instr, Value(res));
   }
@@ -193,32 +193,32 @@ class TLEVisitor : public HGraphVisitor {
   void VisitEqual(HEqual* instr) OVERRIDE {
     NOTHING_IF_ERROR;
     values_.Overwrite(instr,
-      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->IsGtBias()) == 0 ? 1 : 0));
+      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->GetBias()) == 0 ? 1 : 0));
   }
   void VisitNotEqual(HNotEqual* instr) OVERRIDE {
     NOTHING_IF_ERROR;
     values_.Overwrite(instr,
-      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->IsGtBias()) != 0 ? 1 : 0));
+      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->GetBias()) != 0 ? 1 : 0));
   }
   void VisitLessThan(HLessThan* instr) OVERRIDE {
     NOTHING_IF_ERROR;
     values_.Overwrite(instr,
-      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->IsGtBias()) < 0 ? 1 : 0));
+      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->GetBias()) < 0 ? 1 : 0));
   }
   void VisitLessThanOrEqual(HLessThanOrEqual* instr) OVERRIDE {
     NOTHING_IF_ERROR;
     values_.Overwrite(instr,
-      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->IsGtBias()) >= 0 ? 1 : 0));
+      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->GetBias()) <= 0 ? 1 : 0));
   }
   void VisitGreaterThan(HGreaterThan* instr) OVERRIDE {
     NOTHING_IF_ERROR;
     values_.Overwrite(instr,
-      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->IsGtBias()) > 0 ? 1 : 0));
+      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->GetBias()) > 0 ? 1 : 0));
   }
   void VisitGreaterThanOrEqual(HGreaterThanOrEqual* instr) OVERRIDE {
     NOTHING_IF_ERROR;
     values_.Overwrite(instr,
-      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->IsGtBias()) >= 0 ? 1 : 0));
+      Value(Compare(instr, instr->GetLeft(), instr->GetRight(), instr->GetBias()) >= 0 ? 1 : 0));
   }
 
   template <typename F> void VisitUnsignedComparision(HCondition* instr, F comparator) {
@@ -235,8 +235,7 @@ class TLEVisitor : public HGraphVisitor {
       res = comparator(static_cast<uint32_t>(left_value.i), static_cast<uint32_t>(right_value.i)),
       res = comparator(static_cast<uint64_t>(left_value.l), static_cast<uint64_t>(right_value.l)),
       SetError(instr),
-      SetError(instr)
-    );
+      SetError(instr));
     values_.Overwrite(instr, Value(res ? 1 : 0));
   }
 
@@ -266,8 +265,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr, Value(-val.i)),
       values_.Overwrite(instr, Value(-val.l)),
       values_.Overwrite(instr, Value(-val.f)),
-      values_.Overwrite(instr, Value(-val.d))
-    );
+      values_.Overwrite(instr, Value(-val.d)));
   }
 
   void VisitAdd(HAdd* instr) OVERRIDE {
@@ -284,8 +282,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr, Value(left_value.i + right_value.i)),
       values_.Overwrite(instr, Value(left_value.l + right_value.l)),
       values_.Overwrite(instr, Value(left_value.f + right_value.f)),
-      values_.Overwrite(instr, Value(left_value.d + right_value.d))
-    );
+      values_.Overwrite(instr, Value(left_value.d + right_value.d)));
   }
 
   void VisitSub(HSub* instr) OVERRIDE {
@@ -302,8 +299,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr, Value(left_value.i - right_value.i)),
       values_.Overwrite(instr, Value(left_value.l - right_value.l)),
       values_.Overwrite(instr, Value(left_value.f - right_value.f)),
-      values_.Overwrite(instr, Value(left_value.d - right_value.d))
-    );
+      values_.Overwrite(instr, Value(left_value.d - right_value.d)));
   }
 
   void VisitMul(HMul* instr) OVERRIDE {
@@ -320,8 +316,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr, Value(left_value.i * right_value.i)),
       values_.Overwrite(instr, Value(left_value.l * right_value.l)),
       values_.Overwrite(instr, Value(left_value.f * right_value.f)),
-      values_.Overwrite(instr, Value(left_value.d * right_value.d))
-    );
+      values_.Overwrite(instr, Value(left_value.d * right_value.d)));
   }
 
   void VisitDiv(HDiv* instr) OVERRIDE {
@@ -334,12 +329,14 @@ class TLEVisitor : public HGraphVisitor {
     Value right_value = GetValue(right);
     NOTHING_IF_ERROR;
 
+    // neeraj - fix klockwork 99356 issue (divide by zero)
+    DCHECK(right_value.i != 0);
+
     SWITCH_FOR_TYPES(instr, left->GetType(),
       values_.Overwrite(instr, Value(left_value.i / right_value.i)),
       values_.Overwrite(instr, Value(left_value.l / right_value.l)),
       values_.Overwrite(instr, Value(left_value.f / right_value.f)),
-      values_.Overwrite(instr, Value(left_value.d / right_value.d))
-    );
+      values_.Overwrite(instr, Value(left_value.d / right_value.d)));
   }
 
   template <typename T, typename F> T FpRem(T x, T y, F f) {
@@ -369,14 +366,16 @@ class TLEVisitor : public HGraphVisitor {
     Value right_value = GetValue(right);
     NOTHING_IF_ERROR;
 
+    // neeraj - fix klockwork 99357 issue (divide by zero)
+    DCHECK(right_value.i != 0);
+
     SWITCH_FOR_TYPES(instr, left->GetType(),
       values_.Overwrite(instr, Value(right_value.i == -1 ? 0 : left_value.i % right_value.i)),
       values_.Overwrite(instr, Value(right_value.l == -1 ? 0 : left_value.l % right_value.l)),
       values_.Overwrite(instr,
         Value(FpRem(left_value.f, right_value.f, [] (float x, float y) -> float { return std::fmodf(x, y); }))),
       values_.Overwrite(instr,
-        Value(FpRem(left_value.d, right_value.d, [] (double x, double y) -> double { return std::fmod(x, y); })))
-    );
+        Value(FpRem(left_value.d, right_value.d, [] (double x, double y) -> double { return std::fmod(x, y); }))));
   }
 
   int32_t ComputeShiftCount(HInstruction* instr) {
@@ -405,8 +404,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr, Value(left_value.i << shift_count)),
       values_.Overwrite(instr, Value(left_value.l << shift_count)),
       SetError(instr),
-      SetError(instr)
-    );
+      SetError(instr));
   }
 
   void VisitShr(HShr* instr) OVERRIDE {
@@ -422,8 +420,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr, Value(left_value.i >> shift_count)),
       values_.Overwrite(instr, Value(left_value.l >> shift_count)),
       SetError(instr),
-      SetError(instr)
-    );
+      SetError(instr));
   }
 
   void VisitUShr(HUShr* instr) OVERRIDE {
@@ -441,8 +438,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr,
         Value(static_cast<int64_t>(static_cast<uint64_t>(left_value.l) >> shift_count))),
       SetError(instr),
-      SetError(instr)
-    );
+      SetError(instr));
   }
 
   void VisitAnd(HAnd* instr) OVERRIDE {
@@ -453,8 +449,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr,
         Value(GetValueAsLong(instr->GetLeft()) & GetValueAsLong(instr->GetRight()))),
       SetError(instr),
-      SetError(instr)
-    );
+      SetError(instr));
   }
 
   void VisitOr(HOr* instr) OVERRIDE {
@@ -465,8 +460,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr,
         Value(GetValueAsLong(instr->GetLeft()) | GetValueAsLong(instr->GetRight()))),
       SetError(instr),
-      SetError(instr)
-    );
+      SetError(instr));
   }
 
   void VisitXor(HXor* instr) OVERRIDE {
@@ -477,8 +471,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr,
         Value(GetValueAsLong(instr->GetLeft()) ^ GetValueAsLong(instr->GetRight()))),
       SetError(instr),
-      SetError(instr)
-    );
+      SetError(instr));
   }
 
   void VisitNot(HNot* instr) OVERRIDE {
@@ -487,8 +480,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr, Value(~GetValue(instr->GetInput()).i)),
       values_.Overwrite(instr, Value(~GetValue(instr->GetInput()).l)),
       SetError(instr),
-      SetError(instr)
-    );
+      SetError(instr));
   }
 
   void VisitBooleanNot(HBooleanNot* instr) OVERRIDE {
@@ -497,8 +489,7 @@ class TLEVisitor : public HGraphVisitor {
       values_.Overwrite(instr, Value(GetValue(instr->GetInput()).i == 1 ? 0 : 1)),
       SetError(instr),
       SetError(instr),
-      SetError(instr)
-    );
+      SetError(instr));
   }
 
   HBasicBlock* GetNextBasicBlock() { return next_bb_; }
@@ -515,8 +506,7 @@ class TLEVisitor : public HGraphVisitor {
       return static_cast<int64_t>(v.i),
       return static_cast<int64_t>(v.l),
       return static_cast<int64_t>(v.f),
-      return static_cast<int64_t>(v.d)
-    );
+      return static_cast<int64_t>(v.d));
     return 0;
   }
 
@@ -546,22 +536,21 @@ class TLEVisitor : public HGraphVisitor {
       return graph->GetIntConstant(v.i),
       return graph->GetLongConstant(v.l),
       return graph->GetFloatConstant(v.f),
-      return graph->GetDoubleConstant(v.d)
-    );
+      return graph->GetDoubleConstant(v.d));
     return nullptr;
   }
 
 #undef NOTHING_IF_ERROR
 #undef SWITCH_FOR_TYPES
 
- void SetError(HInstruction* instr) {
-   is_error_ = true;
-   PRINT_PASS_OSTREAM_MESSAGE(opt_, "TLE could not handle " << instr);
- }
+  void SetError(HInstruction* instr) {
+    is_error_ = true;
+    PRINT_PASS_OSTREAM_MESSAGE(opt_, "TLE could not handle " << instr);
+  }
 
- ArenaSafeMap<HInstruction*, Value> GetConstants() const {
-   return values_;
- }
+  ArenaSafeMap<HInstruction*, Value> GetConstants() const {
+    return values_;
+  }
 
  private:
   int pred_index_;
@@ -635,9 +624,9 @@ bool TrivialLoopEvaluator::EvaluateLoop(HLoopInformation_X86* loop, TLEVisitor& 
     HBasicBlock* bb = visitor.GetNextBasicBlock();
 
     // For iteration count checker.
-    if (bb == header) {
+    if (current_block == header) {
       current_iter++;
-      CHECK_LE(current_iter, loop_iterations);
+      DCHECK_LE(current_iter, loop_iterations);
     }
 
     // Set predecessor index to handle Phi nodes in the next bb.
@@ -664,19 +653,12 @@ void TrivialLoopEvaluator::UpdateRegisters(HLoopInformation_X86* loop,
     TLEVisitor::Value constant = value.second;
     HConstant* constant_node = nullptr;
 
-#if 0  //neeraj - resolve build errors
-     // Go through each of the instruction's users.
-     for (HUseIterator<HInstruction*> it(insn->GetUses()); !it.Done(); it.Advance()) {
-       HUseListNode<HInstruction*>* current = it.Current();
-       HInstruction* user = current->GetUser();
-       size_t input_index = current->GetIndex();
-#else
     // Go through each of the instruction's users.
     const HUseList<HInstruction*>& uses = insn->GetUses();
-    for (auto it = uses.begin(), end2 = uses.end(); it != end2; ++it) {
-        HInstruction* user = it->GetUser();
-        size_t input_index = it->GetIndex();
-#endif
+    for (auto it = uses.begin(), end2 = uses.end(); it != end2; ) {
+      HInstruction* user = it->GetUser();
+      size_t input_index = it->GetIndex();
+      it++;
       // We do not care about users in the loop (we will kill them anyway).
       if (loop->Contains(*user->GetBlock())) {
         continue;
@@ -686,23 +668,17 @@ void TrivialLoopEvaluator::UpdateRegisters(HLoopInformation_X86* loop,
         constant_node = visitor.GetConstant(graph_, insn, constant);
         CHECK(constant_node);
       }
-      user->SetRawInputAt(input_index, constant_node);
-      constant_node->AddUseAt(user, input_index);
+      // Neeraj - fix dex2oat crash
+      DCHECK(constant_node->GetBlock() != nullptr);
+      user->ReplaceInput(constant_node, input_index);
     }
 
-#if 0  //neeraj - resolve build errors
-     // Go through each of the environment's users.
-     for (HUseIterator<HEnvironment*> it(insn->GetEnvUses()); !it.Done(); it.Advance()) {
-       HUseListNode<HEnvironment*>* current = it.Current();
-       HEnvironment* user = current->GetUser();
-       size_t input_index = current->GetIndex();
-#else
     // Go through each of the environment's users.
     const HUseList<HEnvironment*>& uses1 = insn->GetEnvUses();
-    for (auto it = uses1.begin(), end2 = uses1.end(); it != end2; ++it) {
-        HEnvironment* user = it->GetUser();
-        size_t input_index = it->GetIndex();
-#endif
+    for (auto it = uses1.begin(), end2 = uses1.end(); it != end2; ) {
+      HEnvironment* user = it->GetUser();
+      size_t input_index = it->GetIndex();
+      it++;
       // We do not care about users in the loop (we will kill then anyway).
       if (loop->Contains(*user->GetHolder()->GetBlock())) {
         continue;
@@ -712,6 +688,10 @@ void TrivialLoopEvaluator::UpdateRegisters(HLoopInformation_X86* loop,
         constant_node = visitor.GetConstant(graph_, insn, constant);
         CHECK(constant_node);
       }
+      //neeraj - fix dex2oat crash
+      DCHECK(constant_node == nullptr || constant_node->GetBlock() != nullptr);
+      user->RemoveAsUserOfInput(input_index);
+
       user->SetRawEnvAt(input_index, constant_node);
       //atul.b Fix Klocwork NULL dereferenced issue 112780
       DCHECK(constant_node != nullptr);

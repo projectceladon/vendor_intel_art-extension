@@ -30,7 +30,15 @@ namespace art {
 class CodeOffset {
  public:
   ALWAYS_INLINE static CodeOffset FromOffset(uint32_t offset, InstructionSet isa = kRuntimeISA) {
-    return CodeOffset(offset / GetInstructionSetInstructionAlignment(isa));
+  //atul.b done changes to fix Klocwork issue 8902
+  size_t getInsSet = GetInstructionSetInstructionAlignment(isa);
+  if(LIKELY(getInsSet!=0))
+    return CodeOffset(offset / getInsSet);
+  else
+  {
+    LOG(FATAL) << "Invalid CodeOffset. ";
+    return CodeOffset();
+  }
   }
 
   ALWAYS_INLINE static CodeOffset FromCompressedOffset(uint32_t offset) {

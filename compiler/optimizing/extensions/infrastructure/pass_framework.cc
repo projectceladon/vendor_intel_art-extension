@@ -69,7 +69,7 @@ struct HCustomPassPlacement {
    { "loop_formation_before_peeling", "loop_peeling", kPassInsertBefore },
 */
 static HCustomPassPlacement kPassCustomPlacement[] = {
-  { "loop_formation", "instruction_simplifier_after_bce", kPassInsertAfter },
+  { "loop_formation", "instruction_simplifier$after_bce", kPassInsertAfter },
   { "find_ivs", "loop_formation", kPassInsertAfter },
   { "remove_loop_suspend_checks", "find_ivs", kPassInsertAfter},
   { "remove_unused_loops", "remove_loop_suspend_checks", kPassInsertAfter },

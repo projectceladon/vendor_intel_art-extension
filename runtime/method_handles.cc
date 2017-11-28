@@ -514,7 +514,17 @@ static inline bool DoCallPolymorphic(ArtMethod* called_method,
     }
   }
 
-  PerformCall(self, code_item, shadow_frame.GetMethod(), first_dest_reg, new_shadow_frame, result,called_method);
+  bool use_interpreter_entrypoint = ClassLinker::ShouldUseInterpreterEntrypoint(
+      called_method, called_method->GetEntryPointFromQuickCompiledCode());
+  PerformCall(self,
+              code_item,
+              shadow_frame.GetMethod(),
+              first_dest_reg,
+              new_shadow_frame,
+              result,
+              use_interpreter_entrypoint,
+              called_method);
+
   if (self->IsExceptionPending()) {
     return false;
   }
@@ -602,12 +612,16 @@ static inline bool DoCallTransform(ArtMethod* called_method,
   new_shadow_frame->SetVRegReference(0, receiver.Get());
   new_shadow_frame->SetVRegReference(1, sf.Get());
 
+  bool use_interpreter_entrypoint = ClassLinker::ShouldUseInterpreterEntrypoint(
+      called_method, called_method->GetEntryPointFromQuickCompiledCode());
   PerformCall(self,
               code_item,
               shadow_frame.GetMethod(),
               0 /* first destination register */,
               new_shadow_frame,
-              result,called_method);
+              result,
+              use_interpreter_entrypoint,
+              called_method);
   if (self->IsExceptionPending()) {
     return false;
   }
@@ -811,7 +825,7 @@ inline bool DoFieldPutForInvokePolymorphic(Thread* self,
                                            ObjPtr<mirror::Object>& obj,
                                            ArtField* field,
                                            Primitive::Type field_type,
-                                           const JValue& value)
+                                           JValue& value)
     REQUIRES_SHARED(Locks::mutator_lock_) {
   DCHECK(!Runtime::Current()->IsActiveTransaction());
   static const bool kTransaction = false;         // Not in a transaction.
@@ -1091,7 +1105,16 @@ bool DoInvokePolymorphicExact(Thread* self,
                                          num_input_regs);
   self->EndAssertNoThreadSuspension(old_cause);
 
-  PerformCall(self, code_item, shadow_frame.GetMethod(), first_dest_reg, new_shadow_frame, result,called_method);
+  bool use_interpreter_entrypoint = ClassLinker::ShouldUseInterpreterEntrypoint(
+      called_method, called_method->GetEntryPointFromQuickCompiledCode());
+  PerformCall(self,
+              code_item,
+              shadow_frame.GetMethod(),
+              first_dest_reg,
+              new_shadow_frame,
+              result,
+              use_interpreter_entrypoint,
+              called_method);
   if (self->IsExceptionPending()) {
     return false;
   }

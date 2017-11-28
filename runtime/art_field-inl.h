@@ -28,7 +28,7 @@
 #include "mirror/dex_cache-inl.h"
 #include "mirror/object-inl.h"
 #include "primitive.h"
-#include "thread-inl.h"
+#include "thread-current-inl.h"
 #include "scoped_thread_state_change-inl.h"
 #include "well_known_classes.h"
 
@@ -295,8 +295,10 @@ inline Primitive::Type ArtField::GetTypeAsPrimitiveType()
     REQUIRES_SHARED(Locks::mutator_lock_) {
     //atul.b Fix Klocwork NULL dereferenced issue 112877
     const char* getTypeDesc=GetTypeDescriptor();
-    DCHECK(getTypeDesc!=nullptr);
-    return Primitive::GetType(getTypeDesc[0]);
+    if(LIKELY(getTypeDesc!=nullptr))
+       return Primitive::GetType(getTypeDesc[0]);
+    else
+       return Primitive::kPrimNot;
 }
 
 inline bool ArtField::IsPrimitiveType() REQUIRES_SHARED(Locks::mutator_lock_) {
@@ -353,11 +355,6 @@ inline ObjPtr<mirror::String> ArtField::GetStringName(Thread* self, bool resolve
     name = ResolveGetStringName(self, *dex_file, field_id.name_idx_, dex_cache);
   }
   return name;
-}
-
-template<typename RootVisitorType>
-inline void ArtField::VisitRoots(RootVisitorType& visitor) {
-  visitor.VisitRoot(declaring_class_.AddressWithoutBarrier());
 }
 
 template <typename Visitor>
