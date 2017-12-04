@@ -346,7 +346,7 @@ class MemoryOperandVisitor : public HGraphVisitor {
     // Can we remove the ArrayLength?
     if (array_len->HasOnlyOneNonEnvironmentUse()) {
       HX86BoundsCheckMemory* new_check =
-        new (GetGraph()->GetArena()) HX86BoundsCheckMemory(check->InputAt(0), array, check->GetDexPc());
+        new (GetGraph()->GetArena()) HX86BoundsCheckMemory(check->InputAt(0), array, check->GetDexPc(), check->IsStringCharAt());
       check->GetBlock()->InsertInstructionBefore(new_check, check);
       check->ReplaceWith(new_check);
       DCHECK(check->GetEnvironment() != nullptr);

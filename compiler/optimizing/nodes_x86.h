@@ -123,10 +123,11 @@ class HX86PackedSwitch FINAL : public HTemplateInstruction<2> {
 // X86/X86-64 version of HBoundsCheck that checks length in array descriptor.
 class HX86BoundsCheckMemory : public HExpression<2> {
  public:
-  HX86BoundsCheckMemory(HInstruction* index, HInstruction* array, uint32_t dex_pc)
+  HX86BoundsCheckMemory(HInstruction* index, HInstruction* array, uint32_t dex_pc, bool is_string = false)
       : HExpression(index->GetType(), SideEffects::CanTriggerGC(), dex_pc) {
     DCHECK_EQ(array->GetType(), Primitive::kPrimNot);
     DCHECK(Primitive::IsIntegralType(index->GetType()));
+    SetPackedFlag<kFlagIsStringCharAt>(is_string);
     SetRawInputAt(0, index);
     SetRawInputAt(1, array);
   }
@@ -150,9 +151,13 @@ class HX86BoundsCheckMemory : public HExpression<2> {
 
   HInstruction* GetArray() const { return InputAt(1); }
 
+  bool IsStringCharAt() const { return GetPackedFlag<kFlagIsStringCharAt>(); }
+
   DECLARE_INSTRUCTION(X86BoundsCheckMemory);
 
  private:
+
+   static constexpr size_t kFlagIsStringCharAt = kNumberOfExpressionPackedBits;
   DISALLOW_COPY_AND_ASSIGN(HX86BoundsCheckMemory);
 };
 
