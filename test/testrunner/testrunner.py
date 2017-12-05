@@ -773,10 +773,21 @@ def print_analysis():
     upass_file = env.ANDROID_BUILD_TOP + '/vendor/intel/art-extension/test/upass'
     ufail_cmd = 'comm -13 <(sort ' + xfail_file + ') <(sort ' + fail_file + ') >' + ufail_file
     upass_cmd = 'comm -23 <(sort ' + xfail_file + ') <(sort ' + fail_file + ') >' + upass_file
-    print (ufail_cmd)
-    print (upass_cmd)
-    subprocess.call(ufail_cmd,shell=True,executable='/bin/bash')
-    subprocess.call(upass_cmd,shell=True,executable='/bin/bash')
+    cmd_script = open ('/tmp/diff_cmd', 'w')
+    cmd_script.write ('#!/bin/bash\n')
+    cmd_script.write (ufail_cmd)
+    cmd_script.write ('\n')
+    cmd_script.write (upass_cmd)
+    cmd_script.write ('\n')
+    cmd_script.close ()
+    if os.path.isfile(ufail_file):
+      os.remove (ufail_file)
+    if os.path.isfile(upass_file):
+      os.remove (upass_file)
+    subprocess.Popen('chmod +x /tmp/diff_cmd',shell=True)
+    subprocess.Popen('/tmp/diff_cmd',shell=True)
+    #subprocess.call(ufail_cmd,shell=True)
+    #subprocess.call(upass_cmd,shell=True)
       
 
 

@@ -1,13 +1,13 @@
 test-art-host-run-test-debug-prebuild-jit-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-656-loop-deopt64
-test-art-host-run-test-debug-prebuild-optimizing-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-082-inline-execute64
-test-art-host-run-test-debug-prebuild-optimizing-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-201-built-in-except-detail-messages64
 test-art-host-run-test-debug-prebuild-optimizing-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-530-checker-lse64
 test-art-host-run-test-debug-prebuild-optimizing-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-536-checker-intrinsic-optimization64
 test-art-host-run-test-debug-prebuild-optimizing-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-590-checker-arr-set-null-regression64
 test-art-host-run-test-debug-prebuild-optimizing-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-609-checker-x86-bounds-check64
-test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-082-inline-execute64
-test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-201-built-in-except-detail-messages64
+test-art-host-run-test-debug-prebuild-optimizing-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8002-cse-Double-001-TopTested64
+test-art-host-run-test-debug-prebuild-optimizing-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8002-cse-Double-00164
 test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-530-checker-lse64
 test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-536-checker-intrinsic-optimization64
 test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-590-checker-arr-set-null-regression64
 test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-609-checker-x86-bounds-check64
+test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8002-cse-Double-001-TopTested64
+test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8002-cse-Double-00164
