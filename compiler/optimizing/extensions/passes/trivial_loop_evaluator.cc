@@ -323,14 +323,14 @@ class TLEVisitor : public HGraphVisitor {
     NOTHING_IF_ERROR;
     HInstruction* left = instr->GetLeft();
     HInstruction* right = instr->GetRight();
-    DCHECK_EQ(right->GetType(), right->GetType());
+    DCHECK_EQ(left->GetType(), right->GetType());
 
     Value left_value = GetValue(left);
     Value right_value = GetValue(right);
     NOTHING_IF_ERROR;
 
     // neeraj - fix klockwork 99356 issue (divide by zero)
-    DCHECK(right_value.i != 0);
+    CHECK((left->GetType() != Primitive::kPrimInt) || (right_value.i != 0));
 
     SWITCH_FOR_TYPES(instr, left->GetType(),
       values_.Overwrite(instr, Value(left_value.i / right_value.i)),
@@ -360,14 +360,14 @@ class TLEVisitor : public HGraphVisitor {
     NOTHING_IF_ERROR;
     HInstruction* left = instr->GetLeft();
     HInstruction* right = instr->GetRight();
-    DCHECK_EQ(right->GetType(), right->GetType());
+    DCHECK_EQ(left->GetType(), right->GetType());
 
     Value left_value = GetValue(left);
     Value right_value = GetValue(right);
     NOTHING_IF_ERROR;
 
     // neeraj - fix klockwork 99357 issue (divide by zero)
-    DCHECK(right_value.i != 0);
+    CHECK((left->GetType() != Primitive::kPrimInt) || (right_value.i != 0));
 
     SWITCH_FOR_TYPES(instr, left->GetType(),
       values_.Overwrite(instr, Value(right_value.i == -1 ? 0 : left_value.i % right_value.i)),
