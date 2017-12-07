@@ -1,25 +1,25 @@
 [
     {
-        "tests": ["8002-cse-FloatIV-02",
-		  "8002-cse-LargeLoopCountForLoopIntLong-001"]
+        "tests": ["8002-ccs-FloatIV-02",
+		  "8002-ccs-LargeLoopCountForLoopIntLong-001"],
         "description": ["Disable as it times out after a long time",
                         ", till a fix arrives."],
         "bug": "http://b/33389022"
     },
     {
-        "tests": "8002-cse-FloatIV-02-TopTested",
+        "tests": "8002-ccs-FloatIV-02-TopTested",
         "description": ["Disable as it times out after a long time",
                         ", till a fix arrives."],
         "bug": "http://b/33389022"
     },
     {
-        "tests": "8002-cse-DoubleIV-02",
+        "tests": "8002-ccs-DoubleIV-02",
         "description": ["Disable as it times out after a long time",
                         ", till a fix arrives."],
         "bug": "http://b/33389022"
     },
     {
-        "tests": "8002-cse-DoubleIV-02-TopTested",
+        "tests": "8002-ccs-DoubleIV-02-TopTested",
         "description": ["Disable as it times out after a long time",
                         ", till a fix arrives."],
         "bug": "http://b/33389022"
