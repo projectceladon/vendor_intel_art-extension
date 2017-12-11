@@ -33,6 +33,7 @@ class HMultiplyAccumulate FINAL : public HExpression<3> {
                       HInstruction* mul_right,
                       uint32_t dex_pc = kNoDexPc)
       : HExpression(type, SideEffects::None(), dex_pc), op_kind_(op) {
+    ASSIGN_INSTRUCTION_KIND(MultiplyAccumulate);
     SetRawInputAt(kInputAccumulatorIndex, accumulator);
     SetRawInputAt(kInputMulLeftIndex, mul_left);
     SetRawInputAt(kInputMulRightIndex, mul_right);
@@ -67,6 +68,7 @@ class HBitwiseNegatedRight FINAL : public HBinaryOperation {
                             uint32_t dex_pc = kNoDexPc)
     : HBinaryOperation(result_type, left, right, SideEffects::None(), dex_pc),
       op_kind_(op) {
+    ASSIGN_INSTRUCTION_KIND(BitwiseNegatedRight);
     DCHECK(op == HInstruction::kAnd || op == HInstruction::kOr || op == HInstruction::kXor) << op;
   }
 
@@ -128,6 +130,7 @@ class HIntermediateAddress FINAL : public HExpression<2> {
  public:
   HIntermediateAddress(HInstruction* base_address, HInstruction* offset, uint32_t dex_pc)
       : HExpression(Primitive::kPrimInt, SideEffects::DependsOnGC(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(IntermediateAddress);
         DCHECK_EQ(Primitive::ComponentSize(Primitive::kPrimInt),
                   Primitive::ComponentSize(Primitive::kPrimNot))
             << "kPrimInt and kPrimNot have different sizes.";
@@ -172,6 +175,7 @@ class HIntermediateAddressIndex FINAL : public HExpression<3> {
   HIntermediateAddressIndex(
       HInstruction* index, HInstruction* offset, HInstruction* shift, uint32_t dex_pc)
       : HExpression(Primitive::kPrimInt, SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(IntermediateAddressIndex);
     SetRawInputAt(0, index);
     SetRawInputAt(1, offset);
     SetRawInputAt(2, shift);
@@ -225,6 +229,7 @@ class HDataProcWithShifterOp FINAL : public HExpression<2> {
         shift_amount_(shift & (instr->GetType() == Primitive::kPrimInt
             ? kMaxIntShiftDistance
             : kMaxLongShiftDistance)) {
+    ASSIGN_INSTRUCTION_KIND(DataProcWithShifterOp);
     DCHECK(!instr->HasSideEffects());
     SetRawInputAt(0, left);
     SetRawInputAt(1, right);
