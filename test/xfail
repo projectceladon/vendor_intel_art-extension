@@ -1,7 +1,3 @@
 test-art-host-run-test-debug-prebuild-jit-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-656-loop-deopt64
-test-art-host-run-test-debug-prebuild-jit-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8003-ntm-SimpleForLoopObject-00264
 test-art-host-run-test-debug-prebuild-optimizing-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8001-tle-InlineTests64
-test-art-host-run-test-debug-prebuild-optimizing-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8003-ntm-SimpleForLoopObject-00264
 test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8001-tle-InlineTests64
-test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8003-ntm-SimpleForLoopObject-00264
-
