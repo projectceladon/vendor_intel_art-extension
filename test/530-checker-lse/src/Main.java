@@ -297,8 +297,8 @@ public class Main {
   /// CHECK: StaticFieldGet
   /// CHECK: InstanceFieldGet
   /// CHECK: StaticFieldSet
-  /// CHECK: InstanceFieldGet
-
+  /*  Below assertion is invalid as GVN removes the InstanceFeildGet */ 
+  /*  /// CHECK: InstanceFieldGet */
   /// CHECK-START: int Main.test10(TestClass) load_store_elimination (after)
   /// CHECK: StaticFieldGet
   /// CHECK: InstanceFieldGet

@@ -1,5 +1,34 @@
 [
     {
+        "tests": ["8002-ccs-FloatIV-02",
+		  "8002-ccs-LargeLoopCountForLoopIntLong-001",
+		  "8003-ntm-NestedLoopInt-003",
+		  "8003-ntm-AccessArrayElementsInt-002",
+		  "8003-ntm-NestedLoopLong-003",
+		  "8003-ntm-AccessArrayElementsLong-002"],
+        "description": ["Disable as it times out after a long time",
+                        ", till a fix arrives."],
+        "bug": "http://b/33389022"
+    },
+    {
+        "tests": "8002-ccs-FloatIV-02-TopTested",
+        "description": ["Disable as it times out after a long time",
+                        ", till a fix arrives."],
+        "bug": "http://b/33389022"
+    },
+    {
+        "tests": "8002-ccs-DoubleIV-02",
+        "description": ["Disable as it times out after a long time",
+                        ", till a fix arrives."],
+        "bug": "http://b/33389022"
+    },
+    {
+        "tests": "8002-ccs-DoubleIV-02-TopTested",
+        "description": ["Disable as it times out after a long time",
+                        ", till a fix arrives."],
+        "bug": "http://b/33389022"
+    },
+    {
         "tests": "153-reference-stress",
         "description": ["Disable 153-reference-stress temporarily until a fix",
                         "arrives."],

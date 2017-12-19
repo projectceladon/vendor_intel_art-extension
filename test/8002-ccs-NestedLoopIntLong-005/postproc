@@ -1,0 +1,7 @@
+#!/bin/bash
+
+
+declare -a testMethodsCounts=('testLoopAddInt:1' 'testLoopAddLong:1' 'testLoopSubInt:1' 'testLoopSubLong:1' 'testLoopMulInt:1' 'testLoopMulLong:1' 'testLoopDivInt:1' 'testLoopDivLong:1' 'testLoopRemInt:1' 'testLoopRemLong:1')
+
+fi
+

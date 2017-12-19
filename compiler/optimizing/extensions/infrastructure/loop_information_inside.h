@@ -447,7 +447,7 @@ class HLoopInformation_X86 : public HLoopInformation {
    * @return Returns true if the loop has been successfully removed from the graph, or false otherwise.
    */
   bool RemoveFromGraph();
-
+  void SetGraph(HGraph* graph) { graph_ = graph; }
  protected:
   /**
    * @brief Find the constant entry SSA associated to the Phi instruction.

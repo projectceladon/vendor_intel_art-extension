@@ -1508,8 +1508,9 @@ class HLoopInformationOutwardIterator : public ValueObject {
 FOR_EACH_INSTRUCTION(FORWARD_DECLARATION)
 #undef FORWARD_DECLARATION
 
+#define ASSIGN_INSTRUCTION_KIND(type) SetPackedField<InstructionKindField>(k##type);
+
 #define DECLARE_INSTRUCTION(type)                                         \
-  InstructionKind GetKindInternal() const OVERRIDE { return k##type; }    \
   const char* DebugName() const OVERRIDE { return #type; }                \
   bool InstructionTypeEquals(const HInstruction* other) const OVERRIDE {  \
     return other->Is##type();                                             \
@@ -1942,6 +1943,7 @@ class HInstruction : public ArenaObject<kArenaAllocInstruction> {
 #define DECLARE_KIND(type, super) k##type,
   enum InstructionKind {
     FOR_EACH_INSTRUCTION(DECLARE_KIND)
+    kLastInstructionKind
   };
 #undef DECLARE_KIND
 
@@ -2237,8 +2239,7 @@ class HInstruction : public ArenaObject<kArenaAllocInstruction> {
   // is adopted and implemented by our C++ compiler(s). Fow now, we need to hide
   // the virtual function because the __attribute__((__pure__)) doesn't really
   // apply the strong requirement for virtual functions, preventing optimizations.
-  InstructionKind GetKind() const PURE;
-  virtual InstructionKind GetKindInternal() const = 0;
+  InstructionKind GetKind() const { return GetPackedField<InstructionKindField>(); }
 
   virtual size_t ComputeHashCode() const {
     size_t result = GetKind();
@@ -2290,8 +2291,12 @@ class HInstruction : public ArenaObject<kArenaAllocInstruction> {
   // its users. Used by liveness analysis to compute use positions accordingly.
   static constexpr size_t kFlagEmittedAtUseSite = 0u;
   static constexpr size_t kFlagReferenceTypeIsExact = kFlagEmittedAtUseSite + 1;
-  static constexpr size_t kNumberOfGenericPackedBits = kFlagReferenceTypeIsExact + 1;
+  static constexpr size_t kInstructionKindBegin = kFlagReferenceTypeIsExact + 1;
+  static constexpr size_t kInstructionKindEnd = kInstructionKindBegin + MinimumBitsToStore(static_cast<size_t>(InstructionKind::kLastInstructionKind-1)) - 1;
+  static constexpr size_t kNumberOfGenericPackedBits = kInstructionKindEnd + 1;
   static constexpr size_t kMaxNumberOfPackedBits = sizeof(uint32_t) * kBitsPerByte;
+
+  static_assert(kNumberOfGenericPackedBits <= kMaxNumberOfPackedBits, "Too many generic packed fields");
 
   const HUserRecord<HInstruction*> InputRecordAt(size_t i) const {
     return GetInputRecords()[i];
@@ -2326,6 +2331,8 @@ class HInstruction : public ArenaObject<kArenaAllocInstruction> {
     DCHECK(IsUint<BitFieldType::size>(static_cast<uintptr_t>(value)));
     packed_fields_ = BitFieldType::Update(value, packed_fields_);
   }
+
+  using InstructionKindField = BitField<InstructionKind, kInstructionKindBegin, kInstructionKindEnd-kInstructionKindBegin+1>;
 
  private:
   void FixUpUserRecordsAfterUseInsertion(HUseList<HInstruction*>::iterator fixup_end) {
@@ -2599,7 +2606,7 @@ class HExpression : public HTemplateInstruction<N> {
 class HReturnVoid FINAL : public HTemplateInstruction<0> {
  public:
   explicit HReturnVoid(uint32_t dex_pc = kNoDexPc)
-      : HTemplateInstruction(SideEffects::None(), dex_pc) {}
+      : HTemplateInstruction(SideEffects::None(), dex_pc) { ASSIGN_INSTRUCTION_KIND(ReturnVoid); }
 
   bool IsControlFlow() const OVERRIDE { return true; }
 
@@ -2615,6 +2622,7 @@ class HReturn FINAL : public HTemplateInstruction<1> {
  public:
   explicit HReturn(HInstruction* value, uint32_t dex_pc = kNoDexPc)
       : HTemplateInstruction(SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Return);
     SetRawInputAt(0, value);
   }
 
@@ -2631,7 +2639,9 @@ class HReturn FINAL : public HTemplateInstruction<1> {
 // exit block.
 class HExit FINAL : public HTemplateInstruction<0> {
  public:
-  explicit HExit(uint32_t dex_pc = kNoDexPc) : HTemplateInstruction(SideEffects::None(), dex_pc) {}
+  explicit HExit(uint32_t dex_pc = kNoDexPc) : HTemplateInstruction(SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Exit);
+  }
 
   bool IsControlFlow() const OVERRIDE { return true; }
 
@@ -2644,7 +2654,9 @@ class HExit FINAL : public HTemplateInstruction<0> {
 // Jumps from one block to another.
 class HGoto FINAL : public HTemplateInstruction<0> {
  public:
-  explicit HGoto(uint32_t dex_pc = kNoDexPc) : HTemplateInstruction(SideEffects::None(), dex_pc) {}
+  explicit HGoto(uint32_t dex_pc = kNoDexPc) : HTemplateInstruction(SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Goto);
+  }
 
   bool IsControlFlow() const OVERRIDE { return true; }
 
@@ -2661,7 +2673,9 @@ class HGoto FINAL : public HTemplateInstruction<0> {
 class HConstant : public HExpression<0> {
  public:
   explicit HConstant(Primitive::Type type, uint32_t dex_pc = kNoDexPc)
-      : HExpression(type, SideEffects::None(), dex_pc) {}
+      : HExpression(type, SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Constant);
+  }
 
   bool CanBeMoved() const OVERRIDE { return true; }
 
@@ -2698,7 +2712,9 @@ class HNullConstant FINAL : public HConstant {
   DECLARE_INSTRUCTION(NullConstant);
 
  private:
-  explicit HNullConstant(uint32_t dex_pc = kNoDexPc) : HConstant(Primitive::kPrimNot, dex_pc) {}
+  explicit HNullConstant(uint32_t dex_pc = kNoDexPc) : HConstant(Primitive::kPrimNot, dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(NullConstant);
+  }
 
   friend class HGraph;
   DISALLOW_COPY_AND_ASSIGN(HNullConstant);
@@ -2735,9 +2751,13 @@ class HIntConstant FINAL : public HConstant {
 
  private:
   explicit HIntConstant(int32_t value, uint32_t dex_pc = kNoDexPc)
-      : HConstant(Primitive::kPrimInt, dex_pc), value_(value) {}
+      : HConstant(Primitive::kPrimInt, dex_pc), value_(value) {
+    ASSIGN_INSTRUCTION_KIND(IntConstant);
+  }
   explicit HIntConstant(bool value, uint32_t dex_pc = kNoDexPc)
-      : HConstant(Primitive::kPrimInt, dex_pc), value_(value ? 1 : 0) {}
+      : HConstant(Primitive::kPrimInt, dex_pc), value_(value ? 1 : 0) {
+    ASSIGN_INSTRUCTION_KIND(IntConstant);
+  }
 
   const int32_t value_;
 
@@ -2769,7 +2789,9 @@ class HLongConstant FINAL : public HConstant {
 
  private:
   explicit HLongConstant(int64_t value, uint32_t dex_pc = kNoDexPc)
-      : HConstant(Primitive::kPrimLong, dex_pc), value_(value) {}
+      : HConstant(Primitive::kPrimLong, dex_pc), value_(value) {
+    ASSIGN_INSTRUCTION_KIND(LongConstant);
+  }
 
   const int64_t value_;
 
@@ -2818,9 +2840,13 @@ class HFloatConstant FINAL : public HConstant {
 
  private:
   explicit HFloatConstant(float value, uint32_t dex_pc = kNoDexPc)
-      : HConstant(Primitive::kPrimFloat, dex_pc), value_(value) {}
+      : HConstant(Primitive::kPrimFloat, dex_pc), value_(value) {
+    ASSIGN_INSTRUCTION_KIND(FloatConstant);
+  }
   explicit HFloatConstant(int32_t value, uint32_t dex_pc = kNoDexPc)
-      : HConstant(Primitive::kPrimFloat, dex_pc), value_(bit_cast<float, int32_t>(value)) {}
+      : HConstant(Primitive::kPrimFloat, dex_pc), value_(bit_cast<float, int32_t>(value)) {
+    ASSIGN_INSTRUCTION_KIND(FloatConstant);
+  }
 
   const float value_;
 
@@ -2869,9 +2895,13 @@ class HDoubleConstant FINAL : public HConstant {
 
  private:
   explicit HDoubleConstant(double value, uint32_t dex_pc = kNoDexPc)
-      : HConstant(Primitive::kPrimDouble, dex_pc), value_(value) {}
+      : HConstant(Primitive::kPrimDouble, dex_pc), value_(value) {
+    ASSIGN_INSTRUCTION_KIND(DoubleConstant);
+  }
   explicit HDoubleConstant(int64_t value, uint32_t dex_pc = kNoDexPc)
-      : HConstant(Primitive::kPrimDouble, dex_pc), value_(bit_cast<double, int64_t>(value)) {}
+      : HConstant(Primitive::kPrimDouble, dex_pc), value_(bit_cast<double, int64_t>(value)) {
+    ASSIGN_INSTRUCTION_KIND(DoubleConstant);
+  }
 
   const double value_;
 
@@ -2887,6 +2917,7 @@ class HIf FINAL : public HTemplateInstruction<1> {
  public:
   explicit HIf(HInstruction* input, uint32_t dex_pc = kNoDexPc)
       : HTemplateInstruction(SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(If);
     SetRawInputAt(0, input);
   }
 
@@ -2922,6 +2953,7 @@ class HTryBoundary FINAL : public HTemplateInstruction<0> {
 
   explicit HTryBoundary(BoundaryKind kind, uint32_t dex_pc = kNoDexPc)
       : HTemplateInstruction(SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(TryBoundary);
     SetPackedField<BoundaryKindField>(kind);
   }
 
@@ -2981,6 +3013,7 @@ class HDeoptimize FINAL : public HVariableInputSizeInstruction {
             arena,
             /* number_of_inputs */ 1,
             kArenaAllocMisc) {
+    ASSIGN_INSTRUCTION_KIND(Deoptimize);
     SetPackedFlag<kFieldCanBeMoved>(false);
     SetPackedField<DeoptimizeKindField>(kind);
     SetRawInputAt(0, cond);
@@ -3002,6 +3035,7 @@ class HDeoptimize FINAL : public HVariableInputSizeInstruction {
             arena,
             /* number_of_inputs */ 2,
             kArenaAllocMisc) {
+    ASSIGN_INSTRUCTION_KIND(Deoptimize);
     SetPackedFlag<kFieldCanBeMoved>(true);
     SetPackedField<DeoptimizeKindField>(kind);
     SetRawInputAt(0, cond);
@@ -3065,6 +3099,7 @@ class HShouldDeoptimizeFlag FINAL : public HVariableInputSizeInstruction {
   // with regard to other passes.
   HShouldDeoptimizeFlag(ArenaAllocator* arena, uint32_t dex_pc)
       : HVariableInputSizeInstruction(SideEffects::None(), dex_pc, arena, 0, kArenaAllocCHA) {
+    ASSIGN_INSTRUCTION_KIND(ShouldDeoptimizeFlag);
   }
 
   Primitive::Type GetType() const OVERRIDE { return Primitive::kPrimInt; }
@@ -3087,7 +3122,9 @@ class HShouldDeoptimizeFlag FINAL : public HVariableInputSizeInstruction {
 class HCurrentMethod FINAL : public HExpression<0> {
  public:
   explicit HCurrentMethod(Primitive::Type type, uint32_t dex_pc = kNoDexPc)
-      : HExpression(type, SideEffects::None(), dex_pc) {}
+      : HExpression(type, SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(CurrentMethod);
+  }
 
   DECLARE_INSTRUCTION(CurrentMethod);
 
@@ -3111,6 +3148,7 @@ class HClassTableGet FINAL : public HExpression<1> {
                  uint32_t dex_pc)
       : HExpression(type, SideEffects::None(), dex_pc),
         index_(index) {
+    ASSIGN_INSTRUCTION_KIND(ClassTableGet);
     SetPackedField<TableKindField>(kind);
     SetRawInputAt(0, cls);
   }
@@ -3153,6 +3191,7 @@ class HPackedSwitch FINAL : public HTemplateInstruction<1> {
     : HTemplateInstruction(SideEffects::None(), dex_pc),
       start_value_(start_value),
       num_entries_(num_entries) {
+    ASSIGN_INSTRUCTION_KIND(PackedSwitch);
     SetRawInputAt(0, input);
   }
 
@@ -3179,6 +3218,7 @@ class HUnaryOperation : public HExpression<1> {
  public:
   HUnaryOperation(Primitive::Type result_type, HInstruction* input, uint32_t dex_pc = kNoDexPc)
       : HExpression(result_type, SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(UnaryOperation);
     SetRawInputAt(0, input);
   }
 
@@ -3215,6 +3255,7 @@ class HBinaryOperation : public HExpression<2> {
                    SideEffects side_effects = SideEffects::None(),
                    uint32_t dex_pc = kNoDexPc)
       : HExpression(result_type, side_effects, dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(BinaryOperation);
     SetRawInputAt(0, left);
     SetRawInputAt(1, right);
   }
@@ -3312,6 +3353,7 @@ class HCondition : public HBinaryOperation {
  public:
   HCondition(HInstruction* first, HInstruction* second, uint32_t dex_pc = kNoDexPc)
       : HBinaryOperation(Primitive::kPrimBoolean, first, second, SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Condition);
     SetPackedField<ComparisonBiasField>(ComparisonBias::kNoBias);
   }
 
@@ -3392,7 +3434,9 @@ class HCondition : public HBinaryOperation {
 class HEqual FINAL : public HCondition {
  public:
   HEqual(HInstruction* first, HInstruction* second, uint32_t dex_pc = kNoDexPc)
-      : HCondition(first, second, dex_pc) {}
+      : HCondition(first, second, dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Equal);
+  }
 
   bool IsCommutative() const OVERRIDE { return true; }
 
@@ -3436,7 +3480,9 @@ class HEqual FINAL : public HCondition {
 class HNotEqual FINAL : public HCondition {
  public:
   HNotEqual(HInstruction* first, HInstruction* second, uint32_t dex_pc = kNoDexPc)
-      : HCondition(first, second, dex_pc) {}
+      : HCondition(first, second, dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(NotEqual);
+  }
 
   bool IsCommutative() const OVERRIDE { return true; }
 
@@ -3479,7 +3525,9 @@ class HNotEqual FINAL : public HCondition {
 class HLessThan FINAL : public HCondition {
  public:
   HLessThan(HInstruction* first, HInstruction* second, uint32_t dex_pc = kNoDexPc)
-      : HCondition(first, second, dex_pc) {}
+      : HCondition(first, second, dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(LessThan);
+  }
 
   HConstant* Evaluate(HIntConstant* x, HIntConstant* y) const OVERRIDE {
     return MakeConstantCondition(Compute(x->GetValue(), y->GetValue()), GetDexPc());
@@ -3516,7 +3564,9 @@ class HLessThan FINAL : public HCondition {
 class HLessThanOrEqual FINAL : public HCondition {
  public:
   HLessThanOrEqual(HInstruction* first, HInstruction* second, uint32_t dex_pc = kNoDexPc)
-      : HCondition(first, second, dex_pc) {}
+      : HCondition(first, second, dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(LessThanOrEqual);
+  }
 
   HConstant* Evaluate(HIntConstant* x, HIntConstant* y) const OVERRIDE {
     return MakeConstantCondition(Compute(x->GetValue(), y->GetValue()), GetDexPc());
@@ -3553,7 +3603,9 @@ class HLessThanOrEqual FINAL : public HCondition {
 class HGreaterThan FINAL : public HCondition {
  public:
   HGreaterThan(HInstruction* first, HInstruction* second, uint32_t dex_pc = kNoDexPc)
-      : HCondition(first, second, dex_pc) {}
+      : HCondition(first, second, dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(GreaterThan);
+  }
 
   HConstant* Evaluate(HIntConstant* x, HIntConstant* y) const OVERRIDE {
     return MakeConstantCondition(Compute(x->GetValue(), y->GetValue()), GetDexPc());
@@ -3590,7 +3642,9 @@ class HGreaterThan FINAL : public HCondition {
 class HGreaterThanOrEqual FINAL : public HCondition {
  public:
   HGreaterThanOrEqual(HInstruction* first, HInstruction* second, uint32_t dex_pc = kNoDexPc)
-      : HCondition(first, second, dex_pc) {}
+      : HCondition(first, second, dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(GreaterThanOrEqual);
+  }
 
   HConstant* Evaluate(HIntConstant* x, HIntConstant* y) const OVERRIDE {
     return MakeConstantCondition(Compute(x->GetValue(), y->GetValue()), GetDexPc());
@@ -3627,7 +3681,9 @@ class HGreaterThanOrEqual FINAL : public HCondition {
 class HBelow FINAL : public HCondition {
  public:
   HBelow(HInstruction* first, HInstruction* second, uint32_t dex_pc = kNoDexPc)
-      : HCondition(first, second, dex_pc) {}
+      : HCondition(first, second, dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Below);
+  }
 
   HConstant* Evaluate(HIntConstant* x, HIntConstant* y) const OVERRIDE {
     return MakeConstantCondition(Compute(x->GetValue(), y->GetValue()), GetDexPc());
@@ -3667,7 +3723,9 @@ class HBelow FINAL : public HCondition {
 class HBelowOrEqual FINAL : public HCondition {
  public:
   HBelowOrEqual(HInstruction* first, HInstruction* second, uint32_t dex_pc = kNoDexPc)
-      : HCondition(first, second, dex_pc) {}
+      : HCondition(first, second, dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(BelowOrEqual);
+  }
 
   HConstant* Evaluate(HIntConstant* x, HIntConstant* y) const OVERRIDE {
     return MakeConstantCondition(Compute(x->GetValue(), y->GetValue()), GetDexPc());
@@ -3707,7 +3765,9 @@ class HBelowOrEqual FINAL : public HCondition {
 class HAbove FINAL : public HCondition {
  public:
   HAbove(HInstruction* first, HInstruction* second, uint32_t dex_pc = kNoDexPc)
-      : HCondition(first, second, dex_pc) {}
+      : HCondition(first, second, dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Above);
+  }
 
   HConstant* Evaluate(HIntConstant* x, HIntConstant* y) const OVERRIDE {
     return MakeConstantCondition(Compute(x->GetValue(), y->GetValue()), GetDexPc());
@@ -3747,7 +3807,9 @@ class HAbove FINAL : public HCondition {
 class HAboveOrEqual FINAL : public HCondition {
  public:
   HAboveOrEqual(HInstruction* first, HInstruction* second, uint32_t dex_pc = kNoDexPc)
-      : HCondition(first, second, dex_pc) {}
+      : HCondition(first, second, dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(AboveOrEqual);
+  }
 
   HConstant* Evaluate(HIntConstant* x, HIntConstant* y) const OVERRIDE {
     return MakeConstantCondition(Compute(x->GetValue(), y->GetValue()), GetDexPc());
@@ -3801,6 +3863,7 @@ class HCompare FINAL : public HBinaryOperation {
                          second,
                          SideEffectsForArchRuntimeCalls(comparison_type),
                          dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Compare);
     SetPackedField<ComparisonBiasField>(bias);
     DCHECK_EQ(comparison_type, Primitive::PrimitiveKind(first->GetType()));
     DCHECK_EQ(comparison_type, Primitive::PrimitiveKind(second->GetType()));
@@ -3887,6 +3950,7 @@ class HNewInstance FINAL : public HExpression<1> {
         type_index_(type_index),
         dex_file_(dex_file),
         entrypoint_(entrypoint) {
+    ASSIGN_INSTRUCTION_KIND(NewInstance);
     SetPackedFlag<kFlagFinalizable>(finalizable);
     SetRawInputAt(0, cls);
   }
@@ -4050,6 +4114,7 @@ class HInvoke : public HVariableInputSizeInstruction {
       dex_method_index_(dex_method_index),
       intrinsic_(Intrinsics::kNone),
       intrinsic_optimizations_(0) {
+    ASSIGN_INSTRUCTION_KIND(Invoke);
     SetPackedField<ReturnTypeField>(return_type);
     SetPackedField<InvokeTypeField>(invoke_type);
     SetPackedFlag<kFlagCanThrow>(true);
@@ -4083,6 +4148,7 @@ class HInvokeUnresolved FINAL : public HInvoke {
                 dex_method_index,
                 nullptr,
                 invoke_type) {
+    ASSIGN_INSTRUCTION_KIND(InvokeUnresolved);
   }
 
   DECLARE_INSTRUCTION(InvokeUnresolved);
@@ -4105,7 +4171,9 @@ class HInvokePolymorphic FINAL : public HInvoke {
                 dex_pc,
                 dex_method_index,
                 nullptr,
-                kVirtual) {}
+                kVirtual) {
+    ASSIGN_INSTRUCTION_KIND(InvokePolymorphic);
+  }
 
   DECLARE_INSTRUCTION(InvokePolymorphic);
 
@@ -4195,6 +4263,7 @@ class HInvokeStaticOrDirect FINAL : public HInvoke {
                 invoke_type),
         target_method_(target_method),
         dispatch_info_(dispatch_info) {
+    ASSIGN_INSTRUCTION_KIND(InvokeStaticOrDirect);
     SetPackedField<ClinitCheckRequirementField>(clinit_check_requirement);
   }
 
@@ -4381,7 +4450,9 @@ class HInvokeVirtual FINAL : public HInvoke {
                 dex_method_index,
                 resolved_method,
                 kVirtual),
-        vtable_index_(vtable_index) {}
+        vtable_index_(vtable_index) {
+    ASSIGN_INSTRUCTION_KIND(InvokeVirtual);
+  }
 
   bool CanBeNull() const OVERRIDE {
     switch (GetIntrinsic()) {
@@ -4429,7 +4500,9 @@ class HInvokeInterface FINAL : public HInvoke {
                 dex_method_index,
                 resolved_method,
                 kInterface),
-        imt_index_(imt_index) {}
+        imt_index_(imt_index) {
+    ASSIGN_INSTRUCTION_KIND(InvokeInterface);
+  }
 
   bool CanDoImplicitNullCheckOn(HInstruction* obj) const OVERRIDE {
     // TODO: Add implicit null checks in intrinsics.
@@ -4457,6 +4530,7 @@ class HNeg FINAL : public HUnaryOperation {
  public:
   HNeg(Primitive::Type result_type, HInstruction* input, uint32_t dex_pc = kNoDexPc)
       : HUnaryOperation(result_type, input, dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Neg);
     DCHECK_EQ(result_type, Primitive::PrimitiveKind(input->GetType()));
   }
 
@@ -4485,6 +4559,7 @@ class HNewArray FINAL : public HExpression<2> {
  public:
   HNewArray(HInstruction* cls, HInstruction* length, uint32_t dex_pc)
       : HExpression(Primitive::kPrimNot, SideEffects::CanTriggerGC(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(NewArray);
     SetRawInputAt(0, cls);
     SetRawInputAt(1, length);
   }
@@ -4518,7 +4593,9 @@ class HAdd FINAL : public HBinaryOperation {
        HInstruction* left,
        HInstruction* right,
        uint32_t dex_pc = kNoDexPc)
-      : HBinaryOperation(result_type, left, right, SideEffects::None(), dex_pc) {}
+      : HBinaryOperation(result_type, left, right, SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Add);
+  }
 
   bool IsCommutative() const OVERRIDE { return true; }
 
@@ -4553,7 +4630,9 @@ class HSub FINAL : public HBinaryOperation {
        HInstruction* left,
        HInstruction* right,
        uint32_t dex_pc = kNoDexPc)
-      : HBinaryOperation(result_type, left, right, SideEffects::None(), dex_pc) {}
+      : HBinaryOperation(result_type, left, right, SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Sub);
+  }
 
   template <typename T> static T Compute(T x, T y) { return x - y; }
 
@@ -4586,7 +4665,9 @@ class HMul FINAL : public HBinaryOperation {
        HInstruction* left,
        HInstruction* right,
        uint32_t dex_pc = kNoDexPc)
-      : HBinaryOperation(result_type, left, right, SideEffects::None(), dex_pc) {}
+      : HBinaryOperation(result_type, left, right, SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Mul);
+  }
 
   bool IsCommutative() const OVERRIDE { return true; }
 
@@ -4621,7 +4702,9 @@ class HDiv FINAL : public HBinaryOperation {
        HInstruction* left,
        HInstruction* right,
        uint32_t dex_pc)
-      : HBinaryOperation(result_type, left, right, SideEffects::None(), dex_pc) {}
+      : HBinaryOperation(result_type, left, right, SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Div);
+  }
 
   template <typename T>
   T ComputeIntegral(T x, T y) const {
@@ -4668,7 +4751,9 @@ class HRem FINAL : public HBinaryOperation {
        HInstruction* left,
        HInstruction* right,
        uint32_t dex_pc)
-      : HBinaryOperation(result_type, left, right, SideEffects::None(), dex_pc) {}
+      : HBinaryOperation(result_type, left, right, SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Rem);
+  }
 
   template <typename T>
   T ComputeIntegral(T x, T y) const {
@@ -4715,6 +4800,7 @@ class HDivZeroCheck FINAL : public HExpression<1> {
   // constructor.
   HDivZeroCheck(HInstruction* value, uint32_t dex_pc)
       : HExpression(value->GetType(), SideEffects::CanTriggerGC(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(DivZeroCheck);
     SetRawInputAt(0, value);
   }
 
@@ -4742,6 +4828,7 @@ class HShl FINAL : public HBinaryOperation {
        HInstruction* distance,
        uint32_t dex_pc = kNoDexPc)
       : HBinaryOperation(result_type, value, distance, SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Shl);
     DCHECK_EQ(result_type, Primitive::PrimitiveKind(value->GetType()));
     DCHECK_EQ(Primitive::kPrimInt, Primitive::PrimitiveKind(distance->GetType()));
   }
@@ -4788,6 +4875,7 @@ class HShr FINAL : public HBinaryOperation {
        HInstruction* distance,
        uint32_t dex_pc = kNoDexPc)
       : HBinaryOperation(result_type, value, distance, SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Shr);
     DCHECK_EQ(result_type, Primitive::PrimitiveKind(value->GetType()));
     DCHECK_EQ(Primitive::kPrimInt, Primitive::PrimitiveKind(distance->GetType()));
   }
@@ -4834,6 +4922,7 @@ class HUShr FINAL : public HBinaryOperation {
         HInstruction* distance,
         uint32_t dex_pc = kNoDexPc)
       : HBinaryOperation(result_type, value, distance, SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(UShr);
     DCHECK_EQ(result_type, Primitive::PrimitiveKind(value->GetType()));
     DCHECK_EQ(Primitive::kPrimInt, Primitive::PrimitiveKind(distance->GetType()));
   }
@@ -4881,7 +4970,9 @@ class HAnd FINAL : public HBinaryOperation {
        HInstruction* left,
        HInstruction* right,
        uint32_t dex_pc = kNoDexPc)
-      : HBinaryOperation(result_type, left, right, SideEffects::None(), dex_pc) {}
+      : HBinaryOperation(result_type, left, right, SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(And);
+  }
 
   bool IsCommutative() const OVERRIDE { return true; }
 
@@ -4918,7 +5009,9 @@ class HOr FINAL : public HBinaryOperation {
       HInstruction* left,
       HInstruction* right,
       uint32_t dex_pc = kNoDexPc)
-      : HBinaryOperation(result_type, left, right, SideEffects::None(), dex_pc) {}
+      : HBinaryOperation(result_type, left, right, SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Or);
+  }
 
   bool IsCommutative() const OVERRIDE { return true; }
 
@@ -4955,7 +5048,9 @@ class HXor FINAL : public HBinaryOperation {
        HInstruction* left,
        HInstruction* right,
        uint32_t dex_pc = kNoDexPc)
-      : HBinaryOperation(result_type, left, right, SideEffects::None(), dex_pc) {}
+      : HBinaryOperation(result_type, left, right, SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Xor);
+  }
 
   bool IsCommutative() const OVERRIDE { return true; }
 
@@ -4990,6 +5085,7 @@ class HRor FINAL : public HBinaryOperation {
  public:
   HRor(Primitive::Type result_type, HInstruction* value, HInstruction* distance)
     : HBinaryOperation(result_type, value, distance) {
+    ASSIGN_INSTRUCTION_KIND(Ror);
     DCHECK_EQ(result_type, Primitive::PrimitiveKind(value->GetType()));
     DCHECK_EQ(Primitive::kPrimInt, Primitive::PrimitiveKind(distance->GetType()));
   }
@@ -5050,6 +5146,7 @@ class HParameterValue FINAL : public HExpression<0> {
         dex_file_(dex_file),
         type_index_(type_index),
         index_(index) {
+    ASSIGN_INSTRUCTION_KIND(ParameterValue);
     SetPackedFlag<kFlagIsThis>(is_this);
     SetPackedFlag<kFlagCanBeNull>(!is_this);
   }
@@ -5084,7 +5181,9 @@ class HParameterValue FINAL : public HExpression<0> {
 class HNot FINAL : public HUnaryOperation {
  public:
   HNot(Primitive::Type result_type, HInstruction* input, uint32_t dex_pc = kNoDexPc)
-      : HUnaryOperation(result_type, input, dex_pc) {}
+      : HUnaryOperation(result_type, input, dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Not);
+  }
 
   bool CanBeMoved() const OVERRIDE { return true; }
   bool InstructionDataEquals(const HInstruction* other ATTRIBUTE_UNUSED) const OVERRIDE {
@@ -5117,7 +5216,9 @@ class HNot FINAL : public HUnaryOperation {
 class HBooleanNot FINAL : public HUnaryOperation {
  public:
   explicit HBooleanNot(HInstruction* input, uint32_t dex_pc = kNoDexPc)
-      : HUnaryOperation(Primitive::Type::kPrimBoolean, input, dex_pc) {}
+      : HUnaryOperation(Primitive::Type::kPrimBoolean, input, dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(BooleanNot);
+  }
 
   bool CanBeMoved() const OVERRIDE { return true; }
   bool InstructionDataEquals(const HInstruction* other ATTRIBUTE_UNUSED) const OVERRIDE {
@@ -5156,6 +5257,7 @@ class HTypeConversion FINAL : public HExpression<1> {
   // Instantiate a type conversion of `input` to `result_type`.
   HTypeConversion(Primitive::Type result_type, HInstruction* input, uint32_t dex_pc)
       : HExpression(result_type, SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(TypeConversion);
     SetRawInputAt(0, input);
     // Invariant: We should never generate a conversion to a Boolean value.
     DCHECK_NE(Primitive::kPrimBoolean, result_type);
@@ -5197,6 +5299,7 @@ class HPhi FINAL : public HVariableInputSizeInstruction {
             number_of_inputs,
             kArenaAllocPhiInputs),
         reg_number_(reg_number) {
+    ASSIGN_INSTRUCTION_KIND(Phi);
     SetPackedField<TypeField>(ToPhiType(type));
     DCHECK_NE(GetType(), Primitive::kPrimVoid);
     // Phis are constructed live and marked dead if conflicting or unused.
@@ -5292,6 +5395,7 @@ class HNullCheck FINAL : public HExpression<1> {
   // constructor.
   HNullCheck(HInstruction* value, uint32_t dex_pc)
       : HExpression(value->GetType(), SideEffects::CanTriggerGC(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(NullCheck);
     SetRawInputAt(0, value);
   }
 
@@ -5369,6 +5473,7 @@ class HInstanceFieldGet FINAL : public HExpression<1> {
                     field_idx,
                     declaring_class_def_index,
                     dex_file) {
+    ASSIGN_INSTRUCTION_KIND(InstanceFieldGet);
     SetRawInputAt(0, value);
   }
 
@@ -5420,6 +5525,7 @@ class HInstanceFieldSet FINAL : public HTemplateInstruction<2> {
                     field_idx,
                     declaring_class_def_index,
                     dex_file) {
+    ASSIGN_INSTRUCTION_KIND(InstanceFieldSet);
     SetPackedFlag<kFlagValueCanBeNull>(true);
     SetRawInputAt(0, object);
     SetRawInputAt(1, value);
@@ -5458,6 +5564,7 @@ class HArrayGet FINAL : public HExpression<2> {
             uint32_t dex_pc,
             bool is_string_char_at = false)
       : HExpression(type, SideEffects::ArrayReadOfType(type), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(ArrayGet);
     SetPackedFlag<kFlagIsStringCharAt>(is_string_char_at);
     SetRawInputAt(0, array);
     SetRawInputAt(1, index);
@@ -5528,6 +5635,7 @@ class HArraySet FINAL : public HTemplateInstruction<3> {
             uint32_t dex_pc)
       : HTemplateInstruction(SideEffects::None(), dex_pc),
         use_non_temporal_move_(false) {
+    ASSIGN_INSTRUCTION_KIND(ArraySet);
     SetPackedField<ExpectedComponentTypeField>(expected_component_type);
     SetPackedFlag<kFlagNeedsTypeCheck>(value->GetType() == Primitive::kPrimNot);
     SetPackedFlag<kFlagValueCanBeNull>(true);
@@ -5629,6 +5737,7 @@ class HArrayLength FINAL : public HExpression<1> {
  public:
   HArrayLength(HInstruction* array, uint32_t dex_pc, bool is_string_length = false)
       : HExpression(Primitive::kPrimInt, SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(ArrayLength);
     SetPackedFlag<kFlagIsStringLength>(is_string_length);
     // Note that arrays do not change length, so the instruction does not
     // depend on any write.
@@ -5670,6 +5779,7 @@ class HBoundsCheck FINAL : public HExpression<2> {
                uint32_t dex_pc,
                bool string_char_at = false)
       : HExpression(index->GetType(), SideEffects::CanTriggerGC(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(BoundsCheck);
     DCHECK_EQ(Primitive::kPrimInt, Primitive::PrimitiveKind(index->GetType()));
     SetPackedFlag<kFlagIsStringCharAt>(string_char_at);
     SetRawInputAt(0, index);
@@ -5700,7 +5810,9 @@ class HBoundsCheck FINAL : public HExpression<2> {
 class HSuspendCheck FINAL : public HTemplateInstruction<0> {
  public:
   explicit HSuspendCheck(uint32_t dex_pc = kNoDexPc)
-      : HTemplateInstruction(SideEffects::CanTriggerGC(), dex_pc), slow_path_(nullptr) {}
+      : HTemplateInstruction(SideEffects::CanTriggerGC(), dex_pc), slow_path_(nullptr) {
+    ASSIGN_INSTRUCTION_KIND(SuspendCheck);
+  }
 
   bool NeedsEnvironment() const OVERRIDE {
     return true;
@@ -5724,7 +5836,9 @@ class HSuspendCheck FINAL : public HTemplateInstruction<0> {
 class HNativeDebugInfo : public HTemplateInstruction<0> {
  public:
   explicit HNativeDebugInfo(uint32_t dex_pc)
-      : HTemplateInstruction<0>(SideEffects::None(), dex_pc) {}
+      : HTemplateInstruction<0>(SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(NativeDebugInfo);
+  }
 
   bool NeedsEnvironment() const OVERRIDE {
     return true;
@@ -5741,7 +5855,9 @@ class HNativeDebugInfo : public HTemplateInstruction<0> {
 class HTestSuspend : public HTemplateInstruction<0> {
  public:
   explicit HTestSuspend(uint32_t dex_pc = kNoDexPc)
-    : HTemplateInstruction<0>(SideEffects::None(), dex_pc) {}
+    : HTemplateInstruction<0>(SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(TestSuspend);
+  }
 
   bool IsControlFlow() const OVERRIDE { return true; }
 
@@ -5764,7 +5880,9 @@ class HTestSuspend : public HTemplateInstruction<0> {
 class HSuspend : public HTemplateInstruction<0> {
  public:
   explicit HSuspend(uint32_t dex_pc)
-    : HTemplateInstruction<0>(SideEffects::CanTriggerGC(), dex_pc) {}
+    : HTemplateInstruction<0>(SideEffects::CanTriggerGC(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Suspend);
+  }
 
   HBasicBlock* GetSuccessor() const {
     return GetBlock()->GetSuccessors()[0];
@@ -5828,6 +5946,7 @@ class HLoadClass FINAL : public HInstruction {
         dex_file_(dex_file),
         klass_(klass),
         loaded_class_rti_(ReferenceTypeInfo::CreateInvalid()) {
+    ASSIGN_INSTRUCTION_KIND(LoadClass);
     // Referrers class should not need access check. We never inline unverified
     // methods so we can't possibly end up in this situation.
     DCHECK(!is_referrers_class || !needs_access_check);
@@ -6019,6 +6138,7 @@ class HLoadString FINAL : public HInstruction {
         special_input_(HUserRecord<HInstruction*>(current_method)),
         string_index_(string_index),
         dex_file_(dex_file) {
+    ASSIGN_INSTRUCTION_KIND(LoadString);
     SetPackedField<LoadKindField>(LoadKind::kRuntimeCall);
   }
 
@@ -6135,6 +6255,7 @@ class HClinitCheck FINAL : public HExpression<1> {
             Primitive::kPrimNot,
             SideEffects::AllChanges(),  // Assume write/read on all fields/arrays.
             dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(ClinitCheck);
     SetRawInputAt(0, constant);
   }
 
@@ -6180,6 +6301,7 @@ class HStaticFieldGet FINAL : public HExpression<1> {
                     field_idx,
                     declaring_class_def_index,
                     dex_file) {
+    ASSIGN_INSTRUCTION_KIND(StaticFieldGet);
     SetRawInputAt(0, cls);
   }
 
@@ -6228,6 +6350,7 @@ class HStaticFieldSet FINAL : public HTemplateInstruction<2> {
                     field_idx,
                     declaring_class_def_index,
                     dex_file) {
+    ASSIGN_INSTRUCTION_KIND(StaticFieldSet);
     SetPackedFlag<kFlagValueCanBeNull>(true);
     SetRawInputAt(0, cls);
     SetRawInputAt(1, value);
@@ -6263,6 +6386,7 @@ class HUnresolvedInstanceFieldGet FINAL : public HExpression<1> {
                               uint32_t dex_pc)
       : HExpression(field_type, SideEffects::AllExceptGCDependency(), dex_pc),
         field_index_(field_index) {
+    ASSIGN_INSTRUCTION_KIND(UnresolvedInstanceFieldGet);
     SetRawInputAt(0, obj);
   }
 
@@ -6289,6 +6413,7 @@ class HUnresolvedInstanceFieldSet FINAL : public HTemplateInstruction<2> {
                               uint32_t dex_pc)
       : HTemplateInstruction(SideEffects::AllExceptGCDependency(), dex_pc),
         field_index_(field_index) {
+    ASSIGN_INSTRUCTION_KIND(UnresolvedInstanceFieldSet);
     SetPackedField<FieldTypeField>(field_type);
     DCHECK_EQ(Primitive::PrimitiveKind(field_type), Primitive::PrimitiveKind(value->GetType()));
     SetRawInputAt(0, obj);
@@ -6325,6 +6450,7 @@ class HUnresolvedStaticFieldGet FINAL : public HExpression<0> {
                             uint32_t dex_pc)
       : HExpression(field_type, SideEffects::AllExceptGCDependency(), dex_pc),
         field_index_(field_index) {
+    ASSIGN_INSTRUCTION_KIND(UnresolvedStaticFieldGet);
   }
 
   bool NeedsEnvironment() const OVERRIDE { return true; }
@@ -6349,6 +6475,7 @@ class HUnresolvedStaticFieldSet FINAL : public HTemplateInstruction<1> {
                             uint32_t dex_pc)
       : HTemplateInstruction(SideEffects::AllExceptGCDependency(), dex_pc),
         field_index_(field_index) {
+    ASSIGN_INSTRUCTION_KIND(UnresolvedStaticFieldSet);
     SetPackedField<FieldTypeField>(field_type);
     DCHECK_EQ(Primitive::PrimitiveKind(field_type), Primitive::PrimitiveKind(value->GetType()));
     SetRawInputAt(0, value);
@@ -6381,7 +6508,9 @@ class HUnresolvedStaticFieldSet FINAL : public HTemplateInstruction<1> {
 class HLoadException FINAL : public HExpression<0> {
  public:
   explicit HLoadException(uint32_t dex_pc = kNoDexPc)
-      : HExpression(Primitive::kPrimNot, SideEffects::None(), dex_pc) {}
+      : HExpression(Primitive::kPrimNot, SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(LoadException);
+  }
 
   bool CanBeNull() const OVERRIDE { return false; }
 
@@ -6396,7 +6525,9 @@ class HLoadException FINAL : public HExpression<0> {
 class HClearException FINAL : public HTemplateInstruction<0> {
  public:
   explicit HClearException(uint32_t dex_pc = kNoDexPc)
-      : HTemplateInstruction(SideEffects::AllWrites(), dex_pc) {}
+      : HTemplateInstruction(SideEffects::AllWrites(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(ClearException);
+  }
 
   DECLARE_INSTRUCTION(ClearException);
 
@@ -6408,6 +6539,7 @@ class HThrow FINAL : public HTemplateInstruction<1> {
  public:
   HThrow(HInstruction* exception, uint32_t dex_pc)
       : HTemplateInstruction(SideEffects::CanTriggerGC(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Throw);
     SetRawInputAt(0, exception);
   }
 
@@ -6450,6 +6582,7 @@ class HInstanceOf FINAL : public HExpression<2> {
       : HExpression(Primitive::kPrimBoolean,
                     SideEffectsForArchRuntimeCalls(check_kind),
                     dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(InstanceOf);
     SetPackedField<TypeCheckKindField>(check_kind);
     SetPackedFlag<kFlagMustDoNullCheck>(true);
     SetRawInputAt(0, object);
@@ -6500,6 +6633,7 @@ class HBoundType FINAL : public HExpression<1> {
   explicit HBoundType(HInstruction* input, uint32_t dex_pc = kNoDexPc)
       : HExpression(Primitive::kPrimNot, SideEffects::None(), dex_pc),
         upper_bound_(ReferenceTypeInfo::CreateInvalid()) {
+    ASSIGN_INSTRUCTION_KIND(BoundType);
     SetPackedFlag<kFlagUpperCanBeNull>(true);
     SetPackedFlag<kFlagCanBeNull>(true);
     DCHECK_EQ(input->GetType(), Primitive::kPrimNot);
@@ -6546,6 +6680,7 @@ class HCheckCast FINAL : public HTemplateInstruction<2> {
              TypeCheckKind check_kind,
              uint32_t dex_pc)
       : HTemplateInstruction(SideEffects::CanTriggerGC(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(CheckCast);
     SetPackedField<TypeCheckKindField>(check_kind);
     SetPackedFlag<kFlagMustDoNullCheck>(true);
     SetRawInputAt(0, object);
@@ -6615,6 +6750,7 @@ class HMemoryBarrier FINAL : public HTemplateInstruction<0> {
   explicit HMemoryBarrier(MemBarrierKind barrier_kind, uint32_t dex_pc = kNoDexPc)
       : HTemplateInstruction(
             SideEffects::AllWritesAndReads(), dex_pc) {  // Assume write/read on all fields/arrays.
+    ASSIGN_INSTRUCTION_KIND(MemoryBarrier);
     SetPackedField<BarrierKindField>(barrier_kind);
   }
 
@@ -6735,6 +6871,7 @@ class HConstructorFence FINAL : public HVariableInputSizeInstruction {
                                       arena,
                                       /* number_of_inputs */ 1,
                                       kArenaAllocConstructorFenceInputs) {
+    ASSIGN_INSTRUCTION_KIND(ConstructorFence);
     DCHECK(fence_object != nullptr);
     SetRawInputAt(0, fence_object);
   }
@@ -6786,6 +6923,7 @@ class HMonitorOperation FINAL : public HTemplateInstruction<1> {
     : HTemplateInstruction(
           SideEffects::AllExceptGCDependency(),  // Assume write/read on all fields/arrays.
           dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(MonitorOperation);
     SetPackedField<OperationKindField>(kind);
     SetRawInputAt(0, object);
   }
@@ -6826,6 +6964,7 @@ class HSelect FINAL : public HExpression<3> {
           HInstruction* false_value,
           uint32_t dex_pc)
       : HExpression(HPhi::ToPhiType(true_value->GetType()), SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(Select);
     DCHECK_EQ(HPhi::ToPhiType(true_value->GetType()), HPhi::ToPhiType(false_value->GetType()));
 
     // First input must be `true_value` or `false_value` to allow codegens to
@@ -6939,6 +7078,7 @@ class HParallelMove FINAL : public HTemplateInstruction<0> {
   explicit HParallelMove(ArenaAllocator* arena, uint32_t dex_pc = kNoDexPc)
       : HTemplateInstruction(SideEffects::None(), dex_pc),
         moves_(arena->Adapter(kArenaAllocMoveOperands)) {
+    ASSIGN_INSTRUCTION_KIND(ParallelMove);
     moves_.reserve(kDefaultNumberOfMoves);
   }
 

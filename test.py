@@ -39,7 +39,7 @@ options, unknown = parser.parse_known_args()
 if options.run_test or options.help_runner or not options.gtest:
   testrunner = os.path.join('./',
                           ANDROID_BUILD_TOP,
-                            'art/test/testrunner/testrunner.py')
+                            'vendor/intel/art-extension/test/testrunner/testrunner.py')
   run_test_args = []
   for arg in sys.argv[1:]:
     if arg == '--run-test' or arg == '--gtest' \

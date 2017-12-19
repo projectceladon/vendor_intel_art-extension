@@ -250,10 +250,17 @@ class BoundsCheckSlowPathMemoryX86_64 : public SlowPathCode {
     }
 
     // Load the array length into our temporary.
-    Address array_length(locations->InAt(1).AsRegister<CpuRegister>(),
-                         mirror::Array::LengthOffset().Uint32Value());
+    uint32_t len_offset = instruction_->AsX86BoundsCheckMemory()->IsStringCharAt()
+                                       ? mirror::String::CountOffset().Uint32Value()
+                                       : mirror::Array::LengthOffset().Uint32Value();
+    Address array_length(locations->InAt(1).AsRegister<CpuRegister>(), len_offset);
+
     __ movl(locations->GetTemp(0).AsRegister<CpuRegister>(), array_length);
 
+    //Shift right the array length location 
+    if(instruction_->AsX86BoundsCheckMemory()->IsStringCharAt()){
+       __ shrl(locations->GetTemp(0).AsRegister<CpuRegister>(), Immediate(1));
+      }
     // We're moving two locations to locations that could overlap, so we need a parallel
     // move resolver.
     InvokeRuntimeCallingConvention calling_convention;
@@ -264,13 +271,14 @@ class BoundsCheckSlowPathMemoryX86_64 : public SlowPathCode {
         locations->GetTemp(0),
         Location::RegisterLocation(calling_convention.GetRegisterAt(1)),
         Primitive::kPrimInt);
-#if 0	//neeraj - resolved build error
-    x64_codegen->InvokeRuntime(QUICK_ENTRY_POINT(pThrowArrayBounds),
+        QuickEntrypointEnum entrypoint = instruction_->AsX86BoundsCheckMemory()->IsStringCharAt()
+        ? kQuickThrowStringBounds
+        : kQuickThrowArrayBounds;
+    x64_codegen->InvokeRuntime(entrypoint,
                                instruction_, instruction_->GetDexPc(), this);
-#else
-    x64_codegen->InvokeRuntime(kQuickThrowArrayBounds,
-                               instruction_, instruction_->GetDexPc(), this);
-#endif
+    CheckEntrypointTypes<kQuickThrowStringBounds, void, int32_t, int32_t>();
+    CheckEntrypointTypes<kQuickThrowArrayBounds, void, int32_t, int32_t>();
+
   }
 
   bool IsFatal() const OVERRIDE { return true; }
@@ -5231,13 +5239,25 @@ void InstructionCodeGeneratorX86_64::VisitX86BoundsCheckMemory(HX86BoundsCheckMe
       new (GetGraph()->GetArena()) BoundsCheckSlowPathMemoryX86_64(instruction);
 
   // Compare the length in the array descriptor to the index.
-  Address array_length(array_base, mirror::Array::LengthOffset().Uint32Value());
-  if (index_loc.IsConstant()) {
-    int32_t value = CodeGenerator::GetInt32ValueOf(index_loc.GetConstant());
-    __ cmpl(array_length, Immediate(value));
-  } else {
-    __ cmpl(array_length, index_loc.AsRegister<CpuRegister>());
+  uint32_t len_offset = instruction->IsStringCharAt()
+                        ? mirror::String::CountOffset().Uint32Value()
+                        :  mirror::Array::LengthOffset().Uint32Value();
+  Address array_length(array_base, len_offset);
+  //Hnadle the case where array is a string
+  if(instruction->IsStringCharAt()){
+     CpuRegister length_reg = CpuRegister(TMP);
+      __ movl(length_reg, array_length);
+      __ shrl(length_reg, Immediate(1));
+     codegen_->GenerateIntCompare(length_reg, index_loc);  
   }
+   else {
+     if (index_loc.IsConstant()) {
+       int32_t value = CodeGenerator::GetInt32ValueOf(index_loc.GetConstant());
+        __ cmpl(array_length, Immediate(value));
+     } else {
+         __ cmpl(array_length, index_loc.AsRegister<CpuRegister>());
+  }
+}
   codegen_->MaybeRecordImplicitNullCheck(instruction);
   codegen_->AddSlowPath(slow_path);
   __ j(kBelowEqual, slow_path->GetEntryLabel());

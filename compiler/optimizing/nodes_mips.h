@@ -24,7 +24,9 @@ class HMipsComputeBaseMethodAddress : public HExpression<0> {
  public:
   // Treat the value as an int32_t, but it is really a 32 bit native pointer.
   HMipsComputeBaseMethodAddress()
-      : HExpression(Primitive::kPrimInt, SideEffects::None(), kNoDexPc) {}
+      : HExpression(Primitive::kPrimInt, SideEffects::None(), kNoDexPc) {
+    ASSIGN_INSTRUCTION_KIND(MipsComputeBaseMethodAddress);
+  }
 
   bool CanBeMoved() const OVERRIDE { return true; }
 
@@ -45,6 +47,7 @@ class HMipsPackedSwitch FINAL : public HTemplateInstruction<2> {
     : HTemplateInstruction(SideEffects::None(), dex_pc),
       start_value_(start_value),
       num_entries_(num_entries) {
+    ASSIGN_INSTRUCTION_KIND(MipsPackedSwitch);
     SetRawInputAt(0, input);
     SetRawInputAt(1, method_base);
   }

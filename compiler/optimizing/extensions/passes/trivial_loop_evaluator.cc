@@ -20,7 +20,7 @@
  *
  */
 
-//neeraj - resolve build errors
+
 #include "android-base/stringprintf.h"
 using android::base::StringPrintf;
 
@@ -102,7 +102,6 @@ class TLEVisitor : public HGraphVisitor {
     // shorter in type but out type shuld be handled carefully.
     Primitive::Type orig_out_type = HPhi::ToPhiType(instr->GetResultType());
     Primitive::Type out_type = HPhi::ToPhiType(orig_out_type);
-
     Value in_value = GetValue(input);
     NOTHING_IF_ERROR;
 
@@ -132,8 +131,12 @@ class TLEVisitor : public HGraphVisitor {
         values_.Overwrite(instr, Value(static_cast<float>(in_value.d))),
         values_.Overwrite(instr, Value(static_cast<double>(in_value.d)))
       ));
-
-    switch (orig_out_type) {
+     // We need to assign the properly truncated value to result.
+     // byte * byte can overflow a byte and hence needs to be correctly truncated
+     // when assigned to a byte.
+     // ToPhiType() converts shorter int types to int hence we were never hitting
+     // the byte,short cases in the following switch.
+    switch (instr->GetResultType()) {
       case Primitive::kPrimByte:
         values_.Overwrite(instr, Value(static_cast<int32_t>(static_cast<int8_t>(GetValue(instr).i))));
         break;
@@ -311,7 +314,6 @@ class TLEVisitor : public HGraphVisitor {
     Value left_value = GetValue(left);
     Value right_value = GetValue(right);
     NOTHING_IF_ERROR;
-
     SWITCH_FOR_TYPES(instr, left->GetType(),
       values_.Overwrite(instr, Value(left_value.i * right_value.i)),
       values_.Overwrite(instr, Value(left_value.l * right_value.l)),
@@ -323,14 +325,14 @@ class TLEVisitor : public HGraphVisitor {
     NOTHING_IF_ERROR;
     HInstruction* left = instr->GetLeft();
     HInstruction* right = instr->GetRight();
-    DCHECK_EQ(right->GetType(), right->GetType());
+    DCHECK_EQ(left->GetType(), right->GetType());
 
     Value left_value = GetValue(left);
     Value right_value = GetValue(right);
     NOTHING_IF_ERROR;
 
     // neeraj - fix klockwork 99356 issue (divide by zero)
-    DCHECK(right_value.i != 0);
+    CHECK((left->GetType() != Primitive::kPrimInt) || (right_value.i != 0));
 
     SWITCH_FOR_TYPES(instr, left->GetType(),
       values_.Overwrite(instr, Value(left_value.i / right_value.i)),
@@ -360,14 +362,14 @@ class TLEVisitor : public HGraphVisitor {
     NOTHING_IF_ERROR;
     HInstruction* left = instr->GetLeft();
     HInstruction* right = instr->GetRight();
-    DCHECK_EQ(right->GetType(), right->GetType());
+    DCHECK_EQ(left->GetType(), right->GetType());
 
     Value left_value = GetValue(left);
     Value right_value = GetValue(right);
     NOTHING_IF_ERROR;
 
     // neeraj - fix klockwork 99357 issue (divide by zero)
-    DCHECK(right_value.i != 0);
+    CHECK((left->GetType() != Primitive::kPrimInt) || (right_value.i != 0));
 
     SWITCH_FOR_TYPES(instr, left->GetType(),
       values_.Overwrite(instr, Value(right_value.i == -1 ? 0 : left_value.i % right_value.i)),
@@ -399,7 +401,6 @@ class TLEVisitor : public HGraphVisitor {
 
     int32_t shift_count = ComputeShiftCount(instr->GetRight());
     NOTHING_IF_ERROR;
-
     SWITCH_FOR_TYPES(instr, instr->GetLeft()->GetType(),
       values_.Overwrite(instr, Value(left_value.i << shift_count)),
       values_.Overwrite(instr, Value(left_value.l << shift_count)),

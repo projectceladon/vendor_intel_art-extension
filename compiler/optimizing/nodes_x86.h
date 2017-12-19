@@ -24,7 +24,9 @@ class HX86ComputeBaseMethodAddress FINAL : public HExpression<0> {
  public:
   // Treat the value as an int32_t, but it is really a 32 bit native pointer.
   HX86ComputeBaseMethodAddress()
-      : HExpression(Primitive::kPrimInt, SideEffects::None(), kNoDexPc) {}
+      : HExpression(Primitive::kPrimInt, SideEffects::None(), kNoDexPc) {
+    ASSIGN_INSTRUCTION_KIND(X86ComputeBaseMethodAddress);
+  }
 
   bool CanBeMoved() const OVERRIDE { return true; }
 
@@ -40,6 +42,7 @@ class HX86LoadFromConstantTable FINAL : public HExpression<2> {
   HX86LoadFromConstantTable(HX86ComputeBaseMethodAddress* method_base,
                             HConstant* constant)
       : HExpression(constant->GetType(), SideEffects::None(), kNoDexPc) {
+    ASSIGN_INSTRUCTION_KIND(X86LoadFromConstantTable);
     SetRawInputAt(0, method_base);
     SetRawInputAt(1, constant);
   }
@@ -66,6 +69,7 @@ class HX86FPNeg FINAL : public HExpression<2> {
             HX86ComputeBaseMethodAddress* method_base,
             uint32_t dex_pc)
       : HExpression(result_type, SideEffects::None(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(X86FPNeg);
     DCHECK(Primitive::IsFloatingPointType(result_type));
     SetRawInputAt(0, input);
     SetRawInputAt(1, method_base);
@@ -92,6 +96,7 @@ class HX86PackedSwitch FINAL : public HTemplateInstruction<2> {
     : HTemplateInstruction(SideEffects::None(), dex_pc),
       start_value_(start_value),
       num_entries_(num_entries) {
+    ASSIGN_INSTRUCTION_KIND(X86PackedSwitch);
     SetRawInputAt(0, input);
     SetRawInputAt(1, method_base);
   }
@@ -123,10 +128,12 @@ class HX86PackedSwitch FINAL : public HTemplateInstruction<2> {
 // X86/X86-64 version of HBoundsCheck that checks length in array descriptor.
 class HX86BoundsCheckMemory : public HExpression<2> {
  public:
-  HX86BoundsCheckMemory(HInstruction* index, HInstruction* array, uint32_t dex_pc)
+  HX86BoundsCheckMemory(HInstruction* index, HInstruction* array, uint32_t dex_pc, bool is_string = false)
       : HExpression(index->GetType(), SideEffects::CanTriggerGC(), dex_pc) {
+    ASSIGN_INSTRUCTION_KIND(X86BoundsCheckMemory);
     DCHECK_EQ(array->GetType(), Primitive::kPrimNot);
     DCHECK(Primitive::IsIntegralType(index->GetType()));
+    SetPackedFlag<kFlagIsStringCharAt>(is_string);
     SetRawInputAt(0, index);
     SetRawInputAt(1, array);
   }
@@ -150,9 +157,13 @@ class HX86BoundsCheckMemory : public HExpression<2> {
 
   HInstruction* GetArray() const { return InputAt(1); }
 
+  bool IsStringCharAt() const { return GetPackedFlag<kFlagIsStringCharAt>(); }
+
   DECLARE_INSTRUCTION(X86BoundsCheckMemory);
 
  private:
+
+   static constexpr size_t kFlagIsStringCharAt = kNumberOfExpressionPackedBits;
   DISALLOW_COPY_AND_ASSIGN(HX86BoundsCheckMemory);
 };
 
@@ -199,6 +210,7 @@ class HInstructionRHSMemory : public HVariableInputSizeInstruction {
       type_(type),
       from_static_(false),
       offset_(offset) {
+      ASSIGN_INSTRUCTION_KIND(InstructionRHSMemory);
       if (index != nullptr) {
         SetRawInputAt(2, index);
       }
@@ -222,7 +234,9 @@ class HAddRHSMemory : public HInstructionRHSMemory {
                 HInstruction* index,
                 size_t offset,
                 ArenaAllocator* arena)
-      : HInstructionRHSMemory(type, lhs, base, index, offset, arena) {}
+      : HInstructionRHSMemory(type, lhs, base, index, offset, arena) {
+    ASSIGN_INSTRUCTION_KIND(AddRHSMemory);
+  }
 
   DECLARE_INSTRUCTION(AddRHSMemory);
 
@@ -254,7 +268,9 @@ class HMulRHSMemory : public HInstructionRHSMemory {
                 HInstruction* index,
                 size_t offset,
                 ArenaAllocator* arena)
-      : HInstructionRHSMemory(type, lhs, base, index, offset, arena) {}
+      : HInstructionRHSMemory(type, lhs, base, index, offset, arena) {
+    ASSIGN_INSTRUCTION_KIND(MulRHSMemory);
+  }
 
   DECLARE_INSTRUCTION(MulRHSMemory);
 
@@ -270,7 +286,9 @@ class HDivRHSMemory : public HInstructionRHSMemory {
                 HInstruction* index,
                 size_t offset,
                 ArenaAllocator* arena)
-      : HInstructionRHSMemory(type, lhs, base, index, offset, arena) {}
+      : HInstructionRHSMemory(type, lhs, base, index, offset, arena) {
+    ASSIGN_INSTRUCTION_KIND(DivRHSMemory);
+  }
 
   DECLARE_INSTRUCTION(DivRHSMemory);
 

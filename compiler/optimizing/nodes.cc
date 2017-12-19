@@ -949,10 +949,6 @@ void HEnvironment::RemoveAsUserOfInput(size_t index) const {
   user->FixUpUserRecordsAfterEnvUseRemoval(before_env_use_node);
 }
 
-HInstruction::InstructionKind HInstruction::GetKind() const {
-  return GetKindInternal();
-}
-
 HInstruction* HInstruction::GetNextDisregardingMoves() const {
   HInstruction* next = GetNext();
   while (next != nullptr && next->IsParallelMove()) {
@@ -2120,8 +2116,12 @@ void HGraph::UpdateLoopAndTryInformationOfNewBlock(HBasicBlock* block,
     // Clear the information of which blocks are contained in that loop. Since the
     // information is stored as a bit vector based on block ids, we have to update
     // it, as those block ids were specific to the callee graph and we are now adding
-    // these blocks to the caller graph.
-    block->GetLoopInformation()->ClearAllBlocks();
+    // these blocks to the caller graph. This change is required as inliner may have
+    // inlined callee graph into callers. Finally, loop info should contain caller graph.
+    HLoopInformation* callee_loop_info = block->GetLoopInformation();
+    callee_loop_info->ClearAllBlocks();
+    HLoopInformation_X86* loop_info_X86 = LOOPINFO_TO_LOOPINFO_X86(callee_loop_info);
+    loop_info_X86->SetGraph(reference->GetGraph());
   }
 
   // If not already in a loop, update the loop information.
@@ -2255,6 +2255,7 @@ HInstruction* HGraph::InlineInto(HGraph* outer_graph, HInvoke* invoke) {
       if (current != exit_block_ && current != entry_block_ && current != first) {
         DCHECK(current->GetTryCatchInformation() == nullptr);
         DCHECK(current->GetGraph() == this);
+        DCHECK(at->GetGraph() == outer_graph);
         current->SetGraph(outer_graph);
         outer_graph->AddBlock(current);
         outer_graph->reverse_post_order_[++index_of_at] = current;

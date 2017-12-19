@@ -155,7 +155,7 @@ def gather_test_info():
   for v_type in VARIANT_TYPE_DICT:
     TOTAL_VARIANTS_SET = TOTAL_VARIANTS_SET.union(VARIANT_TYPE_DICT.get(v_type))
 
-  test_dir = env.ANDROID_BUILD_TOP + '/art/test'
+  test_dir = env.ANDROID_BUILD_TOP + '/vendor/intel/art-extension/test'
   for f in os.listdir(test_dir):
     if fnmatch.fnmatch(f, '[0-9]*'):
       RUN_TEST_SET.add(f)
@@ -470,7 +470,7 @@ def run_tests(tests):
       options_test = (' --output-path %s') % (
           tempfile.mkdtemp(dir=env.ART_HOST_TEST_DIR)) + options_test
 
-      run_test_sh = env.ANDROID_BUILD_TOP + '/art/test/run-test'
+      run_test_sh = env.ANDROID_BUILD_TOP + '/vendor/intel/art-extension/test/run-test'
       command = run_test_sh + ' ' + options_test + ' ' + test
 
       semaphore.acquire()
@@ -636,7 +636,7 @@ def get_disabled_test_info():
     The method returns a dict of tests mapped to the variants list
     for which the test should not be run.
   """
-  known_failures_file = env.ANDROID_BUILD_TOP + '/art/test/knownfailures.json'
+  known_failures_file = env.ANDROID_BUILD_TOP + '/vendor/intel/art-extension/test/knownfailures.json'
   with open(known_failures_file) as known_failures_json:
     known_failures_info = json.loads(known_failures_json.read())
 
@@ -762,6 +762,33 @@ def print_analysis():
     print_text(COLOR_ERROR + '----------' + COLOR_NORMAL + '\n')
     for failed_test in sorted([test_info[0] for test_info in failed_tests]):
       print_text(('%s\n' % (failed_test)))
+    # Print list of failed test cases to "failed" file.
+    fail_file = env.ANDROID_BUILD_TOP + '/vendor/intel/art-extension/test/fail'
+    hfail = open (fail_file, 'w')
+    for failed_test in sorted([test_info[0] for test_info in failed_tests]):
+      hfail.write ('%s\n' % (failed_test))
+    # Generate unexpected failures and unexpected passes files
+    xfail_file = env.ANDROID_BUILD_TOP + '/vendor/intel/art-extension/test/xfail'
+    ufail_file = env.ANDROID_BUILD_TOP + '/vendor/intel/art-extension/test/ufail'
+    upass_file = env.ANDROID_BUILD_TOP + '/vendor/intel/art-extension/test/upass'
+    ufail_cmd = 'comm -13 <(sort ' + xfail_file + ') <(sort ' + fail_file + ') >' + ufail_file
+    upass_cmd = 'comm -23 <(sort ' + xfail_file + ') <(sort ' + fail_file + ') >' + upass_file
+    cmd_script = open ('/tmp/diff_cmd', 'w')
+    cmd_script.write ('#!/bin/bash\n')
+    cmd_script.write (ufail_cmd)
+    cmd_script.write ('\n')
+    cmd_script.write (upass_cmd)
+    cmd_script.write ('\n')
+    cmd_script.close ()
+    if os.path.isfile(ufail_file):
+      os.remove (ufail_file)
+    if os.path.isfile(upass_file):
+      os.remove (upass_file)
+    subprocess.Popen('chmod +x /tmp/diff_cmd',shell=True)
+    subprocess.Popen('/tmp/diff_cmd',shell=True)
+    #subprocess.call(ufail_cmd,shell=True)
+    #subprocess.call(upass_cmd,shell=True)
+      
 
 
 def parse_test_name(test_name):
