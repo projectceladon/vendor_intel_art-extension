@@ -669,7 +669,6 @@ void TrivialLoopEvaluator::UpdateRegisters(HLoopInformation_X86* loop,
         constant_node = visitor.GetConstant(graph_, insn, constant);
         CHECK(constant_node);
       }
-      // Neeraj - fix dex2oat crash
       DCHECK(constant_node->GetBlock() != nullptr);
       user->ReplaceInput(constant_node, input_index);
     }
@@ -689,13 +688,10 @@ void TrivialLoopEvaluator::UpdateRegisters(HLoopInformation_X86* loop,
         constant_node = visitor.GetConstant(graph_, insn, constant);
         CHECK(constant_node);
       }
-      //neeraj - fix dex2oat crash
-      DCHECK(constant_node == nullptr || constant_node->GetBlock() != nullptr);
+      DCHECK(constant_node->GetBlock() != nullptr);
       user->RemoveAsUserOfInput(input_index);
 
       user->SetRawEnvAt(input_index, constant_node);
-      //atul.b Fix Klocwork NULL dereferenced issue 112780
-      DCHECK(constant_node != nullptr);
       constant_node->AddEnvUseAt(user, input_index);
     }
   }

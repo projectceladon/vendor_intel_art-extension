@@ -192,6 +192,8 @@ class BoundsCheckSlowPathMemoryX86 : public SlowPathCode {
       SaveLiveRegisters(codegen, instruction_->GetLocations());
     }
 
+    CHECK(instruction_->AsX86BoundsCheckMemory());
+
     // Load the array length into our temporary.
     uint32_t len_offset = instruction_->AsX86BoundsCheckMemory()->IsStringCharAt()
                         ? mirror::String::CountOffset().Uint32Value()
@@ -199,10 +201,10 @@ class BoundsCheckSlowPathMemoryX86 : public SlowPathCode {
     Address array_length(locations->InAt(1).AsRegister<Register>(),
                          len_offset);
     __ movl(locations->GetTemp(0).AsRegister<Register>(), array_length);
-        //Shift right the array length location 
-   if(instruction_->AsX86BoundsCheckMemory()->IsStringCharAt()){
+    //Shift right the array length location 
+    if (instruction_->AsX86BoundsCheckMemory()->IsStringCharAt()) {
        __ shrl(locations->GetTemp(0).AsRegister<Register>(), Immediate(1));
-      }
+    }
     // We're moving two locations to locations that could overlap, so we need a parallel
     // move resolver.
     InvokeRuntimeCallingConvention calling_convention;
@@ -213,13 +215,13 @@ class BoundsCheckSlowPathMemoryX86 : public SlowPathCode {
         locations->GetTemp(0),
         Location::RegisterLocation(calling_convention.GetRegisterAt(1)),
         Primitive::kPrimInt);
-        QuickEntrypointEnum entrypoint = instruction_->AsX86BoundsCheckMemory()->IsStringCharAt()
-                                       ? kQuickThrowStringBounds
-                                       : kQuickThrowArrayBounds;
-        x86_codegen->InvokeRuntime(entrypoint,
+    QuickEntrypointEnum entrypoint = instruction_->AsX86BoundsCheckMemory()->IsStringCharAt()
+        ? kQuickThrowStringBounds
+        : kQuickThrowArrayBounds;
+    x86_codegen->InvokeRuntime(entrypoint,
                                instruction_, instruction_->GetDexPc(), this);
-        CheckEntrypointTypes<kQuickThrowStringBounds, void, int32_t, int32_t>();
-        CheckEntrypointTypes<kQuickThrowArrayBounds, void, int32_t, int32_t>();
+    CheckEntrypointTypes<kQuickThrowStringBounds, void, int32_t, int32_t>();
+    CheckEntrypointTypes<kQuickThrowArrayBounds, void, int32_t, int32_t>();
   }
 
   bool IsFatal() const OVERRIDE { return true; }
