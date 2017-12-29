@@ -42,6 +42,7 @@ namespace jit {
 
 class JitCodeCache;
 class JitOptions;
+class JniTask : public Task { };
 
 static constexpr int16_t kJitCheckForOSR = -1;
 static constexpr int16_t kJitHotnessDisabled = -2;
@@ -177,6 +178,7 @@ class Jit {
 
   // Start JIT threads.
   void Start();
+  bool AddJniTask(Thread* self, JniTask* task);
 
  private:
   Jit();

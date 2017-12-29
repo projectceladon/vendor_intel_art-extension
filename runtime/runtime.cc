@@ -66,6 +66,9 @@
 #include "base/unix_file/fd_file.h"
 #include "class_linker-inl.h"
 #include "compiler_callbacks.h"
+#ifdef __ANDROID__
+#include "cutils/properties.h"
+#endif
 #include "debugger.h"
 #include "elf_file.h"
 #include "entrypoints/runtime_asm_entrypoints.h"
@@ -837,6 +840,29 @@ void Runtime::EndThreadBirth() REQUIRES(Locks::runtime_shutdown_lock_) {
 void Runtime::InitNonZygoteOrPostFork(
     JNIEnv* env, bool is_system_server, NativeBridgeAction action, const char* isa) {
   is_zygote_ = false;
+
+#ifdef CAPSTONE
+#ifdef __ANDROID__
+  char property_value[PROPERTY_VALUE_MAX];
+  property_get("persist.dalvik.autofast.disable", property_value, "false");
+  SetAutoFastDetect(strcmp(property_value, "true") != 0);
+  property_get("persist.dalvik.autofast.debug", property_value, "false");
+  gLogVerbosity.autofast_jni = (strcmp(property_value, "true") == 0);
+#else
+  const char* autofast_disable = getenv("ART_AUTOFAST_DISABLE");
+  if (autofast_disable != nullptr) {
+    SetAutoFastDetect(strcmp(autofast_disable, "true") != 0);
+  } else {
+    SetAutoFastDetect(false);
+  }
+  const char* autofast_debug = getenv("ART_AUTOFAST_DEBUG");
+  if (autofast_debug != nullptr) {
+    gLogVerbosity.autofast_jni = (strcmp(autofast_debug, "true") == 0);
+  } else {
+    gLogVerbosity.autofast_jni = false;
+  }
+#endif
+#endif
 
   if (is_native_bridge_loaded_) {
     switch (action) {
