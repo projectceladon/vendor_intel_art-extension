@@ -249,6 +249,8 @@ class BoundsCheckSlowPathMemoryX86_64 : public SlowPathCode {
       SaveLiveRegisters(codegen, instruction_->GetLocations());
     }
 
+    CHECK(instruction_->AsX86BoundsCheckMemory());
+
     // Load the array length into our temporary.
     uint32_t len_offset = instruction_->AsX86BoundsCheckMemory()->IsStringCharAt()
                                        ? mirror::String::CountOffset().Uint32Value()
@@ -258,9 +260,9 @@ class BoundsCheckSlowPathMemoryX86_64 : public SlowPathCode {
     __ movl(locations->GetTemp(0).AsRegister<CpuRegister>(), array_length);
 
     //Shift right the array length location 
-    if(instruction_->AsX86BoundsCheckMemory()->IsStringCharAt()){
+    if (instruction_->AsX86BoundsCheckMemory()->IsStringCharAt()) {
        __ shrl(locations->GetTemp(0).AsRegister<CpuRegister>(), Immediate(1));
-      }
+    }
     // We're moving two locations to locations that could overlap, so we need a parallel
     // move resolver.
     InvokeRuntimeCallingConvention calling_convention;
@@ -271,7 +273,7 @@ class BoundsCheckSlowPathMemoryX86_64 : public SlowPathCode {
         locations->GetTemp(0),
         Location::RegisterLocation(calling_convention.GetRegisterAt(1)),
         Primitive::kPrimInt);
-        QuickEntrypointEnum entrypoint = instruction_->AsX86BoundsCheckMemory()->IsStringCharAt()
+    QuickEntrypointEnum entrypoint = instruction_->AsX86BoundsCheckMemory()->IsStringCharAt()
         ? kQuickThrowStringBounds
         : kQuickThrowArrayBounds;
     x64_codegen->InvokeRuntime(entrypoint,
@@ -4949,11 +4951,15 @@ void InstructionCodeGeneratorX86_64::VisitArraySet(HArraySet* instruction) {
       uint32_t offset = mirror::Array::DataOffset(sizeof(int32_t)).Uint32Value();
       Address address = CodeGeneratorX86_64::ArrayAddress(array, index, TIMES_4, offset);
 
-      if (!value.IsRegister()) {
+      if (instruction->InputAt(2)->IsNullConstant()) {
         // Just setting null.
-        DCHECK(instruction->InputAt(2)->IsNullConstant());
-        DCHECK(value.IsConstant()) << value;
-        __ movl(address, Immediate(0));
+        if (!value.IsRegister()) {
+          DCHECK(value.IsConstant()) << value;
+          __ movl(address, Immediate(0));
+        } else {
+          DCHECK(use_non_temporal);
+          __ movntl(address, value.AsRegister<CpuRegister>());
+        }
         codegen_->MaybeRecordImplicitNullCheck(instruction);
         DCHECK(!needs_write_barrier);
         DCHECK(!may_need_runtime_call_for_type_check);
