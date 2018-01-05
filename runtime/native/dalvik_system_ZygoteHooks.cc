@@ -257,15 +257,6 @@ static jlong ZygoteHooks_nativePreFork(JNIEnv* env, jclass) {
   return reinterpret_cast<jlong>(ThreadForEnv(env));
 }
 
-static jlong ZygoteHooks_nativeGetToken(JNIEnv* env, jclass) {
-  Runtime* runtime = Runtime::Current();
-  CHECK(runtime->IsZygote()) << "runtime instance not started with -Xzygote";
-  if (Trace::GetMethodTracingMode() != TracingMode::kTracingInactive) {
-    Trace::Pause();
-  }
-  return reinterpret_cast<jlong>(ThreadForEnv(env));
-}
-
 static void ZygoteHooks_nativePostForkChild(JNIEnv* env,
                                             jclass,
                                             jlong token,
@@ -347,7 +338,6 @@ static void ZygoteHooks_stopZygoteNoThreadCreation(JNIEnv* env ATTRIBUTE_UNUSED,
 
 static JNINativeMethod gMethods[] = {
   NATIVE_METHOD(ZygoteHooks, nativePreFork, "()J"),
-  NATIVE_METHOD(ZygoteHooks, nativeGetToken, "()J"),
   NATIVE_METHOD(ZygoteHooks, nativePostForkChild, "(JIZLjava/lang/String;)V"),
   NATIVE_METHOD(ZygoteHooks, startZygoteNoThreadCreation, "()V"),
   NATIVE_METHOD(ZygoteHooks, stopZygoteNoThreadCreation, "()V"),
