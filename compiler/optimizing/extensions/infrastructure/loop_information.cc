@@ -723,6 +723,10 @@ void HLoopInformation_X86::SplitSuspendCheck() {
   HBasicBlock* test_suspend_block = new(arena) HBasicBlock(graph, header->GetDexPc());
   graph->AddBlock(test_suspend_block);
 
+  //Add TryCatchInfromation to the newly added blocks  
+  if (header->IsTryBlock()){
+    test_suspend_block->SetTryCatchInformation(header->GetTryCatchInformation());
+  }
   // Add an HTestSuspend into this block.
   HTestSuspend* test_suspend = new(arena) HTestSuspend;
   test_suspend_block->AddInstruction(test_suspend);
@@ -733,6 +737,9 @@ void HLoopInformation_X86::SplitSuspendCheck() {
   HBasicBlock* dummy_block = new(arena) HBasicBlock(graph, header->GetDexPc());
   graph->AddBlock(dummy_block);
   dummy_block->AddInstruction(new(arena) HGoto());
+  if (header->IsTryBlock()){
+     dummy_block->SetTryCatchInformation(header->GetTryCatchInformation());
+  }
 
   // We need a second dummy block to avoid another critical edge, to handle
   // the non-suspend case.
@@ -741,7 +748,9 @@ void HLoopInformation_X86::SplitSuspendCheck() {
   dummy_block2->AddInstruction(new(arena) HGoto());
   dummy_block2->AddSuccessor(dummy_block);
   test_suspend_block->AddSuccessor(dummy_block2);
-
+  if (header->IsTryBlock()){
+    dummy_block2->SetTryCatchInformation(header->GetTryCatchInformation());
+  }
   // Create a new block to hold the code after the TestSuspend.
   HBasicBlock* rest_of_header = header->SplitAfterForInlining(check);
 
@@ -757,6 +766,9 @@ void HLoopInformation_X86::SplitSuspendCheck() {
   HBasicBlock* dom = rest_of_header->GetDominator();
   rest_of_header->ClearDominanceInformation();
   rest_of_header->SetDominator(dom);
+  if (header->IsTryBlock()){
+    rest_of_header->SetTryCatchInformation(header->GetTryCatchInformation());
+  }
 
   graph->AddBlock(rest_of_header);
 
@@ -785,6 +797,9 @@ void HLoopInformation_X86::SplitSuspendCheck() {
   // Link the new block into the loop.
   test_suspend_block->AddSuccessor(suspend_block);
   suspend_block->AddSuccessor(dummy_block);
+  if (header->IsTryBlock()){
+    suspend_block->SetTryCatchInformation(header->GetTryCatchInformation());
+  }
 
   // Set loop information for new blocks.
   AddToAll(suspend_block);

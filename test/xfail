@@ -38,7 +38,6 @@ test-art-host-run-test-debug-prebuild-interpreter-no-relocate-ntrace-cms-checkjn
 test-art-host-run-test-debug-prebuild-interpreter-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8006-inline-InvokeVirtual-DivZeroCheck-TryCatch-00464
 test-art-host-run-test-debug-prebuild-interpreter-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8008-ulr-Throw-0164
 test-art-host-run-test-debug-prebuild-interpreter-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8008-ulr-Throw-0364
-test-art-host-run-test-debug-prebuild-jit-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-061-out-of-memory64
 test-art-host-run-test-debug-prebuild-jit-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-656-loop-deopt64
 test-art-host-run-test-debug-prebuild-jit-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8006-inline-InvokeDirect-DivZeroCheck-00164
 test-art-host-run-test-debug-prebuild-jit-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8006-inline-InvokeDirect-DivZeroCheck-00264
@@ -60,8 +59,6 @@ test-art-host-run-test-debug-prebuild-jit-no-relocate-ntrace-cms-checkjni-picima
 test-art-host-run-test-debug-prebuild-jit-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8006-inline-InvokeVirtual-DivZeroCheck-TryCatch-00464
 test-art-host-run-test-debug-prebuild-jit-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8008-ulr-Throw-0164
 test-art-host-run-test-debug-prebuild-jit-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8008-ulr-Throw-0364
-test-art-host-run-test-debug-prebuild-optimizing-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8003-ntm-TryCatchInt-00164
-test-art-host-run-test-debug-prebuild-optimizing-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8003-ntm-TryCatchLong-00164
 test-art-host-run-test-debug-prebuild-optimizing-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8006-inline-InvokeDirect-DivZeroCheck-00164
 test-art-host-run-test-debug-prebuild-optimizing-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8006-inline-InvokeDirect-DivZeroCheck-00264
 test-art-host-run-test-debug-prebuild-optimizing-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8006-inline-InvokeDirect-DivZeroCheck-TryCatch-00164
@@ -82,8 +79,6 @@ test-art-host-run-test-debug-prebuild-optimizing-no-relocate-ntrace-cms-checkjni
 test-art-host-run-test-debug-prebuild-optimizing-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8006-inline-InvokeVirtual-DivZeroCheck-TryCatch-00464
 test-art-host-run-test-debug-prebuild-optimizing-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8008-ulr-Throw-0164
 test-art-host-run-test-debug-prebuild-optimizing-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8008-ulr-Throw-0364
-test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8003-ntm-TryCatchInt-00164
-test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8003-ntm-TryCatchLong-00164
 test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8006-inline-InvokeDirect-DivZeroCheck-00164
 test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8006-inline-InvokeDirect-DivZeroCheck-00264
 test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8006-inline-InvokeDirect-DivZeroCheck-TryCatch-00164
