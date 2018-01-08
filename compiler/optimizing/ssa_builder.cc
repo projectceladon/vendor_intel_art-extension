@@ -376,7 +376,7 @@ bool SsaBuilder::FixAmbiguousArrayOps() {
           // with its floating-point equivalent. The replacement must always
           // succeed in code validated by the verifier.
           HInstruction* equivalent = GetFloatOrDoubleEquivalent(value, array_type);
-          DCHECK(equivalent != nullptr);
+          CHECK(equivalent != nullptr);
           aset->ReplaceInput(equivalent, /* input_index */ 2);
           if (equivalent->IsPhi()) {
             // Returned equivalent is a phi which may not have had its inputs
