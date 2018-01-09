@@ -29,7 +29,6 @@ using android::base::StringPrintf;
 #include "loop_iterators.h"
 #include "nodes.h"
 #include "trivial_loop_evaluator.h"
-
 namespace art {
 
 class TLEVisitor : public HGraphVisitor {
@@ -52,6 +51,7 @@ class TLEVisitor : public HGraphVisitor {
       is_error_(false),
       next_bb_(nullptr),
       values_(std::less<HInstruction*>(), graph->GetArena()->Adapter()),
+      phi_values_(std::less<HInstruction*>(), graph->GetArena()->Adapter()),
       opt_(opt) {}
 
 #define NOTHING_IF_ERROR if (is_error_) return
@@ -63,6 +63,22 @@ class TLEVisitor : public HGraphVisitor {
           case Primitive::kPrimDouble: double_case; break; \
           default: SetError(instr); \
         }} while (false)
+
+  void VisitBasicBlock(HBasicBlock* block) {
+    for (HInstructionIterator it(block->GetPhis()); !it.Done(); it.Advance()) {
+      it.Current()->Accept(this);
+    }
+    // Update phis.
+    for (auto it : phi_values_) {
+      values_.Overwrite(it.first, it.second);
+   }
+    phi_values_.clear();
+    for (HInstructionIterator it(block->GetInstructions()); !it.Done(); it.Advance()) {
+      it.Current()->Accept(this);
+    }
+  }
+
+
 
   void VisitInstruction(HInstruction* instruction) OVERRIDE {
     NOTHING_IF_ERROR;
@@ -89,7 +105,9 @@ class TLEVisitor : public HGraphVisitor {
     NOTHING_IF_ERROR;
     Value value = GetValue(instr->InputAt(pred_index_));
     NOTHING_IF_ERROR;
-    values_.Overwrite(instr, value);
+    // We need to store right values to update all phis in parallel.
+    phi_values_.Overwrite(instr, value);
+
   }
 
 #define INTEGRAL_TO_FP_CONV(vmin, vmax, cast, value) \
@@ -558,6 +576,7 @@ class TLEVisitor : public HGraphVisitor {
   bool is_error_;
   HBasicBlock* next_bb_;
   ArenaSafeMap<HInstruction*, Value> values_;
+  ArenaSafeMap<HInstruction*, Value> phi_values_;
   HOptimization_X86* opt_;
 };
 
@@ -609,7 +628,6 @@ void TrivialLoopEvaluator::Run() {
 
 bool TrivialLoopEvaluator::EvaluateLoop(HLoopInformation_X86* loop, TLEVisitor& visitor) {
   const unsigned int loop_iterations = loop->GetNumIterations(loop->GetHeader());
-
   // For each iteration of the loop, execute its sequence of instructions.
   uint64_t current_iter = 0;
   HBasicBlock* header = loop->GetHeader();
@@ -646,7 +664,6 @@ void TrivialLoopEvaluator::UpdateRegisters(HLoopInformation_X86* loop,
                                            TLEVisitor& visitor) {
   DCHECK(loop != nullptr);
   UNUSED(visitor);
-
   // We want to find all the users of the values we need to write back.
   // Then, we replace the corresponding input by the HConstant.
   for (auto value : visitor.GetConstants()) {
