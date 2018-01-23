@@ -25,6 +25,7 @@
 #include "graph_x86.h"
 #include "induction_variable.h"
 #include "loop_information.h"
+#include "loop_iterators.h"
 #include "optimization_x86.h"
 
 namespace art {
@@ -723,6 +724,10 @@ void HLoopInformation_X86::SplitSuspendCheck() {
   HBasicBlock* test_suspend_block = new(arena) HBasicBlock(graph, header->GetDexPc());
   graph->AddBlock(test_suspend_block);
 
+  //Add TryCatchInfromation to the newly added blocks  
+  if (header->IsTryBlock()){
+    test_suspend_block->SetTryCatchInformation(header->GetTryCatchInformation());
+  }
   // Add an HTestSuspend into this block.
   HTestSuspend* test_suspend = new(arena) HTestSuspend;
   test_suspend_block->AddInstruction(test_suspend);
@@ -733,6 +738,9 @@ void HLoopInformation_X86::SplitSuspendCheck() {
   HBasicBlock* dummy_block = new(arena) HBasicBlock(graph, header->GetDexPc());
   graph->AddBlock(dummy_block);
   dummy_block->AddInstruction(new(arena) HGoto());
+  if (header->IsTryBlock()){
+     dummy_block->SetTryCatchInformation(header->GetTryCatchInformation());
+  }
 
   // We need a second dummy block to avoid another critical edge, to handle
   // the non-suspend case.
@@ -741,7 +749,9 @@ void HLoopInformation_X86::SplitSuspendCheck() {
   dummy_block2->AddInstruction(new(arena) HGoto());
   dummy_block2->AddSuccessor(dummy_block);
   test_suspend_block->AddSuccessor(dummy_block2);
-
+  if (header->IsTryBlock()){
+    dummy_block2->SetTryCatchInformation(header->GetTryCatchInformation());
+  }
   // Create a new block to hold the code after the TestSuspend.
   HBasicBlock* rest_of_header = header->SplitAfterForInlining(check);
 
@@ -757,6 +767,9 @@ void HLoopInformation_X86::SplitSuspendCheck() {
   HBasicBlock* dom = rest_of_header->GetDominator();
   rest_of_header->ClearDominanceInformation();
   rest_of_header->SetDominator(dom);
+  if (header->IsTryBlock()){
+    rest_of_header->SetTryCatchInformation(header->GetTryCatchInformation());
+  }
 
   graph->AddBlock(rest_of_header);
 
@@ -785,6 +798,9 @@ void HLoopInformation_X86::SplitSuspendCheck() {
   // Link the new block into the loop.
   test_suspend_block->AddSuccessor(suspend_block);
   suspend_block->AddSuccessor(dummy_block);
+  if (header->IsTryBlock()){
+    suspend_block->SetTryCatchInformation(header->GetTryCatchInformation());
+  }
 
   // Set loop information for new blocks.
   AddToAll(suspend_block);
@@ -1294,5 +1310,60 @@ bool HLoopInformation_X86::RemoveFromGraph() {
 
   return true;
 }
+
+uint64_t HLoopInformation_X86::CountInstructionsInBody(bool skip_suspend_checks) const {
+  uint64_t nb_instructions = 0u;
+
+  for (HBlocksInLoopIterator bb_it(*this); !bb_it.Done(); bb_it.Advance()) {
+    HBasicBlock* bb = bb_it.Current();
+    for (HInstructionIterator insn_it(bb->GetInstructions());
+         !insn_it.Done();
+         insn_it.Advance()) {
+      HInstruction::InstructionKind kind = insn_it.Current()->GetKind();
+      if (skip_suspend_checks) {
+        switch (kind) {
+          case HInstruction::kSuspendCheck:
+          case HInstruction::kTestSuspend:
+          case HInstruction::kSuspend:
+            continue;
+          default:
+            break;
+        }
+      }
+      nb_instructions++;
+    }
+  }
+
+  return nb_instructions;
+}
+
+HInstruction* HLoopInformation_X86::PhiInput(HPhi* phi, bool inside_of_loop) {
+  DCHECK(phi != nullptr);
+  DCHECK_EQ(phi->InputCount(), 2u);
+  DCHECK(phi->GetBlock()->GetLoopInformation() == this);
+
+  // This method assumes that the first predecessor of the loop header is
+  // the loop pre-header.
+  uint32_t input_id = inside_of_loop ? 1u : 0u;
+  return phi->InputAt(input_id);
+}
+
+
+bool HLoopInformation_X86::IsOrHasIrreducibleLoop() const {
+  if (IsIrreducible()) {
+    return true;
+  }
+
+  if (graph_->HasIrreducibleLoops()) {
+    for (HBlocksInLoopIterator it_loop(*this); !it_loop.Done(); it_loop.Advance()) {
+      if (it_loop.Current()->GetLoopInformation()->IsIrreducible()) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 
 }  // namespace art

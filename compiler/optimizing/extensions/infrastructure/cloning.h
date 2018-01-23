@@ -41,14 +41,20 @@ class HInstructionCloner : public HGraphVisitor {
    * @param enable_cloning 'false' to see if cloning is possible, 'true' to clone.
    * @param use_cloned_inputs 'true' if cloned instructions should use already
    * cloned inputs.
+   * @param allow_overwrite Allow one instruction to have multiple clones. It is deactivated
+   * by default because it is safer to keep one single mapping, to prevent potential memory
+   * leaks. However, there are certain situations where allowing such feature becomes handy.
+   * It is the case, for example, of Loop Unrolling.
    */
   HInstructionCloner(HGraph_X86* graph,
                      bool enable_cloning = true,
-                     bool use_cloned_inputs = true) :
+                     bool use_cloned_inputs = true,
+                     bool allow_overwrite = false) :
       HGraphVisitor(graph),
       cloning_enabled_(enable_cloning),
       all_cloned_okay_(true),
       use_cloned_inputs_(use_cloned_inputs),
+      allow_overwrite_(allow_overwrite),
       arena_(graph->GetArena()),
       debug_name_failed_clone_(nullptr) {}
 
@@ -57,6 +63,18 @@ class HInstructionCloner : public HGraphVisitor {
     all_cloned_okay_ = false;
     debug_name_failed_clone_ = instruction->DebugName();
   }
+
+  void AddOrUpdateCloneManually(HInstruction* original, HInstruction* clone) {
+    DCHECK(original != nullptr);
+    DCHECK(clone != nullptr);
+    orig_to_clone_.Overwrite(original, clone);
+  }
+
+  static void CopyReferenceType(HInstruction* instr, HInstruction* clone) {
+   if (instr->GetType() == Primitive::kPrimNot) {
+     clone->SetReferenceTypeInfo(instr->GetReferenceTypeInfo());
+   } 
+ }	
 
   void AddCloneManually(HInstruction* original, HInstruction* clone) {
     DCHECK(original != nullptr);
@@ -71,6 +89,12 @@ class HInstructionCloner : public HGraphVisitor {
       return clone;
     } else {
       return nullptr;
+    }
+  }
+
+  void OverwriteAllowanceCheck(HInstruction* instr) const {
+    if (!allow_overwrite_) {
+      DCHECK(orig_to_clone_.find(instr) == orig_to_clone_.end());
     }
   }
 
@@ -179,6 +203,7 @@ class HInstructionCloner : public HGraphVisitor {
   const bool cloning_enabled_;
   bool all_cloned_okay_;
   const bool use_cloned_inputs_;
+  const bool allow_overwrite_;
   SafeMap<HInstruction*, HInstruction*> orig_to_clone_;
   ArenaAllocator* arena_;
   const char* debug_name_failed_clone_;
