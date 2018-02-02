@@ -99,3 +99,6 @@ test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-check
 test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8006-inline-InvokeVirtual-DivZeroCheck-TryCatch-00464
 test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8008-ulr-Throw-0164
 test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8008-ulr-Throw-0364
+test-art-host-run-test-debug-prebuild-interp-ac-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8112-FBL-NestedLoop_0364
+test-art-host-run-test-debug-prebuild-interp-ac-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8112-FBL-TryCatchConditions_0164
+

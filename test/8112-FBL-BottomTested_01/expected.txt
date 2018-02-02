@@ -1,0 +1,12 @@
+Test Main; Subtest test1; Result: 312950
+Test Main; Subtest test10; Result: 1048591
+Test Main; Subtest test11; Result: 301951
+Test Main; Subtest test12; Result: -2147482550
+Test Main; Subtest test2; Result: 617526
+Test Main; Subtest test3; Result: 1120
+Test Main; Subtest test4; Result: 11
+Test Main; Subtest test5; Result: 271385
+Test Main; Subtest test6; Result: 1487868120
+Test Main; Subtest test7; Result: 20
+Test Main; Subtest test8; Result: 314080
+Test Main; Subtest test9; Result: 1101
