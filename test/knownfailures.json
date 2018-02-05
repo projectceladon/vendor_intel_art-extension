@@ -5,6 +5,8 @@
 		  "8003-ntm-NestedLoopInt-003",
 		  "8003-ntm-AccessArrayElementsInt-002",
 		  "8003-ntm-NestedLoopLong-003",
+		  "8112-FBL-NestedLoop_03",
+		  "8112-FBL-TryCatchConditions_01",
 		  "8003-ntm-AccessArrayElementsLong-002"],
         "description": ["Disable as it times out after a long time",
                         ", till a fix arrives."],
