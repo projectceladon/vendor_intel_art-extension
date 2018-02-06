@@ -1,0 +1,9 @@
+Test Main; Subtest test_01; Result: 11.23
+Test Main; Subtest test_02; Result: 7.23
+Test Main; Subtest test_03; Result: -4.997499377E7
+Test Main; Subtest test_04; Result: 1.4998500123000002E8
+Test Main; Subtest test_05; Result: 0.0
+Test Main; Subtest test_06; Result: -3.315300681877E10
+Test Main; Subtest test_07; Result: 2.0469147766226763E8
+Test Main; Subtest test_08; Result: 34.0
+Test Main; Subtest test_09; Result: 12

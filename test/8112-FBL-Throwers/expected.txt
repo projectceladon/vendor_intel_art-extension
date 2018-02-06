@@ -1,0 +1,5 @@
+Test Main; Subtest test1; Result: -1, java.lang.ArithmeticException
+Test Main; Subtest test2; Result: -1, java.lang.NullPointerException
+Test Main; Subtest test3; Result: -1, java.lang.NullPointerException
+Test Main; Subtest test4; Result: 301951
+Test Main; Subtest test5; Result: -13, java.lang.ArithmeticException

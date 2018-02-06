@@ -1,0 +1,10 @@
+Test Main; Subtest test_01; Result: 40
+Test Main; Subtest test_01a; Result: 0
+Test Main; Subtest test_01b; Result: 24
+Test Main; Subtest test_02; Result: 11.0
+Cls2_ext
+Test Main; Subtest test_03; Result: 660000
+Test Main; Subtest test_05; Result: 1.12345
+Test Main; Subtest test_06; Result: 3102
+Test Main; Subtest test_07; Result: 2147387296
+Test Main; Subtest test_08; Result: 11
