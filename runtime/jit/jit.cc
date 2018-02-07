@@ -725,6 +725,14 @@ void Jit::MethodEntered(Thread* thread, ArtMethod* method) {
   }
 }
 
+bool Jit::AddJniTask(Thread* self, JniTask* task) {
+  if (thread_pool_ == nullptr) {
+    return false;
+  }
+  thread_pool_->AddTask(self, task);
+  return true;
+}
+
 void Jit::InvokeVirtualOrInterface(ObjPtr<mirror::Object> this_object,
                                    ArtMethod* caller,
                                    uint32_t dex_pc,

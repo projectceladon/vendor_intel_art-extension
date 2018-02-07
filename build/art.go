@@ -96,7 +96,6 @@ func globalFlags(ctx android.BaseContext) ([]string, []string) {
 		cflags = append(cflags, "-DART_ENABLE_ADDRESS_SANITIZER=1")
 		asflags = append(asflags, "-DART_ENABLE_ADDRESS_SANITIZER=1")
 	}
-
 	return cflags, asflags
 }
 
@@ -227,6 +226,22 @@ func prefer32Bit(ctx android.LoadHookContext) {
 	}
 }
 
+func capstoneLinker(ctx android.LoadHookContext) {
+       type props struct {
+		Cflags   []string
+		Asflags  []string
+       }
+       p := &props{}
+       p.Cflags, p.Asflags = globalFlags(ctx)
+
+       if !envFalse(ctx, "ART_CAPSTONE_INCLUDES") && ctx.AConfig().AutoFastJni() {
+	       fmt.Println("capstonelink:", true)
+	       p.Cflags = append(p.Cflags, "-DCAPSTONE=1")
+	       p.Asflags = append(p.Asflags, "-DCAPSTONE=1")
+	       ctx.AppendProperties(p)
+       }
+}
+
 func testMap(config android.Config) map[string][]string {
 	return config.Once("artTests", func() interface{} {
 		return make(map[string][]string)
@@ -259,6 +274,7 @@ func init() {
 	android.RegisterModuleType("art_cc_binary", artBinary)
 	android.RegisterModuleType("art_cc_test", artTest)
 	android.RegisterModuleType("art_cc_test_library", artTestLibrary)
+	android.RegisterModuleType("art_capstone_dependancies", artCapstoneDependancies)
 	android.RegisterModuleType("art_cc_defaults", artDefaultsFactory)
 	android.RegisterModuleType("art_global_defaults", artGlobalDefaultsFactory)
 	android.RegisterModuleType("art_debug_defaults", artDebugDefaultsFactory)
@@ -283,6 +299,12 @@ func artDefaultsFactory() android.Module {
 	module := cc.DefaultsFactory(c)
 	android.AddLoadHook(module, func(ctx android.LoadHookContext) { codegen(ctx, c, true) })
 
+	return module
+}
+
+func  artCapstoneDependancies() android.Module {
+	module := artDefaultsFactory()
+        android.AddLoadHook(module, capstoneLinker)
 	return module
 }
 
