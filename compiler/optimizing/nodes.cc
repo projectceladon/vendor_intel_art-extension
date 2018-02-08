@@ -317,6 +317,9 @@ void HGraph::SplitCriticalEdge(HBasicBlock* block, HBasicBlock* successor) {
   // Insert a new node between `block` and `successor` to split the
   // critical edge.
   HBasicBlock* new_block = SplitEdge(block, successor);
+   if(block->IsTryBlock()){
+   new_block->SetTryCatchInformation(block->GetTryCatchInformation());
+  }
   new_block->AddInstruction(new (arena_) HGoto(successor->GetDexPc()));
   if (successor->IsLoopHeader()) {
     // If we split at a back edge boundary, make the new block the back edge.

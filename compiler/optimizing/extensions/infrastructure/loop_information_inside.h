@@ -418,20 +418,13 @@ class HLoopInformation_X86 : public HLoopInformation {
   bool HasBeenPeeled() {
     return !peeled_blocks_.empty();
   }
-
-  /**
-   * @brief Used to check if loop has a catch handler block.
-   * @return Returns true if loop has catch block.
-   */
-  bool HasCatchHandler() const;
-
   /**
    * @brief Used to check if loop has a try block or a catch handler block.
    * @return Returns true if loop has a try block or a catch handler block.
    */
   bool HasTryCatchHandler() const;
 
-  /**
+    /**
    * @brief This is used to get a list of ids for the peeled blocks.
    * @details The reason this does not return a list of block pointers is because
    * we do not want to maintain correctness of this list. Namely, other optimizations

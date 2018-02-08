@@ -27,11 +27,23 @@
 namespace art {
 
 static constexpr size_t kLeastRequiredCandidateCount = 1u;
+static constexpr size_t kDefaultThresholdCount = 100u;
+static constexpr size_t kBlockThresholdCount = 10;
+static constexpr size_t kAllowedOPaqueInvokes = 2;
 
 bool HLoopPeeling::ShouldPeel(HLoopInformation_X86* loop) {
   DCHECK(loop->IsInner());
 
+if (loop->GetBlocks().NumSetBits() > kBlockThresholdCount) {
+    PRINT_PASS_OSTREAM_MESSAGE(this, "Peeling failed because loop block count exceeds "
+                               << kBlockThresholdCount << ".");
+    return false;
+  }
+
   size_t num_candidate_instr = 0u;
+  size_t instruction_count = 0u;
+  size_t num_opaque_invokes = 0u;
+
   if (loop->GetBlocks().NumSetBits() <= 2u) {
     // Check to see if peeling may be worth it - these are cases where GVN may do a better job
     // by eliminating throwers/getters inside of a loop.
@@ -40,9 +52,35 @@ bool HLoopPeeling::ShouldPeel(HLoopInformation_X86* loop) {
       for (HInstruction* instruction = block->GetFirstInstruction();
           instruction != nullptr;
           instruction = instruction->GetNext()) {
+
+          instruction_count++;
+      if (instruction_count > kDefaultThresholdCount) {
+        PRINT_PASS_OSTREAM_MESSAGE(this, "Peeling failed because loop instruction count exceeds "
+                                   << kDefaultThresholdCount << ".");
+        return false;
+      }
+      // Test whether we are looking at an opaque invoke. We test this by testing
+      // whether or not it can be moved - since moving it signifies we know what it does.
+      if (instruction->IsInvoke() && !instruction->CanBeMoved()) {
+        num_opaque_invokes++;
+        if (num_opaque_invokes > kAllowedOPaqueInvokes ) {
+          PRINT_PASS_OSTREAM_MESSAGE(this, "Peeling failed because the opaque invoke count "
+                                     "exceeds " << kAllowedOPaqueInvokes << ".");
+          return false;
+        }
+      }
+
+      if (!instruction->CanBeMoved()) {
+        // If instruction cannot be moved, no point in considering this instruction.
+        continue;
+      }
         // Check if thrower or heap mutator/reader first.
-        if (instruction->CanThrow() || instruction->HasSideEffects() ||
-            instruction->GetSideEffects().HasDependencies()) {
+        // We also handle LoadString and LoadClass specially because they may not fall
+        // in either category but in reality are useful to hoist since they have no
+        // IR inputs and will reload same thing over and over.
+        if (instruction->CanThrow() || instruction->GetSideEffects().HasSideEffectsExcludingGC() ||
+            instruction->GetSideEffects().DoesAnyRead()  ||
+            instruction->IsLoadClass() || instruction->IsLoadString()) {
           bool all_inputs_from_outside = true;
 
           // Now check that all inputs are from outside.

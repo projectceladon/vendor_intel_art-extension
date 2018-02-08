@@ -100,7 +100,7 @@ public class Main {
   /// CHECK-DAG: NewInstance
   /// CHECK-DAG: NewInstance
   /// CHECK-DAG: NewInstance
-  /// CHECK-NOT: NewInstance
+  // CHECK-NOT: NewInstance
 
   /// CHECK-START: float Main.testMethod() load_store_elimination (after)
   /// CHECK-DAG: Deoptimize

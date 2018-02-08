@@ -37,10 +37,11 @@
 #include "optimization.h"
 #include "pass_framework.h"
 #include "peeling.h"
+#include "gvn_after_peeling.h"
 #include "remove_suspend.h"
 #include "remove_unused_loops.h"
 //#include "scoped_thread_state_change.h"
-#include "scoped_thread_state_change-inl.h"	//neeraj -- added to resolve build error
+#include "scoped_thread_state_change-inl.h"
 #include "thread.h"
 #include "trivial_loop_evaluator.h"
 
@@ -66,20 +67,19 @@ struct HCustomPassPlacement {
 /**
  * @brief Static array holding information about custom placements.
  */
-/* neeraj - to check more - removed below optimizations (added in "ART-Extension: Support iteration peeling") to resolve incompatibility with O-Master
-   { "loop_peeling", "select_generator", kPassInsertBefore },
-   { "loop_formation_before_peeling", "loop_peeling", kPassInsertBefore },
-*/
 static HCustomPassPlacement kPassCustomPlacement[] = {
   { "loop_formation", "instruction_simplifier$after_bce", kPassInsertAfter },
   { "find_ivs", "loop_formation", kPassInsertAfter },
   { "loop_full_unrolling", "find_ivs", kPassInsertAfter}, 
   { "remove_loop_suspend_checks", "find_ivs", kPassInsertAfter},
-  { "remove_unused_loops", "remove_loop_suspend_checks", kPassInsertAfter },
+  { "remove_unused_loops", "remove_loop_suspend_checks", kPassInsertAfter},
   { "constant_calculation_sinking", "find_ivs", kPassInsertAfter},
-  { "load_store_elimination", "loop_full_unrolling", kPassInsertAfter },
+  { "load_store_elimination", "loop_peeling", kPassInsertAfter },
   { "form_bottom_loops", "load_store_elimination", kPassInsertAfter },
   { "loop_formation_before_bottom_loops", "form_bottom_loops", kPassInsertBefore },
+  { "loop_peeling", "form_bottom_loops", kPassInsertAfter},
+  { "GVN_after_peeling", "loop_peeling", kPassInsertAfter},
+  { "loop_formation_before_peeling", "loop_peeling", kPassInsertBefore},
   { "non_temporal_move", "trivial_loop_evaluator", kPassInsertAfter},
   { "trivial_loop_evaluator", "find_ivs", kPassInsertAfter},
 };
@@ -391,14 +391,10 @@ void RunOptimizationsX86(HGraph* graph,
 #endif
   HLoopFormation formation_before_peeling(graph, "loop_formation_before_peeling");
   HLoopPeeling peeling(graph, stats);
+  GVNAfterPeeling gvn_after_peeling(graph);
   HLoopFullUnrolling loop_full_unrolling(graph, stats);
   HLoopFormation formation_before_bottom_loops(graph, "loop_formation_before_bottom_loops");
   HFormBottomLoops form_bottom_loops(graph, dex_compilation_unit, handles, stats);
-
-  /* neeraj - to check more - removed below optimizations (added in "ART-Extension: Support iteration peeling") to resolve incompatibility with O-Master
-    &peeling,
-    &formation_before_peeling,
-  */
   HOptimization_X86* opt_array[] = {
     &form_bottom_loops,
     &formation_before_bottom_loops,
@@ -411,7 +407,11 @@ void RunOptimizationsX86(HGraph* graph,
 #ifndef SOFIA
     &non_temporal_move,
 #endif
-    &loop_full_unrolling
+    &loop_full_unrolling,
+    &peeling,
+    &formation_before_peeling,
+    &gvn_after_peeling,
+
   };
 
   // Create the array for the post-opts.
