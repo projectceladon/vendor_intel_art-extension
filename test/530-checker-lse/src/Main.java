@@ -489,20 +489,18 @@ public class Main {
     return obj;
   }
 
+  /* Loop eliminated by loop full unrolling */
   /// CHECK-START: void Main.test21(TestClass) load_store_elimination (before)
   /// CHECK: NewInstance
   /// CHECK: InstanceFieldSet
   /// CHECK: InstanceFieldSet
+  /// CHECK: InstanceFieldGet
+  /// CHECK: InstanceFieldGet
   /// CHECK: InstanceFieldSet
-  /// CHECK: InstanceFieldGet
-  /// CHECK: InstanceFieldGet
 
   /// CHECK-START: void Main.test21(TestClass) load_store_elimination (after)
+  /// CHECK: InstanceFieldSet
   /// CHECK: NewInstance
-  /// CHECK: InstanceFieldSet
-  /// CHECK: InstanceFieldSet
-  /// CHECK: InstanceFieldSet
-  /// CHECK: InstanceFieldGet
   /// CHECK: InstanceFieldGet
 
   // Loop side effects can kill heap values, stores need to be kept in that case.

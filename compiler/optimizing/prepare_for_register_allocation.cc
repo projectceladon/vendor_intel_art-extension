@@ -276,14 +276,15 @@ bool PrepareForRegisterAllocation::CanMoveClinitCheck(HInstruction* input,
     return false;
   }
 
-  // In debug mode, check that we have not inserted a throwing instruction
-  // or an instruction with side effects between input and user.
+  // The final check to see if we can move the clinit check is whether there are no side-exits
+  // and no side-effects between the two instructions. If there are, we cannot move it.
   if (kIsDebugBuild) {
     for (HInstruction* between = input->GetNext(); between != user; between = between->GetNext()) {
       CHECK(between != nullptr);  // User must be after input in the same block.
-      if (between->CanThrow() || between->HasSideEffects()) {
-        return false;
-      }
+      if (between->CanThrow() || between->GetSideEffects().HasSideEffectsExcludingGC()) {
+      return false;
+    }
+
     }
   }
   return true;
