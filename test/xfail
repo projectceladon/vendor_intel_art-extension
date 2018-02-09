@@ -48,3 +48,6 @@ test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-check
 test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8117-ShortLeafMethodsInlining-InvokeVirtual-int-to-float-00164
 test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8117-ShortLeafMethodsInlining-InvokeVirtual-long-to-double-00164
 test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8117-ShortLeafMethodsInlining-InvokeVirtual-long-to-float-00164
+test-art-host-run-test-debug-prebuild-optimizing-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8116-LoopInformation-Regr0164
+test-art-host-run-test-debug-prebuild-speed-profile-no-relocate-ntrace-cms-checkjni-picimage-npictest-ndebuggable-no-jvmti-8116-LoopInformation-Regr0164
+
