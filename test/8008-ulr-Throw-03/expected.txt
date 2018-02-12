@@ -1,3 +1,3 @@
 Exception in thread "main" java.lang.ArithmeticException: divide by zero
-	at OptimizationTests.UnusedLoopRemoval.Throw_03.Main.loop(Main.java:11)
-	at OptimizationTests.UnusedLoopRemoval.Throw_03.Main.main(Main.java:17)
+	at Main.loop(Main.java:10)
+	at Main.main(Main.java:16)
