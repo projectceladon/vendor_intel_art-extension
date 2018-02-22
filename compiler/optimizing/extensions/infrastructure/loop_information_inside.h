@@ -504,6 +504,14 @@ class HLoopInformation_X86 : public HLoopInformation {
    * @details Returns true if either the loop is irreducible or contains irreducible loop.
    */
   bool IsOrHasIrreducibleLoop() const;
+
+   /**
+   * @brief Return true if there is a catch handler which needs a VR corresponding
+   * to value produced by the instruction.
+   * @param instruction to check.
+   * @return true is there is a usage of VR corresponding to insn in any catch block.
+   */
+  bool CheckForCatchBlockUsage(HInstruction* insn) const;
 	
   void SetGraph(HGraph* graph) { graph_ = graph; }
  protected:

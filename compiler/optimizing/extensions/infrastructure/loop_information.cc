@@ -107,6 +107,32 @@ void HLoopInformation_X86::Dump(int max_depth) const {
   }
 }
 
+bool HLoopInformation_X86::CheckForCatchBlockUsage(HInstruction* insn) const {
+  for (const HUseListNode<HEnvironment*>& use : insn->GetEnvUses()) {
+    HEnvironment* user = use.GetUser();
+    HInstruction* insn_user = user->GetHolder();
+    if (Contains(*insn_user->GetBlock())) {
+      if (insn_user->CanThrowIntoCatchBlock()) {
+        const HTryBoundary& entry = insn_user->GetBlock()->GetTryCatchInformation()->GetTryEntry();
+        // Verify all catch blocks.
+        size_t vr_index = use.GetIndex();
+        for (HBasicBlock* catch_block : entry.GetExceptionHandlers()) {
+          // We should not see the catch phi node for our VR.
+          for (HInstructionIterator phi_it(catch_block->GetPhis());
+               !phi_it.Done();
+               phi_it.Advance()) {
+            HPhi* catch_phi = phi_it.Current()->AsPhi();
+            if (catch_phi->GetRegNumber() == vr_index) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
 bool HLoopInformation_X86::ExecutedPerIteration(HBasicBlock* bb) const {
   DCHECK(bb != nullptr);
   // First is the instruction in the loop?
