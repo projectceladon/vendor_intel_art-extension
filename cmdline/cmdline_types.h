@@ -492,6 +492,8 @@ static gc::CollectorType ParseCollectorType(const std::string& option) {
     return gc::kCollectorTypeCC;
   } else if (option == "MC") {
     return gc::kCollectorTypeMC;
+  } else if (option == "GENCOPY") {
+    return gc::kCollectorTypeGenCopying;
   } else {
     return gc::kCollectorTypeNone;
   }

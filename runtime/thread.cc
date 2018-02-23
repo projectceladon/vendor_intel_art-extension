@@ -3559,16 +3559,6 @@ void Thread::SetTlab(uint8_t* start, uint8_t* end, uint8_t* limit) {
   tlsPtr_.thread_local_objects = 0;
 }
 
-//atul.b added parameter func of Thread::SetTlab
-void Thread::SetTlab(uint8_t* start, uint8_t* end) {
-  DCHECK_LE(start, end);
-  tlsPtr_.thread_local_start = start;
-  tlsPtr_.thread_local_pos  = tlsPtr_.thread_local_start;
-  tlsPtr_.thread_local_end = end;
-  tlsPtr_.thread_local_objects = 0;
-}
-
-
 bool Thread::HasTlab() const {
   bool has_tlab = tlsPtr_.thread_local_pos != nullptr;
   if (has_tlab) {

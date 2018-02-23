@@ -193,10 +193,7 @@ inline void Object::AssertReadBarrierPointer() const {
 
 
 inline void Object::SetReadBarrierState(uint32_t rb_state) {
-  if (!kUseBakerReadBarrier) {
-    LOG(FATAL) << "Unreachable";
-    UNREACHABLE();
-  }
+  CHECK(kUseBakerReadBarrier);
   DCHECK(ReadBarrier::IsValidReadBarrierState(rb_state)) << rb_state;
   LockWord lw = GetLockWord(false);
   lw.SetReadBarrierState(rb_state);

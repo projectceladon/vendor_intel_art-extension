@@ -26,10 +26,6 @@ namespace art {
 namespace gc {
 namespace collector {
 
-// Reuse TLAB as PLAB since this is for STW GC.
-static constexpr bool kUsePlab = kUseTlab;
-static constexpr size_t kDefaultPLABSize = 64 * KB;
-
 inline mirror::Object* SemiSpace::GetForwardingAddressInFromSpace(mirror::Object* obj) const {
   DCHECK(from_space_->HasAddress(obj));
   LockWord lock_word = obj->GetLockWord(false);
@@ -105,6 +101,10 @@ inline bool SemiSpace::IsMarkedParallel(mirror::Object* obj) {
   } else if (immune_spaces_.ContainsObject(obj)) {
     // Immune objects, always consider as marked.
     return true;
+  } else if (generational_ && (promo_dest_space_->HasAddress(obj) ||
+             fallback_space_->HasAddress(obj))) {
+    DCHECK(collect_from_space_only_);
+    return true;
   }
   return false;
 }
@@ -159,7 +159,7 @@ static inline size_t CopyAvoidingDirtyingPages(void* dest, const void* src, size
   return saved_bytes;
 }
 
-// Alloc thect in the dest_space and try update the lockword.
+// Alloc the object in the dest_space and try update the lockword.
 // If the update fail, try roll back the space.
 inline mirror::Object* SemiSpace::TryInstallForwardingAddress(mirror::Object* obj,
                                                    space::ContinuousMemMapAllocSpace* dest_space,
@@ -194,7 +194,7 @@ inline mirror::Object* SemiSpace::TryInstallForwardingAddress(mirror::Object* ob
            // Try just the required size.
            new_tlab_size = byte_count;
            if (!bump_pointer_space->AllocNewTlab(self, new_tlab_size)) {
-             CHECK(forward_address != nullptr) << "OutOfMemory when alloc TLAB in to_space!";
+             return nullptr;
            }
          }
        }
@@ -253,6 +253,14 @@ inline mirror::Object* SemiSpace::TryInstallForwardingAddress(mirror::Object* ob
       forward_address = reinterpret_cast<mirror::Object*>(old_lock_word.ForwardingAddress());
     } else {
       LockWord new_lock_word = LockWord::FromForwardingAddress(reinterpret_cast<size_t>(forward_address));
+      bool obj_is_class = obj->IsClass();
+      if (UNLIKELY(obj_is_class)) {
+        // If Object is class we must copy first and then publish pointer as forward address.
+        // If we publish class first then while traversing the other object of this class
+        // will use our non-copied class to find instance fields if number of fields is big.
+        saved_bytes_ += (CopyAvoidingDirtyingPages(reinterpret_cast<void*>(forward_address),
+                                                   obj, object_size));
+      }
       // Try set lockword
       bool success = obj->CasLockWordWeakSequentiallyConsistent(old_lock_word, new_lock_word);
 
@@ -269,8 +277,12 @@ inline mirror::Object* SemiSpace::TryInstallForwardingAddress(mirror::Object* ob
           }
         } else {
           if (dest_space->IsBumpPointerSpace()) {
-             DCHECK_ALIGNED(*bytes_allocated, space::BumpPointerSpace::kAlignment);
-             self->RollBackTlab(*bytes_allocated);
+            DCHECK_ALIGNED(*bytes_allocated, space::BumpPointerSpace::kAlignment);
+            if (UNLIKELY(obj_is_class)) {
+              // Zero memory because we already copied object.
+              memset(forward_address, 0, *bytes_allocated);
+            }
+            self->RollBackTlab(*bytes_allocated);
           } else if (dest_space->IsRosAllocSpace()) {
             bool freed = dest_space->AsRosAllocSpace()->FreeThreadLocal(self, *bytes_allocated, forward_address);
             if (!freed) {
@@ -290,12 +302,17 @@ inline mirror::Object* SemiSpace::TryInstallForwardingAddress(mirror::Object* ob
       } else {
         // Successfully updated the lockword.
         DCHECK(reinterpret_cast<mirror::Object*>(obj->GetLockWord(false).ForwardingAddress(), forward_address));
-        saved_bytes_ += (CopyAvoidingDirtyingPages(reinterpret_cast<void*>(forward_address), obj, object_size));
-        // memcpy(forward_address, obj, object_size);
-        // We are save to set back the lock word since this is in pause phase.
-        DCHECK(!from_space_->HasAddress(forward_address));
-        // TODO: Volatile?
-        forward_address->SetLockWord(old_lock_word, true);
+        if (LIKELY(!obj_is_class)) {
+          saved_bytes_ += (CopyAvoidingDirtyingPages(reinterpret_cast<void*>(forward_address), obj, object_size));
+          // memcpy(forward_address, obj, object_size);
+          // We are save to set back the lock word since this is in pause phase.
+          DCHECK(!from_space_->HasAddress(forward_address));
+         // TODO: Volatile?
+          forward_address->SetLockWord(old_lock_word, true);
+        } else {
+          // If object is class then we have already copied it and its lock work is ok.
+          DCHECK(LockWord::Equal<false>(forward_address->GetLockWord(false), old_lock_word));
+        }
         *win = true;
         return forward_address;
       }

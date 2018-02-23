@@ -33,6 +33,7 @@
 #include "base/time_utils.h"
 #include "base/timing_logger.h"
 #include "debugger.h"
+#include "gc/scoped_gc_critical_section.h"
 #include "gc/collector/concurrent_copying.h"
 #include "gc/gc_pause_listener.h"
 #include "gc/heap.h"
@@ -152,7 +153,13 @@ void ThreadList::DumpForSigQuit(std::ostream& os) {
     }
   }
   bool dump_native_stack = Runtime::Current()->GetDumpNativeStackOnSigQuit();
+  // TODO: (Lin & Lei) Workaround as a temporary fix for ThreadStressLight test fail.
+  // Need deep investigation why GenCopy can not work without blocking GC here.
+  Runtime::Current()->GetHeap()->BlockGC(Thread::Current(),
+                                         gc::kGcCauseInstrumentation,
+                                         gc::kCollectorTypeInstrumentation);
   Dump(os, dump_native_stack);
+  Runtime::Current()->GetHeap()->UnblockGC(Thread::Current());
   DumpUnattachedThreads(os, dump_native_stack && kDumpUnattachedThreadNativeStackForSigQuit);
 }
 

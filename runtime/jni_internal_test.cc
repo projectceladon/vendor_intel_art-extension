@@ -1658,7 +1658,8 @@ TEST_F(JniInternalTest, GetStringCritical_ReleaseStringCritical) {
 
   jboolean is_copy = JNI_TRUE;
   chars = env_->GetStringCritical(s, &is_copy);
-  if (mirror::kUseStringCompression) {
+  if (mirror::kUseStringCompression ||
+      Runtime::Current()->GetHeap()->CurrentCollectorType == kCollectorTypeGenCopying) {
     // is_copy has to be JNI_TRUE because "hello" is all-ASCII
     EXPECT_EQ(JNI_TRUE, is_copy);
   } else {

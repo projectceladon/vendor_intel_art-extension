@@ -17,7 +17,7 @@
 ifndef ART_ANDROID_COMMON_BUILD_MK
 ART_ANDROID_COMMON_BUILD_MK = true
 
-include art/build/Android.common.mk
+include $(VENDOR_ART_PATH)/build/Android.common.mk
 
 # These can be overridden via the environment or by editing to
 # enable/disable certain build configuration.

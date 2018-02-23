@@ -61,11 +61,62 @@ static constexpr bool kProtectFromSpace = true;
 static constexpr bool kStoreStackTraces = false;
 static constexpr size_t kBytesPromotedThreshold = 4 * MB;
 static constexpr size_t kLargeObjectBytesAllocatedThreshold = 16 * MB;
-static constexpr bool kSSParallelCopy = true;
+static constexpr bool kSSParallelCopy = true;//false;
 static constexpr bool kSSUseMarkStackPrefetch = true;
-static constexpr size_t kSSMinimumParallelMarkStackSize = 256;
+static constexpr size_t kSSMinimumParallelMarkStackSize = 32;
 static constexpr bool kCountTasks = false;
 static const size_t kFifoSize = 4;
+
+SemiSpace::ThreadRootMarkStack::ThreadRootMarkStack(size_t capacity)
+    : capacity_(capacity),
+      incremental_(capacity),
+      size_(0),
+      mark_stack_(nullptr) {
+  // Create the mark stack internally used.
+  CreateMarkStack(capacity);
+}
+
+void SemiSpace::ThreadRootMarkStack::Resize() {
+  // Resize happened only when mark stack is full.
+  CHECK_EQ(size_, capacity_);
+  capacity_ += incremental_;
+  RegenerateMarkStack();
+}
+
+void SemiSpace::ThreadRootMarkStack::PushBack(mirror::Object* obj) {
+  DCHECK_LT(size_, capacity_);
+  mark_stack_[size_++].Assign(obj);
+}
+
+void SemiSpace::ThreadRootMarkStack::CreateMarkStack(size_t capacity) {
+  CHECK(mark_stack_ == nullptr);
+  mark_stack_ = new StackReference<mirror::Object>[capacity];
+  CHECK(mark_stack_ != nullptr);
+}
+
+void SemiSpace::ThreadRootMarkStack::DeleteMarkStack() {
+  delete []mark_stack_;
+  mark_stack_ = nullptr;
+}
+
+void SemiSpace::ThreadRootMarkStack::RegenerateMarkStack() {
+  StackReference<mirror::Object>* original_stack = mark_stack_;
+  DCHECK_EQ(capacity_ - size_, incremental_);
+  CreateMarkStack(capacity_);
+  std::copy(original_stack, original_stack + size_, mark_stack_);
+  delete []original_stack;
+}
+
+StackReference<mirror::Object>* SemiSpace::ThreadRootMarkStack::GetMarkStack() const {
+  CHECK(mark_stack_ != nullptr);
+  return mark_stack_;
+}
+
+SemiSpace::ThreadRootMarkStack::~ThreadRootMarkStack() {
+  if (mark_stack_ != nullptr) {
+    DeleteMarkStack();
+  }
+}
 
 void SemiSpace::BindBitmaps() {
   TimingLogger::ScopedTiming t(__FUNCTION__, GetTimings());
@@ -95,7 +146,9 @@ void SemiSpace::BindBitmaps() {
   }
 }
 
-SemiSpace::SemiSpace(Heap* heap, bool generational, const std::string& name_prefix)
+SemiSpace::SemiSpace(Heap* heap, bool generational,
+                     const std::string& name_prefix,
+                     bool need_aging_table, bool support_parallel)
     : GarbageCollector(heap,
                        name_prefix + (name_prefix.empty() ? "" : " ") + "semispace"),
       mark_stack_(nullptr),
@@ -106,7 +159,6 @@ SemiSpace::SemiSpace(Heap* heap, bool generational, const std::string& name_pref
       mark_bitmap_(nullptr),
       self_(nullptr),
       generational_(generational),
-      last_gc_to_space_end_(nullptr),
       bytes_promoted_(0),
       bytes_wasted_(0),
       bytes_promoted_since_last_whole_heap_collection_(0),
@@ -118,7 +170,22 @@ SemiSpace::SemiSpace(Heap* heap, bool generational, const std::string& name_pref
       objects_moved_(0U),
       saved_bytes_(0U),
       collector_name_(name_),
-      swap_semi_spaces_(true) {
+      swap_semi_spaces_(true),
+      marking_roots_(false),
+      need_aging_table_(need_aging_table),
+      thread_roots_stacks_(nullptr),
+      thread_mark_stack_(nullptr),
+      support_parallel_(support_parallel),
+      support_parallel_default_(support_parallel) {
+}
+
+void SemiSpace::NeedToWakeMutators() {
+  //TODO: ensure that GetCollectorType() can get expected GenCopying collector.
+  if (GetCollectorType() == kCollectorTypeGenCopying ||
+      GetCollectorType() == kCollectorTypeGSS ||
+      GetCollectorType() == kCollectorTypeSS) {
+    GetHeap()->WakeMutators();
+  }
 }
 
 void SemiSpace::RunPhases() {
@@ -157,6 +224,7 @@ void SemiSpace::RunPhases() {
       }
     }
     {
+      NeedToWakeMutators();
       ReaderMutexLock mu(self, *Locks::mutator_lock_);
       if (Runtime::Current()->EnabledGcProfile()) {
         uint64_t sweep_start = NanoTime();
@@ -188,6 +256,11 @@ void SemiSpace::InitializePhase() {
     wasted_bytes_.StoreRelaxed(0);
     fallback_bytes_parallel_.StoreRelaxed(0);
     fallback_objects_parallel_.StoreRelaxed(0);
+    // Create the ThreadRootStacksMap for storing the roots
+    // of specific thread.
+    DCHECK(thread_roots_stacks_ == nullptr);
+    thread_roots_stacks_ = new ThreadRootStacksMap();
+    DCHECK(thread_roots_stacks_ != nullptr);
   }
   work_chunks_created_.StoreRelaxed(0);
   work_chunks_deleted_.StoreRelaxed(0);
@@ -205,6 +278,20 @@ void SemiSpace::InitializePhase() {
     promo_dest_space_ = GetHeap()->GetPrimaryFreeListSpace();
   }
   fallback_space_ = GetHeap()->GetNonMovingSpace();
+  // If swap_semi_spaces_ is true, from and to are both bump pointer spaces. They are
+  // for SS, GSS, and GenCopying collectors.
+  // If swap_semi_spaces_ is false, there are two cases. One is for zygote collector.
+  // The other is to compact from bump pointer space to main space in the case of
+  // DisableMovingGc --> TransitionCollector due to full non moving space.
+  // TODO: only need swap_semi_spaces_?
+  if (need_aging_table_ && swap_semi_spaces_) {
+    from_age_table_ = from_space_->AsBumpPointerSpace()->GetAgingTable();
+    to_age_table_ = to_space_->AsBumpPointerSpace()->GetAgingTable();
+    DCHECK(from_age_table_ != nullptr);
+    DCHECK(to_age_table_ != nullptr);
+    threshold_age_ = heap_->GetThresholdAge();
+    force_copy_all_ = false;
+  }
 }
 
 void SemiSpace::ProcessReferences(Thread* self) {
@@ -232,6 +319,10 @@ void SemiSpace::MarkingPhase() {
   // to prevent fragmentation.
   RevokeAllThreadLocalBuffers();
   if (generational_) {
+    // For GenCopying YoungGC, collect from space only.
+    //  In most cases Generational Copying GC doesn't walk here.
+    //  If bps is full, it will trigger STW semi-space GC.
+    //  And just before OOM, it's true to clear soft references.
     if (GetCurrentIteration()->GetGcCause() == kGcCauseExplicit ||
         GetCurrentIteration()->GetGcCause() == kGcCauseForNativeAlloc ||
         GetCurrentIteration()->GetGcCause() == kGcCauseForNativeAllocBlocking ||
@@ -248,21 +339,26 @@ void SemiSpace::MarkingPhase() {
       name_ = collector_name_ + " bps";
     }
   }
+  // Set the default value of parallel copy support.
+  support_parallel_ = support_parallel_default_;
+  if (GetHeap()->GetPrimaryFreeListSpace()->Capacity() * 0.8 <= GetHeap()->GetBytesAllocated()) {
+    // Promote space is almost full, disable parallel copy.
+    support_parallel_ = false;
+  }
+
+  if (GetCurrentIteration()->GetClearSoftReferences()) {
+    force_copy_all_ = true;
+    support_parallel_ = false;
+  }
 
   if (!collect_from_space_only_) {
     // If non-generational, always clear soft references.
     // If generational, clear soft references if a whole heap collection.
     GetCurrentIteration()->SetClearSoftReferences(true);
+    support_parallel_ = false;
   }
   Locks::mutator_lock_->AssertExclusiveHeld(self_);
   if (generational_) {
-    // If last_gc_to_space_end_ is out of the bounds of the from-space
-    // (the to-space from last GC), then point it to the beginning of
-    // the from-space. For example, the very first GC or the
-    // pre-zygote compaction.
-    if (!from_space_->HasAddress(reinterpret_cast<mirror::Object*>(last_gc_to_space_end_))) {
-      last_gc_to_space_end_ = from_space_->Begin();
-    }
     // Reset this before the marking starts below.
     bytes_promoted_ = 0;
     bytes_wasted_ = 0;
@@ -331,6 +427,9 @@ void SemiSpace::MarkingPhase() {
   }
   heap_->PreSweepingGcVerification(this);
   if (swap_semi_spaces_) {
+    // Clear aging table of from space.
+    if (from_space_->IsBumpPointerSpace())
+      from_space_->AsBumpPointerSpace()->GetAgingTable()->Reset();
     heap_->SwapSemiSpaces();
   }
 }
@@ -483,28 +582,7 @@ void SemiSpace::ReclaimPhase() {
   if (saved_bytes_ > 0) {
     VLOG(heap) << "Avoided dirtying " << PrettySize(saved_bytes_);
   }
-  if (generational_) {
-    // Record the end (top) of the to space so we can distinguish
-    // between objects that were allocated since the last GC and the
-    // older objects.
-    last_gc_to_space_end_ = to_space_->End();
-  }
 }
-
-class SSDelayReferenceReferentVisitor {
- public:
-  explicit SSDelayReferenceReferentVisitor(SemiSpace* collector) : collector_(collector) {
-  }
-
-  void operator()(ObjPtr<mirror::Class> klass, mirror::Reference* ref) const
-      REQUIRES_SHARED(Locks::mutator_lock_)
-      REQUIRES(Locks::heap_bitmap_lock_) {
-    collector_->DelayReferenceReferent(klass, ref);
-  }
-
- private:
-  SemiSpace* const collector_;
-};
 
 class MarkStackCopyTask : public Task {
  public:
@@ -555,14 +633,30 @@ class MarkStackCopyTask : public Task {
     objects_processed_ += count;
   }
 
-  ALWAYS_INLINE void MarkStackPush(Object* obj) REQUIRES_SHARED(Locks::mutator_lock_) {
+  ALWAYS_INLINE void MarkStackPush(Object* obj) REQUIRES_SHARED(Locks::mutator_lock_) NO_THREAD_SAFETY_ANALYSIS {
     if (UNLIKELY(mark_stack_pos_ == kMaxSize)) {
       // Mark stack overflow, give 1/2 the stack to the thread pool as a new work task.
       mark_stack_pos_ /= 2;
       size_t size = kMaxSize - mark_stack_pos_;
       auto* task = new MarkStackCopyTask(thread_pool_, semi_space_, size,
                                      mark_stack_ + mark_stack_pos_);
+      // TODO: This is workaround that kClassLoaderClassesLock is used when class_table visit roots.
+      // The thread pool AddTask fail at checking lock level because kClassLoaderClassesLock is held
+      // However, if enlarge kClassLoaderClassesLock's level there is deadlock between reference
+      // processor and class table.
+      // To fix the root cause may require the redesign of lock levels for thread pool, reference
+      // processor and class table.
+      Thread* self = Thread::Current();
+      BaseMutex* bmu = self->GetHeldMutex(kClassLoaderClassesLock);
+      ReaderWriterMutex* rmu = down_cast<ReaderWriterMutex*>(bmu);
+      if (UNLIKELY(rmu != nullptr)) {
+        rmu->AssertSharedHeld(self);
+        rmu->SharedUnlock(self);
+      }
       thread_pool_->AddTask(Thread::Current(), task);
+      if (UNLIKELY(rmu != nullptr)) {
+        rmu->SharedLock(self);
+      }
     }
     DCHECK(obj != nullptr);
     DCHECK_LT(mark_stack_pos_, kMaxSize);
@@ -583,6 +677,12 @@ class MarkStackCopyTask : public Task {
       semi_space_->MarkParallel(obj->GetFieldObjectReferenceAddr<kVerifyNone>(offset), chunk_task_);
       }
 
+    void operator()(ObjPtr<mirror::Class> klass, mirror::Reference* ref) const
+        REQUIRES_SHARED(Locks::mutator_lock_)
+        REQUIRES(Locks::heap_bitmap_lock_) {
+      semi_space_->DelayReferenceReferent(klass, ref);
+    }
+
     // TODO: Remove NO_THREAD_SAFETY_ANALYSIS when clang better understands visitors.
     void VisitRootIfNonNull(mirror::CompressedReference<mirror::Object>* root) const
         NO_THREAD_SAFETY_ANALYSIS {
@@ -593,10 +693,6 @@ class MarkStackCopyTask : public Task {
 
     void VisitRoot(mirror::CompressedReference<mirror::Object>* root) const
         NO_THREAD_SAFETY_ANALYSIS {
-      if (kIsDebugBuild) {
-        Locks::mutator_lock_->AssertExclusiveHeld(Thread::Current());
-        Locks::heap_bitmap_lock_->AssertExclusiveHeld(Thread::Current());
-      }
       // We may visit the same root multiple times, so avoid marking things in the to-space since
       // this is not handled by the GC.
       semi_space_->MarkObjectIfNotInToSpaceParallel(root, chunk_task_);
@@ -617,8 +713,7 @@ class MarkStackCopyTask : public Task {
         REQUIRES(Locks::heap_bitmap_lock_) {
       SemiSpace* const semi_space = chunk_task_->semi_space_;
       SSMarkObjectParallelVisitor mark_visitor(chunk_task_, semi_space);
-      SSDelayReferenceReferentVisitor ref_visitor(semi_space);
-      semi_space->ScanObjectVisit(obj, mark_visitor, ref_visitor);
+      semi_space->ScanObjectVisit(obj, mark_visitor, mark_visitor);
     }
    private:
     MarkStackCopyTask* const chunk_task_;
@@ -645,7 +740,8 @@ class MarkStackCopyTask : public Task {
   size_t objects_updated_;
   size_t objects_processed_;
 
-  virtual void Finalize() {
+  virtual void Finalize()
+      REQUIRES_SHARED(Locks::mutator_lock_) {
     // Revoke Thread local buffers for copying. even for !kUseTLCB.
     // Because ros use thread local runs by default.
     Thread* self = Thread::Current();
@@ -658,7 +754,9 @@ class MarkStackCopyTask : public Task {
     semi_space_->objects_promoted_parallel_.FetchAndAddSequentiallyConsistent(objects_promoted_);
     semi_space_->fallback_bytes_parallel_.FetchAndAddSequentiallyConsistent(bytes_fallback_);
     semi_space_->fallback_objects_parallel_.FetchAndAddSequentiallyConsistent(objects_fallback_);
-
+    VLOG(heap) << "Parallel Copying Thread Info: Thread:" << self
+               << " objects copied: " << objects_copied_
+               << " objects updated: " << objects_updated_;
     space::ContinuousMemMapAllocSpace* to_space = semi_space_->GetToSpace();
     if (to_space->IsBumpPointerSpace()) {
       to_space->AsBumpPointerSpace()->RevokeThreadLocalBuffers(self);
@@ -733,18 +831,28 @@ void SemiSpace::ResizeMarkStack(size_t new_size) {
 }
 
 inline void SemiSpace::MarkStackPush(Object* obj) {
-  if (UNLIKELY(mark_stack_->Size() >= mark_stack_->Capacity())) {
-    ResizeMarkStack(mark_stack_->Capacity() * 2);
+  if (LIKELY(!marking_roots_)) {
+    if (UNLIKELY(mark_stack_->Size() >= mark_stack_->Capacity())) {
+      ResizeMarkStack(mark_stack_->Capacity() * 2);
+    }
+    // The object must be pushed on to the mark stack.
+    mark_stack_->PushBack(obj);
+  } else {
+    // Marking thread roots, used thread mark stack instead.
+    if (UNLIKELY(thread_mark_stack_->Size() >= mark_stack_->Capacity())) {
+      thread_mark_stack_->Resize();
+    }
+    thread_mark_stack_->PushBack(obj);
   }
-  // The object must be pushed on to the mark stack.
-  mark_stack_->PushBack(obj);
 }
 
 mirror::Object* SemiSpace::MarkNonForwardedObject(mirror::Object* obj) {
   const size_t object_size = obj->SizeOf();
   size_t bytes_allocated, dummy;
   mirror::Object* forward_address = nullptr;
-  if (generational_ && reinterpret_cast<uint8_t*>(obj) < last_gc_to_space_end_) {
+  uint8_t age = (need_aging_table_ && swap_semi_spaces_) ? from_age_table_->GetObjectAge(obj) : 0;
+  // generational is false for CMS + homogeneous compaction.
+  if (generational_ && (age >= threshold_age_ || force_copy_all_)) {
     // If it's allocated before the last GC (older), move
     // (pseudo-promote) it to the main free list space (as sort
     // of an old generation.)
@@ -754,6 +862,9 @@ mirror::Object* SemiSpace::MarkNonForwardedObject(mirror::Object* obj) {
       // If out of space, fall back to the to-space.
       forward_address = to_space_->AllocThreadUnsafe(self_, object_size, &bytes_allocated, nullptr,
                                                      &dummy);
+      if (to_age_table_ != nullptr) {
+        to_age_table_->IncreaseObjectAge(forward_address, age);
+      }
       // No logic for marking the bitmap, so it must be null.
       DCHECK(to_space_live_bitmap_ == nullptr);
     } else {
@@ -801,6 +912,9 @@ mirror::Object* SemiSpace::MarkNonForwardedObject(mirror::Object* obj) {
     // If it's allocated after the last GC (younger), copy it to the to-space.
     forward_address = to_space_->AllocThreadUnsafe(self_, object_size, &bytes_allocated, nullptr,
                                                    &dummy);
+    if (to_age_table_ != nullptr && need_aging_table_ && swap_semi_spaces_) {
+      to_age_table_->IncreaseObjectAge(forward_address, age);
+    }
     if (forward_address != nullptr && to_space_live_bitmap_ != nullptr) {
       to_space_live_bitmap_->Set(forward_address);
     }
@@ -867,7 +981,71 @@ void SemiSpace::VisitRoots(mirror::CompressedReference<mirror::Object>** roots, 
 // Marks all objects in the root set.
 void SemiSpace::MarkRoots() {
   TimingLogger::ScopedTiming t(__FUNCTION__, GetTimings());
-  Runtime::Current()->VisitRoots(this);
+  // For parallel copy, put thread roots into seperate stack.
+  // This help to make most of objects scanned in one gc thread
+  // in later parallel copying.
+  if (kSSParallelCopy) {
+    marking_roots_ = true;
+    DCHECK(thread_roots_stacks_ != nullptr);
+    // Thread_roots_stacks_ is used for MarkThreadRoots.
+    MarkThreadRoots();
+    marking_roots_ = false;
+    // mark_stack_ is used for later mark.
+    MarkNonThreadRoots();
+    MarkConcurrentRoots();
+  } else {
+    Runtime::Current()->VisitRoots(this);
+  }
+}
+
+void SemiSpace::MarkThreadRoots() {
+  MutexLock mu(Thread::Current(), *Locks::thread_list_lock_);
+  std::list<Thread*> thread_list = Runtime::Current()->GetThreadList()->GetList();
+  for (const auto& thread : thread_list) {
+    bool need_insert = false;
+    if (marking_roots_ == true) {
+      // 1. Check whether thread already has stack.
+      DCHECK(thread_roots_stacks_ != nullptr && thread != nullptr);
+      DCHECK(thread_mark_stack_ == nullptr);
+      auto iter = thread_roots_stacks_->find(thread);
+      // 2. Create one and insert into the thread_roots_stacks_.
+      if (iter == thread_roots_stacks_->end()) {
+        // Create a new mark_stack.
+        ThreadRootMarkStack* tms = new ThreadRootMarkStack(MarkStackCopyTask::kMaxSize);
+        CHECK(tms != nullptr);
+        // Used mark_stack as the thread_mark_stack_
+        thread_mark_stack_ = tms;
+        need_insert = true;
+      } else {
+        thread_mark_stack_ = iter->second;
+        need_insert = false;
+      }
+    }
+    // 3. Mark roots per thread.
+    thread->VisitRoots(this, kVisitRootFlagAllRoots);
+    // 4. If has roots in thread mark stack, insert it into thread_roots_stacks_.
+    if (marking_roots_ == true) {
+      if (need_insert) {
+        if (thread_mark_stack_->Size() > 0) {
+          thread_roots_stacks_->insert(
+              std::pair<Thread*, ThreadRootMarkStack*>(thread, thread_mark_stack_));
+        } else {
+          delete thread_mark_stack_;
+        }
+      }
+      thread_mark_stack_ = nullptr;
+    }
+  }
+}
+
+void SemiSpace::MarkNonThreadRoots() {
+  TimingLogger::ScopedTiming t(__FUNCTION__, GetTimings());
+  Runtime::Current()->VisitNonThreadRoots(this);
+}
+
+void SemiSpace::MarkConcurrentRoots() {
+  TimingLogger::ScopedTiming t(__FUNCTION__, GetTimings());
+  Runtime::Current()->VisitConcurrentRoots(this);
 }
 
 void SemiSpace::SweepSystemWeaks() {
@@ -882,6 +1060,10 @@ bool SemiSpace::ShouldSweepSpace(space::ContinuousSpace* space) const {
 void SemiSpace::Sweep(bool swap_bitmaps) {
   TimingLogger::ScopedTiming t(__FUNCTION__, GetTimings());
   DCHECK(mark_stack_->IsEmpty());
+  // For YoungGC in GenCopying, no need to sweep other spaces.
+  if (need_aging_table_ && swap_semi_spaces_ && collect_from_space_only_) {
+    return;
+  }
   for (const auto& space : GetHeap()->GetContinuousSpaces()) {
     if (space->IsContinuousMemMapAllocSpace()) {
       space::ContinuousMemMapAllocSpace* alloc_space = space->AsContinuousMemMapAllocSpace();
@@ -961,10 +1143,6 @@ void SemiSpace::ScanObject(Object* obj) {
       visitor, visitor);
 }
 
-size_t SemiSpace::GetFirstIterCopySize() const {
-  return heap_->GetFirstIterCopySize();
-}
-
 size_t SemiSpace::GetThreadCount() const {
   if (heap_->GetThreadPool() == nullptr) return 1;
   return heap_->GetParallelGCThreadCount() + 1;
@@ -993,9 +1171,11 @@ mirror::Object* SemiSpace::MarkNonForwardedObjectParallel(mirror::Object* obj,
   size_t bytes_allocated;
   MarkStackCopyTask* chunk_task = reinterpret_cast<MarkStackCopyTask*>(task);
 
-  // Must false at begining.
+  // Must be false when begining.
   DCHECK_EQ(*win, false);
-  if (generational_ && reinterpret_cast<uint8_t*>(obj) < last_gc_to_space_end_) {
+  uint8_t age = (need_aging_table_ && swap_semi_spaces_) ? from_age_table_->GetObjectAge(obj) : 0;
+  // generational is false for CMS + homogeneous compaction.
+  if (generational_ && (age >= threshold_age_ || force_copy_all_)) {
     // If it's allocated before the last GC (older), move
     // (pseudo-promote) it to the main free list space (as sort of an old generation.)
     forward_address = TryInstallForwardingAddress(obj, promo_dest_space_, &bytes_allocated, win);
@@ -1004,9 +1184,14 @@ mirror::Object* SemiSpace::MarkNonForwardedObjectParallel(mirror::Object* obj,
       forward_address = TryInstallForwardingAddress(obj, to_space_, &bytes_allocated, win);
       // No logic for marking the bitmap, so it must be null.
       DCHECK(to_space_live_bitmap_ == nullptr);
+      if (*win == true && forward_address != nullptr) {
+        if (to_age_table_ != nullptr) {
+          to_age_table_->IncreaseObjectAge(forward_address, age);
+        }
+      }
     } else {
       if (*win == true) {
-        // The lock word is updated by our self.
+        // The lock word was updated by current thread.
         chunk_task->CountObjectsPromoted(1, bytes_allocated, bytes_allocated - obj->SizeOf());
         // Dirty the card at the destionation as it may contain
         // references (including the class pointer) to the bump pointer
@@ -1052,15 +1237,56 @@ mirror::Object* SemiSpace::MarkNonForwardedObjectParallel(mirror::Object* obj,
     if (*win == true && to_space_live_bitmap_ != nullptr) {
       to_space_live_bitmap_->AtomicTestAndSet(forward_address);
     }
+    if (*win == true) {
+      if (to_age_table_ != nullptr) {
+        to_age_table_->IncreaseObjectAge(forward_address, age);
+      }
+    }
   }
   // If it's still null, attempt to use the fallback space.
   if (UNLIKELY(forward_address == nullptr)) {
     forward_address = TryInstallForwardingAddress(obj, fallback_space_, &bytes_allocated, win);
     CHECK(forward_address != nullptr) << "Out of memory in the to-space and fallback space.";
-    chunk_task->CountObjectsFallback(1, bytes_allocated);
-    accounting::ContinuousSpaceBitmap* bitmap = fallback_space_->GetLiveBitmap();
-    if (bitmap != nullptr && !collect_from_space_only_) {
-      CHECK_EQ(bitmap->AtomicTestAndSet(forward_address), false);
+    if (*win == true) {
+      chunk_task->CountObjectsFallback(1, bytes_allocated);
+      if (generational_) {
+        // Dirty the card at the destionation as it may contain
+        // references (including the class pointer) to the bump pointer
+        // space.
+        GetHeap()->WriteBarrierEveryFieldOf(forward_address);
+      }
+      // Handle the bitmaps marking.
+      accounting::ContinuousSpaceBitmap* live_bitmap = fallback_space_->GetLiveBitmap();
+      DCHECK(live_bitmap != nullptr);
+      accounting::ContinuousSpaceBitmap* mark_bitmap = fallback_space_->GetMarkBitmap();
+      DCHECK(mark_bitmap != nullptr);
+      DCHECK(!live_bitmap->Test(forward_address));
+      if (collect_from_space_only_) {
+        // If collecting the bump pointer spaces only, live_bitmap == mark_bitmap.
+        DCHECK_EQ(live_bitmap, mark_bitmap);
+        // If a bump pointer space only collection, delay the live
+        // bitmap marking of the promoted object until it's popped off
+        // the mark stack (ProcessMarkStack()). The rationale: we may
+        // be in the middle of scanning the objects in the promo
+        // destination space for
+        // non-moving-space-to-bump-pointer-space references by
+        // iterating over the marked bits of the live bitmap
+        // (MarkReachableObjects()). If we don't delay it (and instead
+        // mark the promoted object here), the above promo destination
+        // space scan could encounter the just-promoted object and
+        // forward the references in the promoted object's fields even
+        // through it is pushed onto the mark stack. If this happens,
+        // the promoted object would be in an inconsistent state, that
+        // is, it's on the mark stack (gray) but its fields are
+        // already forwarded (black), which would cause a
+        // DCHECK(!to_space_->HasAddress(obj)) failure below.
+      } else {
+        // Mark forward_address on the live bit map.
+        live_bitmap->AtomicTestAndSet(forward_address);
+        // Mark forward_address on the mark bit map.
+        DCHECK(!mark_bitmap->Test(forward_address));
+        mark_bitmap->AtomicTestAndSet(forward_address);
+      }
     }
   }
   if (*win) {
@@ -1121,35 +1347,48 @@ inline void SemiSpace::MarkParallel(
       chunk_task->MarkStackPush(obj);
     }
   }
-    chunk_task->CountObjectsProcessed(1);
+  chunk_task->CountObjectsProcessed(1);
 }
 
 void SemiSpace::ProcessMarkStackParallel(size_t thread_count) {
   TimingLogger::ScopedTiming t(__FUNCTION__, GetTimings());
   Thread* self = Thread::Current();
   ThreadPool* thread_pool = GetHeap()->GetThreadPool();
-  // Experiments show that few number of objects at the begining of the
-  // task is getting quite heavy when copying.
-  // So we first create some tiny tasks for these objects
-  // and equally devide them to threads (2 tasks for each).
-  size_t first_iter_copy_size = GetFirstIterCopySize() * thread_count * 2;
-  size_t task_size = (mark_stack_->Size() - first_iter_copy_size) / (thread_count) + 1;
-  size_t chunk_size = std::min(task_size,
-                               static_cast<size_t>(MarkStackCopyTask::kMaxSize));
-  CHECK_GT(chunk_size, 0U);
-  // First iter copy size.
-  if (first_iter_copy_size > 0) {
-    for (auto* it = mark_stack_->Begin(),
-         *end = (mark_stack_->Begin() + first_iter_copy_size); it < end;) {
-      const size_t delta = std::min(static_cast<size_t>(end - it),
-                                    first_iter_copy_size / thread_count / 2);
-      thread_pool->AddTask(self, new MarkStackCopyTask(thread_pool, this, delta, it));
-      it+= delta;
+  // Make thread roots processed within one thread first.
+  // Experiment shows it helps improve the performance of parallel copy.
+  if (thread_roots_stacks_->size() > 0) {
+    for (auto it = thread_roots_stacks_->begin(); it != thread_roots_stacks_->end();) {
+      DCHECK(it->first != nullptr && it->second != nullptr);
+      // Get the ThreadRootMarkStack for every thread.
+      ThreadRootMarkStack* rms = it->second;
+      size_t stack_size = rms->Size();
+      if (stack_size <= 0) {
+        // No thread root objects, skip.
+        delete rms;
+        thread_roots_stacks_->erase(it++);
+        continue;
+      }
+      StackReference<mirror::Object>* mark_stack = rms->GetMarkStack();
+      DCHECK(mark_stack != nullptr);
+      for (size_t idx = 0; idx < stack_size;) {
+        size_t chunk_size = std::min(stack_size - idx,
+                                     static_cast<size_t>(MarkStackCopyTask::kMaxSize));
+        CHECK_GT(chunk_size, 0U);
+        auto* task = new MarkStackCopyTask(thread_pool, this, chunk_size, mark_stack + idx);
+        thread_pool->AddTask(Thread::Current(), task);
+        idx += chunk_size;
+      }
+      // All objects on root mark stack have been copied to MarkStackCopyTask, reclaim the memory.
+      delete rms;
+      thread_roots_stacks_->erase(it++);
     }
   }
+  size_t task_size = (mark_stack_->Size()) / (thread_count) + 1;
+  size_t chunk_size = std::min(task_size,
+                             static_cast<size_t>(MarkStackCopyTask::kMaxSize));
+  CHECK_GT(chunk_size, 0U);
   // Remains of stack.
-  for (auto* it = (mark_stack_->Begin() + first_iter_copy_size),
-       *end = mark_stack_->End(); it < end;) {
+  for (auto* it = mark_stack_->Begin(), *end = mark_stack_->End(); it < end;) {
     const size_t delta = std::min(static_cast<size_t>(end - it), chunk_size);
     thread_pool->AddTask(self,
                          new MarkStackCopyTask(thread_pool, this, delta, it));
@@ -1181,11 +1420,39 @@ void SemiSpace::ProcessMarkStack() {
     DCHECK_EQ(live_bitmap, mark_bitmap);
   }
 
-  if (kSSParallelCopy && thread_count > 1 &&
+  if (support_parallel_ && kSSParallelCopy && thread_count > 1 &&
     mark_stack_->Size() >= kSSMinimumParallelMarkStackSize) {
     ProcessMarkStackParallel(thread_count);
   } else {
     BoundedFifoPowerOfTwo<mirror::Object*, kFifoSize> prefetch_fifo;
+    // Not do parallel copy but there is thread root stack.
+    // Push thread roots on to the mark_stack_.
+    if (kSSParallelCopy) {
+      if (thread_roots_stacks_->size() > 0) {
+        for (auto it = thread_roots_stacks_->begin(); it != thread_roots_stacks_->end();) {
+          DCHECK(it->first != nullptr && it->second != nullptr);
+          // Get the ThreadRootMarkStack for every thread.
+          ThreadRootMarkStack* rms = it->second;
+          size_t size = rms->Size();
+          if (size <= 0) {
+            // No thread roots, skip.
+            delete rms;
+            thread_roots_stacks_->erase(it++);
+            continue;
+          }
+          StackReference<mirror::Object>* thread_stack = rms->GetMarkStack();
+          // thread_stack must not be nullptr as size is larger than 0.
+          CHECK(thread_stack != nullptr);
+          for (size_t i = 0; i < rms->Size(); i++){
+            MarkStackPush(thread_stack[i].AsMirrorPtr());
+          }
+          // All objects on root mark stack have been copied to mark_stack_, reclaim the memory.
+          delete rms;
+          thread_roots_stacks_->erase(it++);
+        }
+      }
+    }
+    // Process mark stack.
     for (;;) {
       mirror::Object* obj = nullptr;
       if (kSSUseMarkStackPrefetch) {
@@ -1295,6 +1562,11 @@ void SemiSpace::FinishPhase() {
   // further action is done by the heap.
   to_space_ = nullptr;
   from_space_ = nullptr;
+  if (kSSParallelCopy) {
+    DCHECK_EQ(thread_roots_stacks_->size(), 0u);
+    delete thread_roots_stacks_;
+    thread_roots_stacks_ = nullptr;
+  }
   CHECK(mark_stack_->IsEmpty());
   mark_stack_->Reset();
   space::LargeObjectSpace* los = GetHeap()->GetLargeObjectsSpace();

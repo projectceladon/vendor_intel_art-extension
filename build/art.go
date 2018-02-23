@@ -30,8 +30,10 @@ func globalFlags(ctx android.BaseContext) ([]string, []string) {
 	opt := envDefault(ctx, "ART_NDEBUG_OPT_FLAG", "-O3")
 	cflags = append(cflags, opt)
 
-	tlab := false
+        //We should turn on tlab by default.
+	tlab := true
 
+        // TODO: Need to change the Default GC to GENCOPYING from CMS, once we are condfident on GENCOPYING
 	gcType := envDefault(ctx, "ART_DEFAULT_GC_TYPE", "CMS")
 
 	if envTrue(ctx, "ART_TEST_DEBUG_GC") {

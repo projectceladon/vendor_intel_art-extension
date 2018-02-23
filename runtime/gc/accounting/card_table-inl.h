@@ -119,7 +119,7 @@ inline size_t CardTable::Scan(ContinuousSpaceBitmap* bitmap,
   }
 
   if (kClearCard) {
-    ClearCardRange(scan_begin, scan_end);
+    ClearCardRange(scan_begin, AlignUp(scan_end, kCardSize));//scan_end);
   }
 
   return cards_scanned;

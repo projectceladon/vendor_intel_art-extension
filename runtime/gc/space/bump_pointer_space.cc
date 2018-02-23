@@ -47,20 +47,22 @@ BumpPointerSpace::BumpPointerSpace(const std::string& name, uint8_t* begin, uint
     : ContinuousMemMapAllocSpace(name, nullptr, begin, begin, limit,
                                  kGcRetentionPolicyAlwaysCollect),
       growth_end_(limit),
-      objects_allocated_(0), bytes_allocated_(0),
-      block_lock_("Block lock"),
-      main_block_size_(0),
-      num_blocks_(0) {
+      objects_allocated_(0),
+      bytes_allocated_(0),
+      tlabs_alive_(0) {
 }
 
 BumpPointerSpace::BumpPointerSpace(const std::string& name, MemMap* mem_map)
     : ContinuousMemMapAllocSpace(name, mem_map, mem_map->Begin(), mem_map->Begin(), mem_map->End(),
                                  kGcRetentionPolicyAlwaysCollect),
       growth_end_(mem_map->End()),
-      objects_allocated_(0), bytes_allocated_(0),
-      block_lock_("Block lock", kBumpPointerSpaceBlockLock),
-      main_block_size_(0),
-      num_blocks_(0) {
+      objects_allocated_(0),
+      bytes_allocated_(0),
+      tlabs_alive_(0) {
+  aging_table_.reset(accounting::AgingTable::Create(
+        android::base::StringPrintf("bump pointer space %s aging-table", name.c_str()),
+        NonGrowthLimitCapacity(), Begin(), mem_map->End()));
+  CHECK(aging_table_.get() != nullptr) << "could not create bump pointer space aging table";
 }
 
 void BumpPointerSpace::Clear() {
@@ -75,11 +77,6 @@ void BumpPointerSpace::Clear() {
   objects_allocated_.StoreRelaxed(0);
   bytes_allocated_.StoreRelaxed(0);
   growth_end_ = Limit();
-  {
-    MutexLock mu(Thread::Current(), block_lock_);
-    num_blocks_ = 0;
-    main_block_size_ = 0;
-  }
 }
 
 void BumpPointerSpace::Dump(std::ostream& os) const {
@@ -94,8 +91,18 @@ mirror::Object* BumpPointerSpace::GetNextObject(mirror::Object* obj) {
 }
 
 size_t BumpPointerSpace::RevokeThreadLocalBuffers(Thread* thread) {
-  MutexLock mu(Thread::Current(), block_lock_);
-  RevokeThreadLocalBuffersLocked(thread);
+  AssertTlabOperationSafety(thread);
+  if (HasAddress(reinterpret_cast<mirror::Object*>(thread->GetTlabStart()))) {
+    objects_allocated_.FetchAndAddSequentiallyConsistent(thread->GetThreadLocalObjectsAllocated());
+    bytes_allocated_.FetchAndAddSequentiallyConsistent(thread->GetThreadLocalBytesAllocated());
+    tlabs_alive_.FetchAndSubSequentiallyConsistent(1);
+
+    size_t remains = thread->TlabSize();
+    if (remains > 0u) {
+      FillWithDummyObject(reinterpret_cast<mirror::Object*>(thread->GetTlabPos()), remains);
+    }
+    thread->SetTlab(nullptr, nullptr, nullptr);
+  }
   return 0U;
 }
 
@@ -103,7 +110,6 @@ size_t BumpPointerSpace::RevokeAllThreadLocalBuffers() {
   Thread* self = Thread::Current();
   MutexLock mu(self, *Locks::runtime_shutdown_lock_);
   MutexLock mu2(self, *Locks::thread_list_lock_);
-  // TODO: Not do a copy of the thread list?
   std::list<Thread*> thread_list = Runtime::Current()->GetThreadList()->GetList();
   for (Thread* thread : thread_list) {
     RevokeThreadLocalBuffers(thread);
@@ -113,7 +119,6 @@ size_t BumpPointerSpace::RevokeAllThreadLocalBuffers() {
 
 void BumpPointerSpace::AssertThreadLocalBuffersAreRevoked(Thread* thread) {
   if (kIsDebugBuild) {
-    MutexLock mu(Thread::Current(), block_lock_);
     DCHECK(!thread->HasTlab() ||
            !HasAddress(reinterpret_cast<mirror::Object*>(thread->GetTlabStart())));
   }
@@ -124,7 +129,6 @@ void BumpPointerSpace::AssertAllThreadLocalBuffersAreRevoked() {
     Thread* self = Thread::Current();
     MutexLock mu(self, *Locks::runtime_shutdown_lock_);
     MutexLock mu2(self, *Locks::thread_list_lock_);
-    // TODO: Not do a copy of the thread list?
     std::list<Thread*> thread_list = Runtime::Current()->GetThreadList()->GetList();
     for (Thread* thread : thread_list) {
       AssertThreadLocalBuffersAreRevoked(thread);
@@ -132,31 +136,21 @@ void BumpPointerSpace::AssertAllThreadLocalBuffersAreRevoked() {
   }
 }
 
-void BumpPointerSpace::UpdateMainBlock() {
-  DCHECK_EQ(num_blocks_, 0U);
-  main_block_size_ = Size();
-}
-
-// Returns the start of the storage.
-uint8_t* BumpPointerSpace::AllocBlock(size_t bytes) {
-  bytes = RoundUp(bytes, kAlignment);
-  if (!num_blocks_) {
-    UpdateMainBlock();
-  }
-  uint8_t* storage = reinterpret_cast<uint8_t*>(
-      AllocNonvirtualWithoutAccounting(bytes + sizeof(BlockHeader)));
-  if (LIKELY(storage != nullptr)) {
-    BlockHeader* header = reinterpret_cast<BlockHeader*>(storage);
-    header->size_ = bytes;  // Write out the block header.
-    storage += sizeof(BlockHeader);
-    ++num_blocks_;
-  }
-  return storage;
-}
-
 accounting::ContinuousSpaceBitmap::SweepCallback* BumpPointerSpace::GetSweepCallback() {
   UNIMPLEMENTED(FATAL);
   UNREACHABLE();
+}
+
+void BumpPointerSpace::AssertTlabOperationSafety(Thread* thread) {
+  if (kIsDebugBuild) {
+    Thread* self = Thread::Current();
+    if(self != thread) {
+      uint64_t owner = Locks::mutator_lock_->GetExclusiveOwnerTid();
+      uint64_t threadId = static_cast<uint64_t>(thread->GetTid());
+      DCHECK(owner != threadId);
+      DCHECK(owner != 0ULL);
+    }
+  }
 }
 
 uint64_t BumpPointerSpace::GetBytesAllocated() {
@@ -166,14 +160,9 @@ uint64_t BumpPointerSpace::GetBytesAllocated() {
   MutexLock mu(self, *Locks::runtime_shutdown_lock_);
   MutexLock mu2(self, *Locks::thread_list_lock_);
   std::list<Thread*> thread_list = Runtime::Current()->GetThreadList()->GetList();
-  MutexLock mu3(Thread::Current(), block_lock_);
-  // If we don't have any blocks, we don't have any thread local buffers. This check is required
-  // since there can exist multiple bump pointer spaces which exist at the same time.
-  if (num_blocks_ > 0) {
-    for (Thread* thread : thread_list) {
-      if (HasAddress(reinterpret_cast<mirror::Object*>(thread->GetTlabStart()))) {
-        total += thread->GetThreadLocalBytesAllocated();
-      }
+  for (Thread* thread : thread_list) {
+    if (HasAddress(reinterpret_cast<mirror::Object*>(thread->GetTlabStart()))) {
+      total += thread->GetThreadLocalBytesAllocated();
     }
   }
   return total;
@@ -186,33 +175,21 @@ uint64_t BumpPointerSpace::GetObjectsAllocated() {
   MutexLock mu(self, *Locks::runtime_shutdown_lock_);
   MutexLock mu2(self, *Locks::thread_list_lock_);
   std::list<Thread*> thread_list = Runtime::Current()->GetThreadList()->GetList();
-  MutexLock mu3(Thread::Current(), block_lock_);
-  // If we don't have any blocks, we don't have any thread local buffers. This check is required
-  // since there can exist multiple bump pointer spaces which exist at the same time.
-  if (num_blocks_ > 0) {
-    for (Thread* thread : thread_list) {
-      if (HasAddress(reinterpret_cast<mirror::Object*>(thread->GetTlabStart()))) {
-        total += thread->GetThreadLocalObjectsAllocated();
-      }
+  for (Thread* thread : thread_list) {
+    if (HasAddress(reinterpret_cast<mirror::Object*>(thread->GetTlabStart()))) {
+      total += thread->GetThreadLocalObjectsAllocated();
     }
   }
   return total;
 }
 
-void BumpPointerSpace::RevokeThreadLocalBuffersLocked(Thread* thread) {
-  if (HasAddress(reinterpret_cast<mirror::Object*>(thread->GetTlabStart()))) {
-    objects_allocated_.FetchAndAddSequentiallyConsistent(thread->GetThreadLocalObjectsAllocated());
-    bytes_allocated_.FetchAndAddSequentiallyConsistent(thread->GetThreadLocalBytesAllocated());
-    thread->SetTlab(nullptr, nullptr);
-  }
-}
-
 bool BumpPointerSpace::AllocNewTlab(Thread* self, size_t bytes) {
-  MutexLock mu(Thread::Current(), block_lock_);
+  DCHECK(Thread::Current() == self) << "Cannot allocate TLAB from another thread";
   DCHECK(HasAddress(reinterpret_cast<mirror::Object*>(self->GetTlabStart())) ||
          self->GetTlabStart() == nullptr);
-  RevokeThreadLocalBuffersLocked(self);
-  uint8_t* start = AllocBlock(bytes);
+  tlabs_alive_.FetchAndAddSequentiallyConsistent(1);
+  RevokeThreadLocalBuffers(self);
+  uint8_t* start = reinterpret_cast<uint8_t*>(AllocNonvirtualWithoutAccounting(bytes));
   if (start == nullptr) {
     return false;
   }
@@ -235,6 +212,26 @@ size_t BumpPointerSpace::AllocationSizeNonvirtual(mirror::Object* obj, size_t* u
   }
   return num_bytes;
 }
+
+void BumpPointerSpace::CollectActiveTlabsWithSuspendAll(Thread* self,
+                                                        std::vector<TlabPtrs>* active_tlabs) {
+  ScopedSuspendAll ssa(__FUNCTION__);
+  MutexLock mu(self, *Locks::runtime_shutdown_lock_);
+  MutexLock mu2(self, *Locks::thread_list_lock_);
+  CollectActiveTlabsUnsafe(active_tlabs);
+}
+
+void BumpPointerSpace::CollectActiveTlabsUnsafe(std::vector<TlabPtrs>* active_tlabs) {
+  for (Thread* thread : Runtime::Current()->GetThreadList()->GetList()) {
+    if (HasAddress(reinterpret_cast<mirror::Object*>(thread->GetTlabStart()))) {
+      active_tlabs->emplace_back(thread->GetTlabStart(), thread->GetTlabEnd());
+    }
+  }
+  if (active_tlabs->size() > 0) {
+    std::sort(active_tlabs->begin(), active_tlabs->end(), TlabPtrsSorter);
+  }
+}
+
 
 }  // namespace space
 }  // namespace gc

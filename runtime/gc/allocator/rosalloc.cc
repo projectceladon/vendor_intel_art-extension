@@ -833,6 +833,27 @@ size_t RosAlloc::FreeFromRun(Thread* self, void* ptr, Run* run) {
   return bracket_size;
 }
 
+// Revoke the Thread Local Run, this is used for parallel copying.
+bool RosAlloc::FreeFromThreadLocalRun(Thread* self, size_t size, void* addr) {
+  DCHECK(addr != nullptr);
+  if (!IsSizeForThreadLocal(size)) {
+    return false;
+  }
+  size_t bracket_size;
+  size_t idx = SizeToIndexAndBracketSize(size, &bracket_size);
+  Run* thread_local_run = reinterpret_cast<Run*>(self->GetRosAllocRun(idx));
+  if (kIsDebugBuild) {
+    // Need the lock to prevent race conditions.
+    MutexLock mu(self, *size_bracket_locks_[idx]);
+    CHECK(non_full_runs_[idx].find(thread_local_run) == non_full_runs_[idx].end());
+    CHECK(full_runs_[idx].find(thread_local_run) == full_runs_[idx].end());
+  }
+  DCHECK(thread_local_run != nullptr);
+  DCHECK(thread_local_run->IsThreadLocal());
+  thread_local_run->FreeSlot<true>(addr);
+  return true;
+}
+
 template<bool kUseTail>
 std::string RosAlloc::Run::FreeListToStr(SlotFreeList<kUseTail>* free_list) {
   std::string free_list_str;
@@ -868,8 +889,14 @@ std::string RosAlloc::Run::Dump() {
   return stream.str();
 }
 
+template<bool kThreadLocal>
 void RosAlloc::Run::FreeSlot(void* ptr) {
-  DCHECK(!IsThreadLocal());
+  if (kThreadLocal == false) {
+    DCHECK(!IsThreadLocal());
+  } else {
+    // For parallel copying, revoke the thread local slots for reusing.
+    DCHECK(IsThreadLocal());
+  }
   const uint8_t idx = size_bracket_idx_;
   const size_t bracket_size = bracketSizes[idx];
   Slot* slot = ToSlot(ptr);

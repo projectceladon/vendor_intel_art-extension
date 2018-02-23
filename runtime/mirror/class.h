@@ -1271,7 +1271,7 @@ class MANAGED Class FINAL : public Object {
     explicit InitializeClassVisitor(uint32_t class_size) : class_size_(class_size) {
     }
 
-    void operator()(ObjPtr<Object> obj, size_t usable_size) const
+    void operator()(ObjPtr<Object>* obj, size_t usable_size) const
         REQUIRES_SHARED(Locks::mutator_lock_);
 
    private:
