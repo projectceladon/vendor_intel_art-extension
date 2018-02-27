@@ -39,9 +39,9 @@ class HGraph_X86 : public HGraph {
  public:
   //neeraj - resolve build errors
   HGraph_X86(ArenaAllocator* arena, const DexFile& dex_file, uint32_t method_idx,
-      InstructionSet instruction_set, InvokeType invoke_type = kInvalidInvokeType, 
+      InstructionSet instruction_set, InvokeType invoke_type = kInvalidInvokeType,
       bool debuggable = false, bool osr = false, int start_instruction_id = 0) :
-          HGraph(arena, dex_file, method_idx, instruction_set, invoke_type, 
+          HGraph(arena, dex_file, method_idx, instruction_set, invoke_type,
             debuggable, osr, start_instruction_id),
           loop_information_(nullptr) {
 #ifndef NDEBUG
@@ -130,6 +130,13 @@ class HGraph_X86 : public HGraph {
    * (depending on what Google overloaded it to do).
    */
   void RebuildDomination();
+
+  /*
+   * @brief Move a Phi from one block to another block.
+   * @param phi Phi to move.
+   * @param to_block Block to which to move the Phi.
+   */
+  void MovePhi(HPhi* phi, HBasicBlock* to_block);
 
  protected:
 #ifndef NDEBUG

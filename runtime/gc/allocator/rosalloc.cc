@@ -1010,8 +1010,6 @@ size_t RosAlloc::BulkFree(Thread* self, void** ptrs, size_t num_ptrs) {
     return freed_bytes;
   }
 
-  WriterMutexLock wmu(self, bulk_free_lock_);
-
   // First mark slots to free in the bulk free bit map without locking the
   // size bracket locks. On host, unordered_set is faster than vector + flag.
 #ifdef ART_TARGET_ANDROID

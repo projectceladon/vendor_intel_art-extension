@@ -2726,6 +2726,10 @@ void HLoadClass::SetLoadKind(LoadKind load_kind) {
   }
 }
 
+void HLoadClass::CopyLoadKind(LoadKind load_kind) {
+  SetPackedField<LoadKindField>(load_kind);
+}
+
 std::ostream& operator<<(std::ostream& os, HLoadClass::LoadKind rhs) {
   switch (rhs) {
     case HLoadClass::LoadKind::kReferrersClass:

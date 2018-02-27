@@ -1,0 +1,4 @@
+Exception in thread "main" java.lang.ArrayIndexOutOfBoundsException: length=10; index=10
+	at Test.getThingies(Test.java:13)
+	at Test.gimme(Test.java:21)
+	at Main.main(Main.java:28)

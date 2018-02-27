@@ -1,0 +1,9 @@
+Main.test1 result: 1137214806
+Main.test2 result: -1835964264
+Main.test3 result: 524856906
+Main.test4 result: 785445222
+Main.test5 result: 599808464
+Main.test6 result: 363318469
+Main.test7 result: 271211865
+Main.test8 result: 250539921
+Main.test9 result: -1908205077

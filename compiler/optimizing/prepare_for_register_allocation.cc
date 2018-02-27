@@ -281,8 +281,9 @@ bool PrepareForRegisterAllocation::CanMoveClinitCheck(HInstruction* input,
   if (kIsDebugBuild) {
     for (HInstruction* between = input->GetNext(); between != user; between = between->GetNext()) {
       CHECK(between != nullptr);  // User must be after input in the same block.
-      CHECK(!between->CanThrow());
-      CHECK(!between->HasSideEffects());
+      if (between->CanThrow() || between->HasSideEffects()) {
+        return false;
+      }
     }
   }
   return true;

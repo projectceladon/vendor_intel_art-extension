@@ -1,0 +1,3 @@
+Initial nextThingy value is class Foo
+Final nextThingy value is class Foo
+test.thingies value is class Foo

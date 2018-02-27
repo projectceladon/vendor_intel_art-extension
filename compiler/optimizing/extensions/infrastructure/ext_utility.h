@@ -52,6 +52,75 @@ class HInstruction;
       } \
     } while (false)
 
+class HAllUseIterator {
+ public:
+  explicit HAllUseIterator(HInstruction* insn) :
+      env_use_it_(insn->GetEnvUses().begin()),
+      env_use_it_end_(insn->GetEnvUses().end()),
+      use_it_(insn->GetUses().begin()),
+      use_it_end_(insn->GetUses().end()),
+      index_(0),
+      env_user_(nullptr),
+      user_(nullptr) {
+    Advance();
+  }
+
+  bool Done() {
+    return (use_it_ == use_it_end_) &&
+           (env_use_it_ == env_use_it_end_) &&
+           env_user_ == nullptr &&
+           user_ == nullptr;
+  }
+
+  HInstruction* Current() {
+    return IsEnv() ? env_user_->GetHolder() : user_;
+  }
+
+  bool IsEnv() {
+    return env_user_ != nullptr;
+  }
+
+  void Advance() {
+    if (use_it_ == use_it_end_) {
+      if (env_use_it_ == env_use_it_end_) {
+        env_user_ = nullptr;
+        user_ = nullptr;
+      } else {
+        index_ = env_use_it_->GetIndex();
+        env_user_ = env_use_it_->GetUser();
+        ++env_use_it_;
+      }
+    } else {
+      index_ = use_it_->GetIndex();
+      user_ = use_it_->GetUser();
+      ++use_it_;
+    }
+  }
+
+  void ReplaceInput(HInstruction* new_input) {
+    if (IsEnv()) {
+      DCHECK(new_input == nullptr || new_input->GetBlock() != nullptr);
+      env_user_->RemoveAsUserOfInput(index_);
+      env_user_->SetRawEnvAt(index_, new_input);
+      if (new_input != nullptr) {
+        new_input->AddEnvUseAt(env_user_, index_);
+      }
+    } else {
+      DCHECK(new_input->GetBlock() != nullptr);
+      user_->ReplaceInput(new_input, index_);
+    }
+  }
+
+ private:
+  HUseList<HEnvironment*>::const_iterator env_use_it_;
+  HUseList<HEnvironment*>::const_iterator env_use_it_end_;
+  HUseList<HInstruction*>::const_iterator use_it_;
+  HUseList<HInstruction*>::const_iterator use_it_end_;
+  size_t index_;
+  HEnvironment* env_user_;
+  HInstruction* user_;
+};
+
   /**
    * @brief Facility to get the name of the current method.
    * @param graph The HGgraph corresponding to the method.
@@ -161,6 +230,25 @@ class HInstruction;
    * @return The resulting character equivalent.
    */
   char GetTypeId(Primitive::Type type);
+
+  /**
+   * @brief Whether the expression can be safely removed.
+   * @param instruction The instruction to check.
+   * @return true, if the instruction can be safely removed from code.
+   */
+  bool CanExpressionBeRemoved(HInstruction* instruction);
+
+  /**
+    * @brief Tries to kill an instruction, its inputs, their inputs etc.
+    * @param pass The pass that removes the instruction.
+    * @param insn The instruction to remove.
+    * @param all_removed The output set that contains all removed instructions.
+    *                    May be nullptr, if we don't need to collect those instructions.
+    */
+  void TryKillUseTree(HOptimization_X86* pass,
+                      HInstruction* insn,
+                      std::unordered_set<HInstruction*>* all_removed = nullptr);
+
 
 }  // namespace art
 #endif  // COMPILER_OPTIMIZING_EXTENSIONS_INFRASTRUCTURE_EXT_UTILITIES_H

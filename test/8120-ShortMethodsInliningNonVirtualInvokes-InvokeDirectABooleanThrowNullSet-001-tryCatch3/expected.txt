@@ -1,0 +1,4 @@
+Exception in thread "main" java.lang.NullPointerException: Attempt to write to null array
+	at Test.setThingies(Test.java:19)
+	at Test.hereyouare(Test.java:29)
+	at Main.main(Main.java:26)

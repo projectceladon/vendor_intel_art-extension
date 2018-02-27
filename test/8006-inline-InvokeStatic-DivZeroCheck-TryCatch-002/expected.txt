@@ -7,7 +7,7 @@
 0
 0
 0
-java.lang.ArithmeticException: divide by zero
-	at OptimizationTests.Inlining.InvokeStatic_DivZeroCheck_TryCatch_002.Main.b(Main.java:10)
-	at OptimizationTests.Inlining.InvokeStatic_DivZeroCheck_TryCatch_002.Main.test(Main.java:24)
-	at OptimizationTests.Inlining.InvokeStatic_DivZeroCheck_TryCatch_002.Main.main(Main.java:33)
+Exception in thread "main" java.lang.ArithmeticException: divide by zero
+	at Main.b(Main.java:9)
+	at Main.test(Main.java:23)
+	at Main.main(Main.java:32)
