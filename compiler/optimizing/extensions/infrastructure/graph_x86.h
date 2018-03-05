@@ -89,8 +89,10 @@ class HGraph_X86 : public HGraph {
    * @brief Delete a block, cleaning up all the loose ends such as
    * successors, predecessors, etc.
    * @param block The HBasicBlock to delete from the graph.
+   * @param remove_from_loops Whether we should also delete the block
+   *                          from its loop infos correctly.
    */
-  void DeleteBlock(HBasicBlock* block);
+  void DeleteBlock(HBasicBlock* block, bool remove_from_loops = false);
 
   void Dump();
 

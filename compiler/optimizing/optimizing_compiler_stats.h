@@ -95,6 +95,12 @@ enum MethodCompilationStat {
   kIntelNonTemporalMove,
   kIntelLoopFullyUnrolled,
   kIntelFormBottomLoop,
+  kIntelLHSS,
+  kIntelStoreSink,
+  kIntelPhiNodeEliminated,
+  kIntelCliqueInstructionEliminated,
+  kIntelBranchSimplified,
+  kIntelBranchConditionDeleted,
   kLastStat
 };
 
@@ -220,7 +226,12 @@ class OptimizingCompilerStats {
       case kIntelNonTemporalMove: return "kIntelNonTemporalMove";
       case kIntelLoopFullyUnrolled: return "kIntelLoopFullyUnrolled";
       case kIntelFormBottomLoop: return "kIntelFormBottomLoop";
-
+      case kIntelLHSS: return "kIntelLHSS";
+      case kIntelStoreSink: return "kIntelStoreSink";
+      case kIntelPhiNodeEliminated: return "kIntelPhiNodeEliminated";
+      case kIntelCliqueInstructionEliminated: return "kIntelCliqueInstructionEliminated";
+      case kIntelBranchSimplified: return "kIntelBranchSimplified";
+      case kIntelBranchConditionDeleted: return "kIntelBranchConditionDeleted";
       case kLastStat:
         LOG(FATAL) << "invalid stat "
             << static_cast<std::underlying_type<MethodCompilationStat>::type>(stat);

@@ -300,7 +300,8 @@ namespace art {
   }
 
   bool CanExpressionBeRemoved(HInstruction* instruction) {
-    return !instruction->CanThrow()
+    return !instruction->GetSideEffects().HasSideEffectsExcludingGC()
+           && !instruction->CanThrow()
            && !instruction->IsParameterValue()
            && !instruction->HasUses()
            && (!instruction->IsInvoke()  // Can remove pure invokes only.

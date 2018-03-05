@@ -21,14 +21,18 @@
 
 #include "base/dumpable.h"
 #include "base/timing_logger.h"
+#include "bb_simplifier.h"
 #include "code_generator.h"
 #include "constant_calculation_sinking.h"
+#include "constant_folding_x86.h"
 #include "ext_utility.h"
 #include "driver/compiler_driver.h"
 #include "driver/compiler_options.h"	//neeraj -- added to resolve build error
 #include "form_bottom_loops.h"
 #include "find_ivs.h"
 #include "graph_visualizer.h"
+#include "gvn_after_fbl.h"
+#include "loadhoist_storesink.h"
 #include "loop_formation.h"
 #include "loop_full_unrolling.h"
 #ifndef SOFIA
@@ -38,6 +42,7 @@
 #include "pass_framework.h"
 #include "peeling.h"
 #include "gvn_after_peeling.h"
+#include "phi_cleanup.h"
 #include "remove_suspend.h"
 #include "remove_unused_loops.h"
 //#include "scoped_thread_state_change.h"
@@ -70,18 +75,22 @@ struct HCustomPassPlacement {
 static HCustomPassPlacement kPassCustomPlacement[] = {
   { "loop_formation", "instruction_simplifier$after_bce", kPassInsertAfter },
   { "find_ivs", "loop_formation", kPassInsertAfter },
-  { "loop_full_unrolling", "find_ivs", kPassInsertAfter}, 
-  { "remove_loop_suspend_checks", "find_ivs", kPassInsertAfter},
-  { "remove_unused_loops", "remove_loop_suspend_checks", kPassInsertAfter},
-  { "constant_calculation_sinking", "find_ivs", kPassInsertAfter},
-  { "load_store_elimination", "loop_peeling", kPassInsertAfter },
+  { "loop_full_unrolling", "find_ivs", kPassInsertAfter},
+  { "remove_loop_suspend_checks", "phi_cleanup", kPassInsertAfter},
+  { "loadhoist_storesink", "remove_loop_suspend_checks", kPassInsertAfter},
+  { "remove_unused_loops", "remove_loop_suspend_checks", kPassInsertAfter },
+  { "constant_calculation_sinking", "loadhoist_storesink", kPassInsertAfter},
   { "form_bottom_loops", "load_store_elimination", kPassInsertAfter },
+  { "phi_cleanup", "form_bottom_loops", kPassInsertAfter },
+  { "constant_folding_after_phi_cleanup", "phi_cleanup", kPassInsertAfter },
   { "loop_formation_before_bottom_loops", "form_bottom_loops", kPassInsertBefore },
-  { "loop_peeling", "form_bottom_loops", kPassInsertAfter},
+  { "loop_peeling", "remove_unused_loops", kPassInsertBefore},
   { "GVN_after_peeling", "loop_peeling", kPassInsertAfter},
   { "loop_formation_before_peeling", "loop_peeling", kPassInsertBefore},
   { "non_temporal_move", "trivial_loop_evaluator", kPassInsertAfter},
-  { "trivial_loop_evaluator", "find_ivs", kPassInsertAfter},
+  { "trivial_loop_evaluator", "loadhoist_storesink", kPassInsertAfter},
+  { "find_ivs_before_suspend_check", "remove_loop_suspend_checks", kPassInsertBefore},
+  { "bb_simplifier", "remove_unused_loops", kPassInsertBefore },
 };
 
 /**
@@ -381,7 +390,7 @@ void RunOptimizationsX86(HGraph* graph,
 
   // Create the array for the opts.
   HLoopFormation loop_formation(graph);
-  HFindInductionVariables find_ivs(graph, stats);
+  HFindInductionVariables find_ivs(graph, "find_ivs", stats);
   HRemoveLoopSuspendChecks remove_suspends(graph, stats);
   HRemoveUnusedLoops remove_unused_loops(graph, stats);
   TrivialLoopEvaluator tle(graph, stats);
@@ -389,29 +398,39 @@ void RunOptimizationsX86(HGraph* graph,
 #ifndef SOFIA
   HNonTemporalMove non_temporal_move(graph, stats);
 #endif
+  LoadHoistStoreSink lhss(graph, stats);
   HLoopFormation formation_before_peeling(graph, "loop_formation_before_peeling");
   HLoopPeeling peeling(graph, stats);
   GVNAfterPeeling gvn_after_peeling(graph);
   HLoopFullUnrolling loop_full_unrolling(graph, stats);
   HLoopFormation formation_before_bottom_loops(graph, "loop_formation_before_bottom_loops");
   HFormBottomLoops form_bottom_loops(graph, dex_compilation_unit, handles, stats);
+  HPhiCleanup phi_cleanup(graph, stats);
+  HBBSimplifier bb_simplifier(graph, stats);
+  HConstantFolding_X86 constant_folding(graph, stats, "constant_folding_after_phi_cleanup");
+  HFindInductionVariables find_ivs_before_suspend_check(graph, "find_ivs_before_suspend_check", stats);
+
   HOptimization_X86* opt_array[] = {
     &form_bottom_loops,
     &formation_before_bottom_loops,
+    &phi_cleanup,
     &loop_formation,
     &find_ivs,
     &remove_suspends,
-    &ccs,
     &remove_unused_loops,
+    &lhss,
+    &ccs,
     &tle,
+    &find_ivs_before_suspend_check,
 #ifndef SOFIA
     &non_temporal_move,
 #endif
+    &bb_simplifier,
     &loop_full_unrolling,
     &peeling,
     &formation_before_peeling,
     &gvn_after_peeling,
-
+    &constant_folding
   };
 
   // Create the array for the post-opts.

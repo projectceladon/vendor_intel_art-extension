@@ -1,6 +1,6 @@
 /*
  * INTEL CONFIDENTIAL
- * Copyright (c) 2015, Intel Corporation All Rights Reserved.
+ * Copyright (c) 2016, Intel Corporation All Rights Reserved.
  *
  * The source code contained or described herein and all documents related to the
  * source code ("Material") are owned by Intel Corporation or its suppliers or
@@ -17,38 +17,43 @@
  * the Materials, either expressly, by implication, inducement, estoppel or
  * otherwise. Any license under such intellectual property rights must be express
  * and approved by Intel in writing.
- *
  */
 
-#ifndef VENDOR_INTEL_ART_EXTENSION_PASSES_FIND_IVS_H_
-#define VENDOR_INTEL_ART_EXTENSION_PASSES_FIND_IVS_H_
+#ifndef ART_OPT_PASSES_BB_SIMPLIFIER_H_
+#define ART_OPT_PASSES_BB_SIMPLIFIER_H_
 
-#include "induction_variable.h"
+#include "nodes.h"
 #include "optimization_x86.h"
 
 namespace art {
 
-// Forward declarations.
-class HLoopInformation_X86;
-
 /**
- * Find the Induction Variables of the loop.
+ * @brief Simplifies CFG, removing unneeded branching.
  */
-class HFindInductionVariables : public HOptimization_X86 {
- protected:
-  void DetectAndInitializeBasicIV(HLoopInformation_X86* info, HPhi* phi);
-  void FindInductionVariablesHelper(HLoopInformation_X86* info);
-  HIf* FindLoopIf(HLoopInformation_X86* loop);
-  bool FindLoopUpperBound(HLoopInformation_X86* info, int64_t& upper_bound);
-  bool IsValidCastForIV(HInstruction* candidate, HLoopInformation_X86* loop);
-
+class HBBSimplifier : public HOptimization_X86 {
  public:
-  explicit HFindInductionVariables(HGraph* graph, const char* kPassName = kFindIvsPassName, OptimizingCompilerStats* stats = nullptr)
-    : HOptimization_X86(graph, kPassName, stats) {}
-  static constexpr const char* kFindIvsPassName = "find_ivs";
+  explicit HBBSimplifier(HGraph* graph, OptimizingCompilerStats* stats = nullptr)
+    : HOptimization_X86(graph, "bb_simplifier", stats) {}
 
   void Run() OVERRIDE;
+
+ private:
+  /**
+    * @brief Try to eliminate meaningless diamond starting on the block.
+    * @param block The block to simplify.
+    * @param if_insn The IF instruction of the diamond.
+    * @return True, if the simplification succeeded.
+    */
+  bool TrySimplifyIf(HBasicBlock* block, HIf* if_insn);
+
+  /**
+    * @brief Try to simplify a construction starting in current bb.
+    * @param block The block to simplify.
+    * @return True, if the simplification succeeded.
+    */
+  bool TrySimplify(HBasicBlock* block);
 };
+
 }  // namespace art
 
-#endif  // VENDOR_INTEL_ART_EXTENSION_PASSES_FIND_IVS_H_
+#endif  // ART_OPT_PASSES_BB_SIMPLIFIER_H_

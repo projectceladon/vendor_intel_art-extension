@@ -17,38 +17,44 @@
  * the Materials, either expressly, by implication, inducement, estoppel or
  * otherwise. Any license under such intellectual property rights must be express
  * and approved by Intel in writing.
- *
  */
 
-#ifndef VENDOR_INTEL_ART_EXTENSION_PASSES_FIND_IVS_H_
-#define VENDOR_INTEL_ART_EXTENSION_PASSES_FIND_IVS_H_
-
-#include "induction_variable.h"
-#include "optimization_x86.h"
+#include "ext_utility.h"
+#include "graph_x86.h"
+#include "gvn_after_fbl.h"
+#include "gvn.h"
+#include "loop_iterators.h"
+#include "side_effects_analysis.h"
 
 namespace art {
 
-// Forward declarations.
-class HLoopInformation_X86;
+void GVNAfterFormBottomLoops::Run() {
+  HGraph_X86* graph = GRAPH_TO_GRAPH_X86(graph_);
+  HLoopInformation_X86* loop = graph->GetLoopInformation();
 
-/**
- * Find the Induction Variables of the loop.
- */
-class HFindInductionVariables : public HOptimization_X86 {
- protected:
-  void DetectAndInitializeBasicIV(HLoopInformation_X86* info, HPhi* phi);
-  void FindInductionVariablesHelper(HLoopInformation_X86* info);
-  HIf* FindLoopIf(HLoopInformation_X86* loop);
-  bool FindLoopUpperBound(HLoopInformation_X86* info, int64_t& upper_bound);
-  bool IsValidCastForIV(HInstruction* candidate, HLoopInformation_X86* loop);
+  // Go through each loop and check whether there is at least one bottom tested
+  // loop. If so, launch the GVN pass.
+  bool do_gvn = false;
+  for (HOutToInLoopIterator iter(loop); !iter.Done(); iter.Advance()) {
+    HLoopInformation_X86* l = iter.Current();
 
- public:
-  explicit HFindInductionVariables(HGraph* graph, const char* kPassName = kFindIvsPassName, OptimizingCompilerStats* stats = nullptr)
-    : HOptimization_X86(graph, kPassName, stats) {}
-  static constexpr const char* kFindIvsPassName = "find_ivs";
+    DCHECK(l != nullptr);  // Paranoid.
+    if (l->IsBottomTested()) {
+      do_gvn = true;
+      break;
+    }
+  }
 
-  void Run() OVERRIDE;
-};
+  // If there are no bottom tested loops, give up now.
+  if (!do_gvn) {
+    return;
+  }
+
+  // We have seen a bottom tested loop.  Rerun GVN.
+  SideEffectsAnalysis side_effects(graph_);
+  side_effects.Run();
+  GVNOptimization gvn(graph_, side_effects);
+  gvn.Run();
+}
+
 }  // namespace art
-
-#endif  // VENDOR_INTEL_ART_EXTENSION_PASSES_FIND_IVS_H_

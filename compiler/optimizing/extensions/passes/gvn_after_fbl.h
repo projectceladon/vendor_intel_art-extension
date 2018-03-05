@@ -17,38 +17,26 @@
  * the Materials, either expressly, by implication, inducement, estoppel or
  * otherwise. Any license under such intellectual property rights must be express
  * and approved by Intel in writing.
- *
  */
 
-#ifndef VENDOR_INTEL_ART_EXTENSION_PASSES_FIND_IVS_H_
-#define VENDOR_INTEL_ART_EXTENSION_PASSES_FIND_IVS_H_
+#ifndef ART_COMPILER_OPTIMIZING_EXTENSIONS_PASSES_GVN_AFTER_FBL_H_
+#define ART_COMPILER_OPTIMIZING_EXTENSIONS_PASSES_GVN_AFTER_FBL_H_
 
-#include "induction_variable.h"
+#include "nodes.h"
 #include "optimization_x86.h"
 
 namespace art {
 
-// Forward declarations.
-class HLoopInformation_X86;
-
-/**
- * Find the Induction Variables of the loop.
- */
-class HFindInductionVariables : public HOptimization_X86 {
- protected:
-  void DetectAndInitializeBasicIV(HLoopInformation_X86* info, HPhi* phi);
-  void FindInductionVariablesHelper(HLoopInformation_X86* info);
-  HIf* FindLoopIf(HLoopInformation_X86* loop);
-  bool FindLoopUpperBound(HLoopInformation_X86* info, int64_t& upper_bound);
-  bool IsValidCastForIV(HInstruction* candidate, HLoopInformation_X86* loop);
-
+class GVNAfterFormBottomLoops : public HOptimization_X86 {
  public:
-  explicit HFindInductionVariables(HGraph* graph, const char* kPassName = kFindIvsPassName, OptimizingCompilerStats* stats = nullptr)
-    : HOptimization_X86(graph, kPassName, stats) {}
-  static constexpr const char* kFindIvsPassName = "find_ivs";
+  explicit GVNAfterFormBottomLoops(HGraph* graph)
+    : HOptimization_X86(graph, kGVNAfterFormBottomLoopsPassName) {}
+
+  static constexpr const char* kGVNAfterFormBottomLoopsPassName = "GVN_after_form_bottom_loops";
 
   void Run() OVERRIDE;
 };
+
 }  // namespace art
 
-#endif  // VENDOR_INTEL_ART_EXTENSION_PASSES_FIND_IVS_H_
+#endif  // ART_COMPILER_OPTIMIZING_EXTENSIONS_PASSES_GVN_AFTER_FBL_H_

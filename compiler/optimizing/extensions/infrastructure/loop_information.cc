@@ -1363,5 +1363,20 @@ bool HLoopInformation_X86::IsOrHasIrreducibleLoop() const {
   return false;
 }
 
+bool HLoopInformation_X86::CanThrow() const {
+  for (HBlocksInLoopIterator bb_it(*this); !bb_it.Done(); bb_it.Advance()) {
+    HBasicBlock* bb = bb_it.Current();
+    for (HInstructionIterator insn_it(bb->GetInstructions()); !insn_it.Done(); insn_it.Advance()) {
+      HInstruction* insn = insn_it.Current();
+
+      if (insn->CanThrow()) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 
 }  // namespace art

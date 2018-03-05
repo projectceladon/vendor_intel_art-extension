@@ -466,7 +466,7 @@ class HLoopInformation_X86 : public HLoopInformation {
    * @brief Determines whether the loop contains instructions that can throw exceptions.
    * @return Whether the loop contains instructions that can throw exceptions.
    */
- // bool CanThrow() const;
+  bool CanThrow() const;
 
   /**
    * @brief Compute the number of instructions in a loop. Phi nodes and

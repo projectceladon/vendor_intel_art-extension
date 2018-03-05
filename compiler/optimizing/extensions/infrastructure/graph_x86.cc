@@ -38,7 +38,7 @@ void HGraph_X86::Dump() {
   LOG(INFO) << print_string;
 }
 
-void HGraph_X86::DeleteBlock(HBasicBlock* block) {
+void HGraph_X86::DeleteBlock(HBasicBlock* block, bool remove_from_loops) {
   // Remove all Phis.
   for (HInstructionIterator it2(block->GetPhis()); !it2.Done(); it2.Advance()) {
     HInstruction* insn = it2.Current();
@@ -75,6 +75,19 @@ void HGraph_X86::DeleteBlock(HBasicBlock* block) {
   RemoveElement(reverse_post_order_, block);
   if (linear_order_.size() > 0) {
     RemoveElement(linear_order_, block);
+  }
+
+  if (remove_from_loops) {
+    for (auto loop = LOOPINFO_TO_LOOPINFO_X86(block->GetLoopInformation());
+         loop != nullptr;
+         loop = loop->GetParent()) {
+      if (loop->Contains(*block)) {
+        if (loop->IsBackEdge(*block)) {
+          loop->RemoveBackEdge(block);
+        }
+        loop->Remove(block);
+      }
+    }
   }
 }
 
