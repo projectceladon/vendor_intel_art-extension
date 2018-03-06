@@ -88,8 +88,13 @@ public class Main {
   // Explicit null check on receiver, implicit null check on argument prevents hoisting.
   //
   /// CHECK-START: int Main.indexOfExceptions(java.lang.String, java.lang.String) licm (after)
-  /// CHECK-DAG: <<String:l\d+>> NullCheck                                                         loop:<<Loop:B\d+>> outer_loop:none
-  /// CHECK-DAG:                 InvokeVirtual [<<String>>,{{l\d+}}] intrinsic:StringStringIndexOf loop:<<Loop>>      outer_loop:none
+  /// CHECK-DAG: <<String:l\d+>> NullCheck                                        loop:<<Loop:B\d+>> outer_loop:none
+  /// CHECK-DAG:                 InvokeVirtual [<<String>>,{{l\d+}}] intrinsic:StringStringIndexOf loop:<<Loop>> outer_loop:none
+
+  /// CHECK-START: int Main.indexOfExceptions(java.lang.String, java.lang.String) GVN_after_peeling (after)
+  /// CHECK-DAG: <<String:l\d+>> NullCheck     loop:none
+  /// CHECK-DAG:                 InvokeVirtual [<<String>>,{{l\d+}}] intrinsic:StringStringIndexOf loop:none 
+
   static int indexOfExceptions(String s, String t) {
     int k = 0;
     for (char c = 'A'; c <= 'Z'; c++) {

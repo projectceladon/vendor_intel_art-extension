@@ -77,7 +77,7 @@ JVMTI_TYPES = set()
 ADDRESS_SIZES_TARGET = {'host': set(), 'target': set()}
 # timeout for individual tests.
 # TODO: make it adjustable per tests and for buildbots
-timeout = 3000 # 50 minutes
+timeout = 6000 # 50 minutes
 
 # DISABLED_TEST_CONTAINER holds information about the disabled tests. It is a map
 # that has key as the test name (like 001-HelloWorld), and value as set of
@@ -558,57 +558,44 @@ def print_test_info(test_name, result, failed_test_info=""):
   global test_count
   info = ''
   if not verbose:
-    # Without --verbose, the testrunner erases passing test info. It
-    # does that by overriding the printed text with white spaces all across
-    # the console width.
-    console_width = int(os.popen('stty size', 'r').read().split()[1])
-    info = '\r' + ' ' * console_width + '\r'
-  try:
-    print_mutex.acquire()
-    test_count += 1
-    percent = (test_count * 100) / total_test_count
-    progress_info = ('[ %d%% %d/%d ]') % (
+   try:
+     result_text = ''
+     print_mutex.acquire()
+     test_count += 1
+     percent = (test_count * 100) / total_test_count
+     progress_info = ('[ %d%% %d/%d ]') % (
       percent,
       test_count,
       total_test_count)
 
-    if result == 'FAIL' or result == 'TIMEOUT':
-      info += ('%s %s %s\n%s\n') % (
+     if result == 'FAIL' or result == 'TIMEOUT':
+       info += ('%s %s %s\n%s\n') % (
         progress_info,
         test_name,
         COLOR_ERROR + result + COLOR_NORMAL,
         failed_test_info)
-    else:
-      result_text = ''
-      if result == 'PASS':
-        result_text += COLOR_PASS + 'PASS' + COLOR_NORMAL
-      elif result == 'SKIP':
-        result_text += COLOR_SKIP + 'SKIP' + COLOR_NORMAL
+     else:
+       if result == 'PASS':
+         result_text += COLOR_PASS + 'PASS' + COLOR_NORMAL
+       elif result == 'SKIP':
+         result_text += COLOR_SKIP + 'SKIP' + COLOR_NORMAL
 
-      if verbose:
-        info += ('%s %s %s\n') % (
+     if verbose:
+       info += ('%s %s %s\n') % (
           progress_info,
           test_name,
           result_text)
-      else:
-        total_output_length = 2 # Two spaces
-        total_output_length += len(progress_info)
-        total_output_length += len(result)
-        allowed_test_length = console_width - total_output_length
-        test_name_len = len(test_name)
-        if allowed_test_length < test_name_len:
-          test_name = ('...%s') % (
-            test_name[-(allowed_test_length - 3):])
-        info += ('%s %s %s') % (
+     else:
+       info += ('%s %s %s') % (
           progress_info,
           test_name,
           result_text)
-    print_text(info)
-  except Exception as e:
-    print_text(('%s\n%s\n') % (test_name, str(e)))
-    failed_tests.append(test_name)
-  finally:
-    print_mutex.release()
+     print_text(info)
+   except Exception as e:
+     print_text(('%s\n%s\n') % (test_name, str(e)))
+     failed_tests.append(test_name)
+   finally:
+     print_mutex.release()
 
 def verify_knownfailure_entry(entry):
   supported_field = {
@@ -733,19 +720,19 @@ def print_analysis():
     # Without --verbose, the testrunner erases passing test info. It
     # does that by overriding the printed text with white spaces all across
     # the console width.
-    console_width = int(os.popen('stty size', 'r').read().split()[1])
-    eraser_text = '\r' + ' ' * console_width + '\r'
-    print_text(eraser_text)
+    #console_width = int(os.popen('stty size', 'r').read().split()[1])
+    #eraser_text = '\r' + ' ' * console_width + '\r'
+    #print_text(eraser_text)
 
   # Prints information about the total tests run.
   # E.g., "2/38 (5%) tests passed".
-  passed_test_count = total_test_count - len(skipped_tests) - len(failed_tests)
-  passed_test_information = ('%d/%d (%d%%) %s passed.\n') % (
+   passed_test_count = total_test_count - len(skipped_tests) - len(failed_tests)
+   passed_test_information = ('%d/%d (%d%%) %s passed.\n') % (
       passed_test_count,
       total_test_count,
       (passed_test_count*100)/total_test_count,
       'tests' if passed_test_count > 1 else 'test')
-  print_text(passed_test_information)
+   print_text(passed_test_information)
 
   # Prints the list of skipped tests, if any.
   if skipped_tests:

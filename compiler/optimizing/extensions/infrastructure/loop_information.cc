@@ -107,6 +107,32 @@ void HLoopInformation_X86::Dump(int max_depth) const {
   }
 }
 
+bool HLoopInformation_X86::CheckForCatchBlockUsage(HInstruction* insn) const {
+  for (const HUseListNode<HEnvironment*>& use : insn->GetEnvUses()) {
+    HEnvironment* user = use.GetUser();
+    HInstruction* insn_user = user->GetHolder();
+    if (Contains(*insn_user->GetBlock())) {
+      if (insn_user->CanThrowIntoCatchBlock()) {
+        const HTryBoundary& entry = insn_user->GetBlock()->GetTryCatchInformation()->GetTryEntry();
+        // Verify all catch blocks.
+        size_t vr_index = use.GetIndex();
+        for (HBasicBlock* catch_block : entry.GetExceptionHandlers()) {
+          // We should not see the catch phi node for our VR.
+          for (HInstructionIterator phi_it(catch_block->GetPhis());
+               !phi_it.Done();
+               phi_it.Advance()) {
+            HPhi* catch_phi = phi_it.Current()->AsPhi();
+            if (catch_phi->GetRegNumber() == vr_index) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
 bool HLoopInformation_X86::ExecutedPerIteration(HBasicBlock* bb) const {
   DCHECK(bb != nullptr);
   // First is the instruction in the loop?
@@ -827,19 +853,6 @@ void HLoopInformation_X86::AddToAll(HBasicBlock* block) {
   }
 }
 
-bool HLoopInformation_X86::HasCatchHandler() const {
-  // Walk through the loop's blocks to find a catch handler.
-  for (HBlocksInLoopIterator it_loop(*this); !it_loop.Done(); it_loop.Advance()) {
-    HBasicBlock* block = it_loop.Current();
-    if (block->IsCatchBlock()) {
-      return true;
-    }
-  }
-
-  // No catch handler found.
-  return false;
-}
-
 bool HLoopInformation_X86::HasTryCatchHandler() const {
   // Walk through the loop's blocks to find either try or catch boundaries.
   for (HBlocksInLoopIterator it_loop(*this); !it_loop.Done(); it_loop.Advance()) {
@@ -867,7 +880,7 @@ bool HLoopInformation_X86::IsPeelable(HOptimization_X86* optim) const {
     return false;
   }
 
-  if (HasCatchHandler()) {
+  if (HasTryCatchHandler()) {
     // Catch information is stored specially and all data structures around this would
     // need updated if we peeled this. Since this case is unlikely to be desired, reject
     // for now and support only when needed.
@@ -994,17 +1007,26 @@ static void AddExitPhisAfterPeel(const HGraph_X86* graph, const HLoopInformation
           existing_phi->AddInput(clone);
         }
       } else {
+         //In the case where orig and clone are equal, avoid creating a redundant phi.
+        //Update uses of the orig in the exit block with the clone directly.
+        if(orig->Equals(clone)){
+          use_it.ReplaceInput(clone);
+        } else {
         if (new_phi == nullptr) {
           new_phi = new (graph->GetArena()) HPhi(graph->GetArena(), reg_number,
               0, HPhi::ToPhiType(orig->GetType()));
           exit_bb->AddPhi(new_phi);
           new_phi->AddInput(orig);
           new_phi->AddInput(clone);
+            if (orig->GetType() == Primitive::kPrimNot) {
+            new_phi->SetReferenceTypeInfo(orig->GetReferenceTypeInfo());
+          }
         }
         use_it.ReplaceInput(new_phi);
       }
     }
   }
+ }
 }
 
 /**
@@ -1163,6 +1185,8 @@ bool HLoopInformation_X86::PeelHelperHead() {
     HBasicBlock* original = it_loop.Current();
     HBasicBlock* copy = graph->CreateNewBasicBlock(original->GetDexPc());
     DCHECK(copy != nullptr);
+    if(this->GetPreHeader()->IsTryBlock())
+    copy->SetTryCatchInformation(this->GetPreHeader()->GetTryCatchInformation());
     old_to_new_bbs.Put(original, copy);
     peeled_blocks_.push_back(copy->GetBlockId());
   }

@@ -418,20 +418,13 @@ class HLoopInformation_X86 : public HLoopInformation {
   bool HasBeenPeeled() {
     return !peeled_blocks_.empty();
   }
-
-  /**
-   * @brief Used to check if loop has a catch handler block.
-   * @return Returns true if loop has catch block.
-   */
-  bool HasCatchHandler() const;
-
   /**
    * @brief Used to check if loop has a try block or a catch handler block.
    * @return Returns true if loop has a try block or a catch handler block.
    */
   bool HasTryCatchHandler() const;
 
-  /**
+    /**
    * @brief This is used to get a list of ids for the peeled blocks.
    * @details The reason this does not return a list of block pointers is because
    * we do not want to maintain correctness of this list. Namely, other optimizations
@@ -504,6 +497,14 @@ class HLoopInformation_X86 : public HLoopInformation {
    * @details Returns true if either the loop is irreducible or contains irreducible loop.
    */
   bool IsOrHasIrreducibleLoop() const;
+
+   /**
+   * @brief Return true if there is a catch handler which needs a VR corresponding
+   * to value produced by the instruction.
+   * @param instruction to check.
+   * @return true is there is a usage of VR corresponding to insn in any catch block.
+   */
+  bool CheckForCatchBlockUsage(HInstruction* insn) const;
 	
   void SetGraph(HGraph* graph) { graph_ = graph; }
  protected:
