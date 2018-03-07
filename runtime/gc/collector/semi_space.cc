@@ -341,8 +341,12 @@ void SemiSpace::MarkingPhase() {
   }
   // Set the default value of parallel copy support.
   support_parallel_ = support_parallel_default_;
-  if (GetHeap()->GetPrimaryFreeListSpace()->Capacity() * 0.8 <= GetHeap()->GetBytesAllocated()) {
-    // Promote space is almost full, disable parallel copy.
+  //If we are zygotecompacting collector we donot support parallel copy and
+  //we may not always have primaryfreelistspace
+  if (support_parallel_ &&
+      (GetHeap()->GetPrimaryFreeListSpace() == nullptr ||
+      GetHeap()->GetPrimaryFreeListSpace()->Capacity() * 0.8 <= GetHeap()->GetBytesAllocated())) {
+    // Promote space is almost full/not present, disable parallel copy.
     support_parallel_ = false;
   }
 

@@ -30,15 +30,36 @@ func globalFlags(ctx android.BaseContext) ([]string, []string) {
 	opt := envDefault(ctx, "ART_NDEBUG_OPT_FLAG", "-O3")
 	cflags = append(cflags, opt)
 
-        //We should turn on tlab by default.
-	tlab := true
+	tlab := false
 
-        // TODO: Need to change the Default GC to GENCOPYING from CMS, once we are condfident on GENCOPYING
-	gcType := envDefault(ctx, "ART_DEFAULT_GC_TYPE", "CMS")
+	// CC and readbarrier are tightly coupled in our code.
+	// Throughout the code, there are assumptions on CC to be the collector when readbarrier is turned on.
+	// Also there is hardcoding to pick CC as the fg & bg collector (refer runtime.cc), if readbarrier is turned on.
+	// Load the env variable ahead, so we can override it based on default GC type.
+	// (Un)Setting ART_USE_READ_BARRIER has no effect if the choice of GC is not CC, as we disable it below.
+	artUseReadBarrier := !envFalse(ctx, "ART_USE_READ_BARRIER") && ctx.AConfig().ArtUseReadBarrier()
+
+	// Need to change the deafult GC to GENCOPYING for all, once we fully understand and evaluate GENCOPYING
+	// Currently the default is CC, as deined in build/core/soong_config.mk and
+	// defaulting to GENCOPYING is being done only for Gordon Peak devices via mixins
+	gcType := ctx.AConfig().Getenv("ART_DEFAULT_GC_TYPE")
+	if gcType == "" {
+		gcType = ctx.AConfig().ArtDefaultGCType()
+	}
 
 	if envTrue(ctx, "ART_TEST_DEBUG_GC") {
 		gcType = "SS"
 		tlab = true
+	}
+
+	// If we are going to use GENCOPYING, enable TLAB
+	if (gcType == "GENCOPYING") {
+		tlab = true
+	}
+
+	// Only CC uses ReadBarrier, for all other GC Choices disable ReadBarrier
+	if (gcType != "CC") {
+		artUseReadBarrier = false
 	}
 
 	cflags = append(cflags, "-DART_DEFAULT_GC_TYPE_IS_"+gcType)
@@ -58,7 +79,7 @@ func globalFlags(ctx android.BaseContext) ([]string, []string) {
 		asflags = append(asflags, "-DART_HEAP_POISONING=1")
 	}
 
-	if !envFalse(ctx, "ART_USE_READ_BARRIER") && ctx.AConfig().ArtUseReadBarrier() {
+	if artUseReadBarrier {
 		// Used to change the read barrier type. Valid values are BAKER, BROOKS,
 		// TABLELOOKUP. The default is BAKER.
 		barrierType := envDefault(ctx, "ART_READ_BARRIER_TYPE", "BAKER")
