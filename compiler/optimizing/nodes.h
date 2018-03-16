@@ -1705,10 +1705,6 @@ class SideEffects : public ValueObject {
     return (flags_ & kAllChangeBits);
   }
 
-  bool HasSideEffectsExcludingGC() const {
-    return ((flags_ & ~(1ULL << kCanTriggerGCBit)) & kAllChangeBits);
-  }
-
   bool HasDependencies() const {
     return (flags_ & kAllDependOnBits);
   }
@@ -4397,11 +4393,6 @@ class HInvokeStaticOrDirect FINAL : public HInvoke {
     DCHECK(!IsStaticWithExplicitClinitCheck());
   }
 
-  // Is this a call to a static method whose declaring class has an
-  // explicit initialization check in the graph?
-  bool IsStaticWithExplicitClinitCheck() const {
-    return IsStatic() && (GetClinitCheckRequirement() == ClinitCheckRequirement::kExplicit);
-  }
   // This is a helper method called by cloner to synchronize number of inputs.
   void TrimInputCapacity(uint32_t new_input_count) {
     DCHECK_GE(inputs_.size(), new_input_count);
@@ -4409,7 +4400,13 @@ class HInvokeStaticOrDirect FINAL : public HInvoke {
     while (num_to_trim > 0) {
       inputs_.pop_back();
       num_to_trim--;
-     }
+    }
+  }
+
+  // Is this a call to a static method whose declaring class has an
+  // explicit initialization check in the graph?
+  bool IsStaticWithExplicitClinitCheck() const {
+    return IsStatic() && (GetClinitCheckRequirement() == ClinitCheckRequirement::kExplicit);
   }
 
   // Is this a call to a static method whose declaring class has an
@@ -5348,6 +5345,7 @@ class HPhi FINAL : public HVariableInputSizeInstruction {
 
   uint32_t GetRegNumber() const { return reg_number_; }
   bool IsSynthetic() const { return reg_number_ == kNoRegNumber; }
+
   void SetDead() { SetPackedFlag<kFlagIsLive>(false); }
   void SetLive() { SetPackedFlag<kFlagIsLive>(true); }
   bool IsDead() const { return !IsLive(); }
@@ -6156,49 +6154,6 @@ class HLoadString FINAL : public HInstruction {
     ASSIGN_INSTRUCTION_KIND(LoadString);
     SetPackedField<LoadKindField>(LoadKind::kRuntimeCall);
   }
-  // We have to introduce new constructors because HSharpening::ProcessLoadString
-  // transforms objects of this class in a way that makes it impossible to clone
-  // them using only original constructor. These constructors are used in cloning.cc.
-  HLoadString(LoadKind load_kind,
-              dex::StringIndex string_index,
-              const DexFile& dex_file,
-              uint32_t dex_pc)
-      : HInstruction(SideEffectsForArchRuntimeCalls(), dex_pc),
-        string_index_(string_index),
-        dex_file_(dex_file) {
-    SetPackedFlag<kFlagIsInDexCache>(false);
-    SetPackedField<LoadKindField>(load_kind);
-    load_data_.ref.dex_file = &dex_file;
-    ASSIGN_INSTRUCTION_KIND(LoadString);
-  }
-  HLoadString(LoadKind load_kind,
-              dex::StringIndex string_index,
-              uint64_t address,
-              const DexFile& dex_file,
-              uint32_t dex_pc)
-      : HInstruction(SideEffectsForArchRuntimeCalls(), dex_pc),
-        string_index_(string_index),
-        dex_file_(dex_file) {
-    SetPackedFlag<kFlagIsInDexCache>(false);
-    SetPackedField<LoadKindField>(load_kind);
-    load_data_.address = address;
-    ASSIGN_INSTRUCTION_KIND(LoadString);
-  }
-
- HLoadString(LoadKind load_kind,
-              dex::StringIndex string_index,
-              const DexFile& dex_file,
-              size_t element_index,
-              uint32_t dex_pc)
-      : HInstruction(SideEffectsForArchRuntimeCalls(), dex_pc),
-        string_index_(string_index),
-        dex_file_(dex_file) {
-    SetPackedFlag<kFlagIsInDexCache>(false);
-    SetPackedField<LoadKindField>(load_kind);
-    load_data_.ref.dex_cache_element_index = element_index;
-    load_data_.ref.dex_file = &dex_file;
-    ASSIGN_INSTRUCTION_KIND(LoadString);
-  }
 
   void SetLoadKind(LoadKind load_kind);
 
@@ -6263,47 +6218,15 @@ class HLoadString FINAL : public HInstruction {
     return Primitive::kPrimNot;
   }
 
-  bool IsInDexCache() const { return GetPackedFlag<kFlagIsInDexCache>(); }
-
-  uint64_t GetAddress() const {
-    DCHECK(HasAddress(GetLoadKind()));
-    return load_data_.address;
-  }
-
-  uint32_t GetDexCacheElementOffset() const {
-    return load_data_.ref.dex_cache_element_index;
-  }
-
-  void MarkInDexCache() {
-    SetPackedFlag<kFlagIsInDexCache>(true);
-    DCHECK(!NeedsEnvironment());
-    RemoveEnvironment();
-    SetSideEffects(SideEffects::None());
-  }
-
-  static bool HasStringReference(LoadKind load_kind) {
-    return
-        load_kind == LoadKind::kBootImageLinkTimePcRelative ||
-        load_kind == LoadKind::kRuntimeCall;
-  }
-
   DECLARE_INSTRUCTION(LoadString);
 
  private:
-  static constexpr size_t kFlagIsInDexCache = kNumberOfGenericPackedBits;
   static constexpr size_t kFieldLoadKind = kNumberOfGenericPackedBits;
   static constexpr size_t kFieldLoadKindSize =
       MinimumBitsToStore(static_cast<size_t>(LoadKind::kLast));
   static constexpr size_t kNumberOfLoadStringPackedBits = kFieldLoadKind + kFieldLoadKindSize;
   static_assert(kNumberOfLoadStringPackedBits <= kMaxNumberOfPackedBits, "Too many packed fields.");
   using LoadKindField = BitField<LoadKind, kFieldLoadKind, kFieldLoadKindSize>;
-  static bool HasAddress(LoadKind load_kind) {
-    return load_kind == LoadKind::kBootImageAddress || load_kind == LoadKind::kJitTableAddress;
-  }
-
-  static bool HasDexCacheReference(LoadKind load_kind) {
-    return load_kind == LoadKind::kJitTableAddress;
-  }
 
   void SetLoadKindInternal(LoadKind load_kind);
 
@@ -6316,14 +6239,6 @@ class HLoadString FINAL : public HInstruction {
   const DexFile& dex_file_;
 
   Handle<mirror::String> string_;
-
-  union {
-    struct {
-      const DexFile* dex_file;            // For string reference and dex cache reference.
-      uint32_t dex_cache_element_index;   // Only for dex cache reference.
-    } ref;
-    uint64_t address;  // Up to 64-bit, needed for kDexCacheAddress on 64-bit targets.
-  } load_data_;
 
   DISALLOW_COPY_AND_ASSIGN(HLoadString);
 };

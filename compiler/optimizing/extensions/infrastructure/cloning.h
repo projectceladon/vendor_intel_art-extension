@@ -129,11 +129,6 @@ class HInstructionCloner : public HGraphVisitor {
     // Cloning does not make sense - there is only one ArtMethod parameter.
     UnsupportedInstruction(instr);
   }
-  void VisitShouldDeoptimizeFlag(HShouldDeoptimizeFlag* instr) OVERRIDE {
-    //Need to add input for the clone which breaks in AddInputAt().
-    //Need to define a special constructor for cloning this instruction.
-    UnsupportedInstruction(instr);
-  }
   void VisitDeoptimize(HDeoptimize* instr) OVERRIDE;
   void VisitDiv(HDiv* instr) OVERRIDE;
   void VisitDivRHSMemory(HDivRHSMemory* instr) OVERRIDE {
@@ -167,10 +162,9 @@ class HInstructionCloner : public HGraphVisitor {
     UnsupportedInstruction(instr);
   }
   void VisitInvokeInterface(HInvokeInterface* instr) OVERRIDE;
+  void VisitInvokeStaticOrDirect(HInvokeStaticOrDirect* instr) OVERRIDE;
   void VisitInvokeVirtual(HInvokeVirtual* instr) OVERRIDE;
   void VisitInvokeUnresolved(HInvokeUnresolved* instr) OVERRIDE;
-  void VisitInvokePolymorphic(HInvokePolymorphic* instr) OVERRIDE;
-  void VisitInvokeStaticOrDirect(HInvokeStaticOrDirect* instr) OVERRIDE;
   void VisitLessThan(HLessThan* instr) OVERRIDE;
   void VisitLessThanOrEqual(HLessThanOrEqual* instr) OVERRIDE;
   void VisitLoadClass(HLoadClass* instr) OVERRIDE;
@@ -181,7 +175,6 @@ class HInstructionCloner : public HGraphVisitor {
     UnsupportedInstruction(instr);
   }
   void VisitMemoryBarrier(HMemoryBarrier* instr) OVERRIDE;
-  void VisitConstructorFence(HConstructorFence* instr) OVERRIDE;
   void VisitMonitorOperation(HMonitorOperation* instr) OVERRIDE;
   void VisitMul(HMul* instr) OVERRIDE;
   void VisitMulRHSMemory(HMulRHSMemory* instr) OVERRIDE {
@@ -246,6 +239,9 @@ class HInstructionCloner : public HGraphVisitor {
   void VisitX86FPNeg(HX86FPNeg* instr) OVERRIDE;
   void VisitX86PackedSwitch(HX86PackedSwitch* instr) OVERRIDE;
   void VisitX86BoundsCheckMemory(HX86BoundsCheckMemory* instr) OVERRIDE;
+  void VisitConstructorFence(HConstructorFence* instr) {
+    UnsupportedInstruction(instr);
+  }
 
  private:
   void GetInputsForUnary(HInstruction* instr, HInstruction** input_ptr) const;

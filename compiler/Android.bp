@@ -104,7 +104,6 @@ art_cc_defaults {
         "optimizing/extensions/passes/loop_full_unrolling.cc",
         "optimizing/extensions/passes/non_temporal_move.cc",
         "optimizing/extensions/passes/peeling.cc",
-        "optimizing/extensions/passes/gvn_after_peeling.cc",
         "optimizing/extensions/passes/remove_unused_loops.cc",
         "optimizing/extensions/passes/remove_suspend.cc",
         "optimizing/extensions/passes/trivial_loop_evaluator.cc",

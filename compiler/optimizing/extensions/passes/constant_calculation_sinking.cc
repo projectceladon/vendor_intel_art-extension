@@ -77,19 +77,6 @@ bool HConstantCalculationSinking::HasNoDependenciesWithinLoop(HInstruction* cand
     }
   }
 
-  // Now we want to ensure that our candidate or phi is not included
-  // in environment of in-loop instruction which can throw and catcher
-  // inside of our method uses the VR corresponding to our Phi
-  // or instruction. Otherwise it means that we will eliminate the VR
-  // change inside the loop (and correct it after) but we can jump
-  // to catch handler which needs this VR up to date.
-  if (loop_info->CheckForCatchBlockUsage(candidate) ||
-      loop_info->CheckForCatchBlockUsage(phi)) {
-    PRINT_PASS_MESSAGE(this, "Phi %d or Instruction %d has VR uses in catch block",
-                       phi->GetId(), candidate->GetId());
-    return false;
-  }
-
   return true;
 }
 

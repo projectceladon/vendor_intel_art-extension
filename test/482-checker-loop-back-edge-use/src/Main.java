@@ -80,16 +80,16 @@ public class Main {
   }
 
   /// CHECK-START: void Main.loop5(boolean) liveness (after)
-  /// CHECK:         <<Arg:z\d+>>  ParameterValue  liveness:<<ArgLiv:\d+>> ranges:{[<<ArgLiv>>,<<ArgLoopUse2:\d+>>)} uses:[<<ArgUse:\d+>>,<<ArgLoopUse1:\d+>>,<<ArgUse1:\d+>>,<<ArgLoopUse2>>]
+  /// CHECK:         <<Arg:z\d+>>  ParameterValue  liveness:<<ArgLiv:\d+>> ranges:{[<<ArgLiv>>,<<ArgLoopUse2:\d+>>)} uses:[<<ArgUse:\d+>>,<<ArgLoopUse1:\d+>>,<<ArgLoopUse2>>]
   /// CHECK:                       InvokeVirtual   [{{l\d+}},<<Arg>>] method_name:java.io.PrintStream.println liveness:<<InvokeLiv:\d+>>
   /// CHECK:                       Goto            liveness:<<GotoLiv1:\d+>>
   /// CHECK:                       Exit
   /// CHECK:                       Goto            liveness:<<GotoLiv2:\d+>>
   /// CHECK:                       Goto            liveness:<<GotoLiv3:\d+>>
   /// CHECK:                       Goto            liveness:<<GotoLiv4:\d+>>
-  /// CHECK-EVAL:    <<InvokeLiv>> == <<ArgLoopUse1>>
+  /// CHECK-EVAL:    <<InvokeLiv>> == <<ArgUse>>
   /// CHECK-EVAL:    <<GotoLiv4>> < <<GotoLiv1>>
-  /// CHECK-EVAL:    <<GotoLiv4>> - 2 == <<ArgUse1>>
+  /// CHECK-EVAL:    <<GotoLiv4>> + 2 == <<ArgLoopUse1>>
   /// CHECK-EVAL:    <<GotoLiv1>> + 2 == <<ArgLoopUse2>>
 
   public static void loop5(boolean incoming) {

@@ -33,8 +33,9 @@ bool HInstructionCloner::AllOkay() const {
       // The cloner should always create the same type unless the clone
       // was manually added. We check that now.
       if (manual_clones_.find(it.first) == manual_clones_.end()) {
-        DCHECK_EQ(it.first->GetKind(), it.second->GetKind()) << GetMethodName(GetGraph());
-        DCHECK_EQ(it.first->HasEnvironment(), it.second->HasEnvironment()) << GetMethodName(GetGraph());
+        CHECK_EQ(it.first->GetKind(), it.second->GetKind()) << GetMethodName(GetGraph());
+        CHECK_EQ(it.first->HasEnvironment(), it.second->HasEnvironment())
+          << GetMethodName(GetGraph());
         if (it.first->CanBeMoved()) {
           if (!it.first->IsInvoke()
               || it.first->AsInvoke()->GetIntrinsic() != Intrinsics::kNone) {
@@ -313,8 +314,7 @@ void HInstructionCloner::VisitArrayGet(HArrayGet* instr) {
     HInstruction* array, *index;
     GetInputsForBinary(instr, &array, &index);
     HArrayGet* clone = new (arena_) HArrayGet(array, index, instr->GetType(),
-                                              instr->GetDexPc(), instr->IsStringCharAt());
-    clone->SetSideEffects(instr->GetSideEffects());
+                                              instr->GetDexPc(),instr->IsStringCharAt());
     CopyReferenceType(instr, clone);
     CommitClone(instr, clone);
   }
@@ -343,14 +343,10 @@ void HInstructionCloner::VisitArraySet(HArraySet* instr) {
     if (instr->StaticTypeOfArrayIsObjectArray()) {
       clone->SetStaticTypeOfArrayIsObjectArray();
     }
-    if (!instr->GetValueCanBeNull()) {
-      clone->ClearValueCanBeNull();
-    }
     if (!instr->NeedsTypeCheck()) {
-       clone->ClearNeedsTypeCheck();
-     }
-    // Also clone the environment appropriately.
-    clone->SetSideEffects(instr->GetSideEffects());
+      clone->ClearNeedsTypeCheck();
+    }
+
     CloneEnvironment(instr, clone);
     CommitClone(instr, clone);
   }
@@ -390,7 +386,7 @@ void HInstructionCloner::VisitBoundsCheck(HBoundsCheck* instr) {
   if (cloning_enabled_) {
     HInstruction* index, *length;
     GetInputsForBinary(instr, &index, &length);
-    HBoundsCheck* clone = new (arena_) HBoundsCheck(index, length, instr->GetDexPc(), instr->IsStringCharAt());
+    HBoundsCheck* clone = new (arena_) HBoundsCheck(index, length, instr->GetDexPc(),instr->IsStringCharAt());
     CopyReferenceType(instr, clone);
     CloneEnvironment(instr, clone);
     CommitClone(instr, clone);
@@ -417,9 +413,6 @@ void HInstructionCloner::VisitCheckCast(HCheckCast* instr) {
     DCHECK(constant->IsLoadClass());
     HCheckCast* clone = new (arena_) HCheckCast(object, constant->AsLoadClass(),
         instr->GetTypeCheckKind(), instr->GetDexPc());
-    if (!instr->MustDoNullCheck()) {
-      clone->ClearMustDoNullCheck();
-    }
     CloneEnvironment(instr, clone);
     CommitClone(instr, clone);
   }
@@ -476,24 +469,7 @@ void HInstructionCloner::VisitCompare(HCompare* instr) {
 }
 
 void HInstructionCloner::VisitDeoptimize(HDeoptimize* instr) {
-  if (cloning_enabled_) {
-    HInstruction* cond, *guard ;
-
-    HDeoptimize * clone = nullptr;
-    if(instr->InputCount()==1){
-     //Case when Deoptimize acts as a barrier
-     GetInputsForUnary(instr, &cond);
-     clone = new (arena_) HDeoptimize(arena_, cond, instr->GetDeoptimizationKind(), instr->GetDexPc());
-    }
-    if(instr->InputCount()==2){
-     //Case when Deoptimize gaurds an instruction
-      GetInputsForBinary(instr, &cond, &guard);
-      clone = new (arena_) HDeoptimize(arena_, cond , guard , instr->GetDeoptimizationKind(), instr->GetDexPc());
-    }
-    CopyReferenceType(instr, clone);
-    CloneEnvironment(instr, clone);
-    CommitClone(instr, clone);
-  }
+    UnsupportedInstruction(instr);
 }
 
 void HInstructionCloner::VisitDiv(HDiv* instr) {
@@ -511,7 +487,6 @@ void HInstructionCloner::VisitDivZeroCheck(HDivZeroCheck* instr) {
     HInstruction* input;
     GetInputsForUnary(instr, &input);
     HDivZeroCheck* clone = new (arena_) HDivZeroCheck(input, instr->GetDexPc());
-    // Also clone the environment appropriately.
     CloneEnvironment(instr, clone);
     CommitClone(instr, clone);
   }
@@ -574,7 +549,8 @@ void HInstructionCloner::VisitInstanceFieldGet(HInstanceFieldGet* instr) {
     HInstruction* input;
     GetInputsForUnary(instr, &input);
     const FieldInfo& fi = instr->GetFieldInfo();
-        HInstanceFieldGet* clone =
+    // neeraj - resolve build error (modified "HInstanceFieldGet" constructor as per O-Master)
+    HInstanceFieldGet* clone =
         new (arena_) HInstanceFieldGet(input,
                                        fi.GetField(),
                                        instr->GetFieldType(),
@@ -595,7 +571,8 @@ void HInstructionCloner::VisitInstanceFieldSet(HInstanceFieldSet* instr) {
     HInstruction* object, *value;
     GetInputsForBinary(instr, &object, &value);
     const FieldInfo& fi = instr->GetFieldInfo();
-        HInstanceFieldSet* clone =
+    // neeraj - resolve build error (modified "HInstanceFieldSet" constructor as per O-Master)
+    HInstanceFieldSet* clone =
         new (arena_) HInstanceFieldSet(object,
                                        value,
                                        fi.GetField(),
@@ -606,9 +583,6 @@ void HInstructionCloner::VisitInstanceFieldSet(HInstanceFieldSet* instr) {
                                        fi.GetDeclaringClassDefIndex(),
                                        fi.GetDexFile(),
                                        instr->GetDexPc());
-      if (!instr->GetValueCanBeNull()) {
-      clone->ClearValueCanBeNull();
-    }
     CommitClone(instr, clone);
   }
 }
@@ -620,9 +594,6 @@ void HInstructionCloner::VisitInstanceOf(HInstanceOf* instr) {
     DCHECK(constant->IsLoadClass());
     HInstanceOf* clone = new (arena_) HInstanceOf(object, constant->AsLoadClass(),
         instr->GetTypeCheckKind(), instr->GetDexPc());
-    if (!instr->MustDoNullCheck()) {
-      clone->ClearMustDoNullCheck();
-    }
     CloneEnvironment(instr, clone);
     CommitClone(instr, clone);
   }
@@ -651,7 +622,7 @@ void HInstructionCloner::VisitInvokeInterface(HInvokeInterface* instr) {
                                                             instr->GetType(),
                                                             instr->GetDexPc(),
                                                             instr->GetDexMethodIndex(),
-                                                            instr->GetResolvedMethod(),
+                                                            instr->GetResolvedMethod(), //neeraj - resolve build error
                                                             instr->GetImtIndex());
     FinishInvokeCloning(instr, clone);
   }
@@ -677,40 +648,12 @@ void HInstructionCloner::VisitInvokeStaticOrDirect(HInvokeStaticOrDirect* instr)
 }
 
 void HInstructionCloner::VisitInvokeVirtual(HInvokeVirtual* instr) {
-  if (cloning_enabled_) {
-    HInvokeVirtual* clone = new (arena_) HInvokeVirtual(arena_,
-                                                        instr->GetNumberOfArguments(),
-                                                        instr->GetType(),
-                                                        instr->GetDexPc(),
-                                                        instr->GetDexMethodIndex(),
-                                                        instr->GetResolvedMethod(),
-                                                        instr->GetVTableIndex());
-    FinishInvokeCloning(instr, clone);
-  }
+    UnsupportedInstruction(instr);
 }
 
 void HInstructionCloner::VisitInvokeUnresolved(HInvokeUnresolved* instr) {
-  if (cloning_enabled_) {
-    HInvokeUnresolved* clone = new (arena_) HInvokeUnresolved(arena_,
-                                                              instr->GetNumberOfArguments(),
-                                                              instr->GetType(),
-                                                              instr->GetDexPc(),
-                                                              instr->GetDexMethodIndex(),
-                                                              instr->GetInvokeType());
-    FinishInvokeCloning(instr, clone);
-  }
+    UnsupportedInstruction(instr);
 }
-void HInstructionCloner::VisitInvokePolymorphic(HInvokePolymorphic* instr) {
-  if (cloning_enabled_) {
-    HInvokePolymorphic* clone = new (arena_) HInvokePolymorphic(arena_,
-                                                              instr->GetNumberOfArguments(),
-                                                              instr->GetType(),
-                                                              instr->GetDexPc(),
-                                                              instr->GetDexMethodIndex());
-    FinishInvokeCloning(instr, clone);
-  }
-}
-
 
 void HInstructionCloner::VisitLessThan(HLessThan* instr) {
   if (cloning_enabled_) {
@@ -764,11 +707,10 @@ void HInstructionCloner::VisitLoadClass(HLoadClass* instr) {
     if (instr->MustGenerateClinitCheck()) {
       clone->SetMustGenerateClinitCheck(true);
     }
-    if(instr->IsInBootImage()){
-     clone->MarkInBootImage();
-    }
+
+    //Set the LoadKind for clone from the original
     clone->CopyLoadKind(instr->GetLoadKind());
-    // Also clone the environment appropriately.
+
     CloneEnvironment(instr, clone);
     CommitClone(instr, clone);
   }
@@ -784,64 +726,7 @@ void HInstructionCloner::VisitLoadException(HLoadException* instr) {
 }
 
 void HInstructionCloner::VisitLoadString(HLoadString* instr) {
-  if (cloning_enabled_) {
-    HLoadString* clone;
-    HLoadString::LoadKind load_kind = instr->GetLoadKind();
-    dex::StringIndex string_index = (instr->HasStringReference(load_kind) ||
-                            /* For slow paths. */ !instr->IsInDexCache()) ?
-                            instr->GetStringIndex() : dex::StringIndex(0);
-
-    switch (load_kind) {
-      case HLoadString::LoadKind::kRuntimeCall:
-        HInstruction* input;
-        GetInputsForUnary(instr, &input);
-        DCHECK(input->IsCurrentMethod());
-        clone = new (arena_) HLoadString(input->AsCurrentMethod(),
-                                         string_index,
-                                         instr->GetDexFile(),
-                                         instr->GetDexPc());
-        break;
-      case HLoadString::LoadKind::kBootImageLinkTimePcRelative:
-        clone = new (arena_) HLoadString(load_kind,
-                                         string_index,
-                                         instr->GetDexFile(),
-                                         instr->GetDexPc());
-        break;
-      case HLoadString::LoadKind::kBootImageAddress:
-      case HLoadString::LoadKind::kJitTableAddress:
-        clone = new (arena_) HLoadString(load_kind,
-                                         string_index,
-                                         instr->GetAddress(),
-                                         instr->GetDexFile(),
-                                         instr->GetDexPc());
-        break;
-      case HLoadString::LoadKind::kBssEntry:
-        clone = new (arena_) HLoadString(load_kind,
-                                         string_index,
-                                         instr->GetDexFile(),
-                                         instr->GetDexCacheElementOffset(),
-                                         instr->GetDexPc());
-        break;
-    }
-
-    if (instr->IsInDexCache()) {
-      clone->MarkInDexCache();
-    }
-    clone->SetString(instr->GetString());
-    CopyReferenceType(instr, clone);
-    CloneEnvironment(instr, clone);
-    CommitClone(instr, clone);
-  }
-}
-
-void HInstructionCloner::VisitConstructorFence(HConstructorFence* instr){
-  if(cloning_enabled_){
-  DCHECK(!instr->HasEnvironment());
-  HInstruction* input;
-  GetInputsForUnary(instr, &input);
-  HConstructorFence* clone = new (arena_) HConstructorFence(input, instr->GetDexPc(),arena_);
-  CommitClone(instr, clone);
-  }
+    UnsupportedInstruction(instr);
 }
 
 void HInstructionCloner::VisitMemoryBarrier(HMemoryBarrier* instr) {
@@ -895,11 +780,12 @@ void HInstructionCloner::VisitNeg(HNeg* instr) {
 
 void HInstructionCloner::VisitNewArray(HNewArray* instr) {
   if (cloning_enabled_) {
-    HInstruction* cls, *length;
-    GetInputsForBinary(instr, &cls, &length);
-    DCHECK(cls->IsLoadClass());
-    HNewArray* clone = new (arena_) HNewArray(cls,
-                                              length,
+    HInstruction* length, *curr_method;
+    GetInputsForBinary(instr, &length, &curr_method);
+    DCHECK(curr_method->IsCurrentMethod());
+    // neeraj - resolve build error (modified "HNewArray" constructor as per O-Master)
+    HNewArray* clone = new (arena_) HNewArray(length,
+                                              curr_method,
                                               instr->GetDexPc());
     CopyReferenceType(instr, clone);
     CloneEnvironment(instr, clone);
@@ -910,8 +796,10 @@ void HInstructionCloner::VisitNewArray(HNewArray* instr) {
 
 void HInstructionCloner::VisitNewInstance(HNewInstance* instr) {
   if (cloning_enabled_) {
-    HInstruction* cls;
-    GetInputsForUnary(instr, &cls );
+    HInstruction* cls, *curr_method;
+    GetInputsForBinary(instr, &cls, &curr_method);
+    DCHECK(curr_method->IsCurrentMethod());
+    // neeraj - resolve build error (modified "HNewInstance" constructor as per O-Master)
     HNewInstance* clone = new (arena_) HNewInstance(cls,
                                                     instr->GetDexPc(),
                                                     instr->GetTypeIndex(),
@@ -994,10 +882,7 @@ void HInstructionCloner::VisitPhi(HPhi* phi) {
         clone->AddInputNoUseUpdate(input);
       }
     }
-    clone->SetCanBeNull(phi->CanBeNull());
-    if (phi->IsDead()) {
-      clone->SetDead();
-    }
+
     CopyReferenceType(phi, clone);
     CommitClone(phi, clone);
   }
@@ -1115,10 +1000,6 @@ void HInstructionCloner::VisitStaticFieldSet(HStaticFieldSet* instr) {
                                      fi.GetDeclaringClassDefIndex(),
                                      fi.GetDexFile(),
                                      instr->GetDexPc());
-      if (!instr->GetValueCanBeNull()) {
-      clone->ClearValueCanBeNull();
-    }
-
     CommitClone(instr, clone);
   }
 }
@@ -1324,8 +1205,7 @@ void HInstructionCloner::VisitX86BoundsCheckMemory(HX86BoundsCheckMemory* instr)
     GetInputsForBinary(instr, &index, &array);
     HX86BoundsCheckMemory* clone = new (arena_) HX86BoundsCheckMemory(index,
                                                                       array,
-                                                                      instr->GetDexPc(),
-                                                                      instr->IsStringCharAt());
+                                                                      instr->GetDexPc());
     CopyReferenceType(instr, clone);
     CloneEnvironment(instr, clone);
     CommitClone(instr, clone);
