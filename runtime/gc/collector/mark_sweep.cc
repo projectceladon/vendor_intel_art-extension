@@ -1017,6 +1017,7 @@ void MarkSweep::PausePhase() {
       space::RosAllocSpace* ros = heap_->GetRosAllocSpace();
       accounting::RememberedSet* rem_set = heap_->FindRememberedSetFromSpace(ros);
       // TODO: No need to change to dirty - 1 to avoid CAS.
+      CHECK(rem_set!=nullptr);
       rem_set->ClearCards();
     }
     UpdateReferences();
