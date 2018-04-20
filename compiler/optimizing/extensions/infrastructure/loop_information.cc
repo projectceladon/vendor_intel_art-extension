@@ -28,6 +28,7 @@
 #include "loop_iterators.h"
 #include "optimization_x86.h"
 
+
 namespace art {
 
 /**
@@ -397,6 +398,34 @@ int64_t HLoopInformation_X86::GetNumIterations(HBasicBlock* bb) const {
   bool bb_dominates_exit = bb->Dominates(exit_block);
 
   if (biv_dominates_exit == bb_dominates_exit) {
+
+    /* Number of iteration will be one extra when induction variable PHI, candidate (i.e. Add/Sub),
+       & IF instructions are in loop header block and, IF instruction refer to old value of induction 
+       variable (i.e. refer to PHI instruction, not candidate instruction) */
+
+    // For that case , exit_block should have only one predecessor and it comes from the loop.
+    if (exit_block->GetPredecessors().size() == 1u) {
+      HBasicBlock* loop_block = exit_block->GetPredecessors()[0];
+      DCHECK(loop_block != nullptr);
+
+      // Get last instruction.
+      HInstruction* last_insn = loop_block->GetLastInstruction();
+      DCHECK(last_insn != nullptr);
+
+      HInstruction* if_insn = last_insn->AsIf();
+      if (if_insn != nullptr) {
+        // The input to the if should be our condition.
+        HInstruction* condition = if_insn->InputAt(0);
+        if (condition->IsCondition()) {
+          HInstruction* input = condition->InputAt(0);
+
+          if ((input != nullptr) && (input->GetBlock() == biv_increment_bb) && 
+              (iv->phi_insn_->GetBlock() == biv_increment_bb) && (input == iv->phi_insn_))
+            return number_of_biv_increments + 1;
+        }
+      }
+    }
+
     // Both BIV increment and BB lie above or below the IF. And executed the
     // same number of times since they both are executed per iteration.
     return number_of_biv_increments;
