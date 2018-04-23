@@ -485,11 +485,15 @@ void HInstructionCloner::VisitDeoptimize(HDeoptimize* instr) {
      GetInputsForUnary(instr, &cond);
      clone = new (arena_) HDeoptimize(arena_, cond, instr->GetDeoptimizationKind(), instr->GetDexPc());
     }
-    if(instr->InputCount()==2){
+    else if(instr->InputCount()==2){
      //Case when Deoptimize gaurds an instruction
       GetInputsForBinary(instr, &cond, &guard);
       clone = new (arena_) HDeoptimize(arena_, cond , guard , instr->GetDeoptimizationKind(), instr->GetDexPc());
     }
+   else{
+   //invalid case
+   return;
+   }
     CopyReferenceType(instr, clone);
     CloneEnvironment(instr, clone);
     CommitClone(instr, clone);
