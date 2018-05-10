@@ -98,6 +98,8 @@ static bool CopySetInSuspendBlock(HInstruction* set, HLoopInformation_X86* loop,
   if (set->IsStaticFieldSet()) {
     HStaticFieldSet* sfs = set->AsStaticFieldSet();
 
+    CHECK(sfs != nullptr);
+
     const FieldInfo& fi = sfs->GetFieldInfo();
     //neeraj - resolve build error (passing correct argument values according to O-Master)
     to_copy = new (arena) HStaticFieldSet(sfs->InputAt(0),
