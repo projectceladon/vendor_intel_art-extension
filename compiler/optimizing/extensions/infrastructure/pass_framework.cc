@@ -35,6 +35,7 @@
 #include "loadhoist_storesink.h"
 #include "loop_formation.h"
 #include "loop_full_unrolling.h"
+#include "loop_unroll_by_factor.h"
 #ifndef SOFIA
 #include "non_temporal_move.h"
 #endif
@@ -80,6 +81,10 @@ static HCustomPassPlacement kPassCustomPlacement[] = {
   { "loadhoist_storesink", "remove_loop_suspend_checks", kPassInsertAfter},
   { "remove_unused_loops", "remove_loop_suspend_checks", kPassInsertAfter },
   { "constant_calculation_sinking", "loadhoist_storesink", kPassInsertAfter},
+  { "loop_partial_unrolling", "constant_calculation_sinking", kPassInsertAfter},
+  { "formation_before_unroll","loop_partial_unrolling", kPassInsertBefore},
+  { "find_ivs_before_unroll", "formation_before_unroll", kPassInsertAfter},
+  { "constant_folding_after_unroll", "loop_partial_unrolling", kPassInsertAfter},
   { "form_bottom_loops", "load_store_elimination", kPassInsertAfter },
   { "phi_cleanup", "form_bottom_loops", kPassInsertAfter },
   { "constant_folding_after_phi_cleanup", "phi_cleanup", kPassInsertAfter },
@@ -391,6 +396,7 @@ void RunOptimizationsX86(HGraph* graph,
   // Create the array for the opts.
   HLoopFormation loop_formation(graph);
   HFindInductionVariables find_ivs(graph, "find_ivs", stats);
+  HFindInductionVariables find_ivs_before_unroll(graph,"find_ivs_before_unroll",stats);
   HRemoveLoopSuspendChecks remove_suspends(graph, stats);
   HRemoveUnusedLoops remove_unused_loops(graph, stats);
   TrivialLoopEvaluator tle(graph, stats);
@@ -409,6 +415,9 @@ void RunOptimizationsX86(HGraph* graph,
   HBBSimplifier bb_simplifier(graph, stats);
   HConstantFolding_X86 constant_folding(graph, stats, "constant_folding_after_phi_cleanup");
   HFindInductionVariables find_ivs_before_suspend_check(graph, "find_ivs_before_suspend_check", stats);
+  HLoopFormation formation_before_unroll(graph, "formation_before_unroll");
+  HLoopUnrollByFactor unroll_by_factor(graph,stats);
+  HConstantFolding_X86 constant_folding_after_unroll(graph, stats, "constant_folding_after_unroll");
 
   HOptimization_X86* opt_array[] = {
     &form_bottom_loops,
@@ -420,6 +429,10 @@ void RunOptimizationsX86(HGraph* graph,
     &remove_unused_loops,
     &lhss,
     &ccs,
+    &unroll_by_factor,
+    &formation_before_unroll,
+    &find_ivs_before_unroll,
+    &constant_folding_after_unroll,
     &tle,
     &find_ivs_before_suspend_check,
 #ifndef SOFIA

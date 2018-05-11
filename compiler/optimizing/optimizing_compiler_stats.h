@@ -94,6 +94,7 @@ enum MethodCompilationStat {
   kIntelCCS,
   kIntelNonTemporalMove,
   kIntelLoopFullyUnrolled,
+  kIntelLoopPartiallyUnrolled,
   kIntelFormBottomLoop,
   kIntelLHSS,
   kIntelStoreSink,
@@ -225,6 +226,7 @@ class OptimizingCompilerStats {
       case kIntelCCS: return "kIntelCCS";
       case kIntelNonTemporalMove: return "kIntelNonTemporalMove";
       case kIntelLoopFullyUnrolled: return "kIntelLoopFullyUnrolled";
+      case kIntelLoopPartiallyUnrolled: return "kIntelLoopPartiallyUnrolled";
       case kIntelFormBottomLoop: return "kIntelFormBottomLoop";
       case kIntelLHSS: return "kIntelLHSS";
       case kIntelStoreSink: return "kIntelStoreSink";
