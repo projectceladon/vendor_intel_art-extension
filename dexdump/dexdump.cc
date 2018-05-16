@@ -1764,6 +1764,7 @@ static void dumpCallSite(const DexFile* pDexFile, u4 idx) {
         type = "Class";
         dex::TypeIndex type_idx = static_cast<dex::TypeIndex>(it.GetJavaValue().i);
         const DexFile::ClassDef* class_def = pDexFile->FindClassDef(type_idx);
+        CHECK(class_def != nullptr);
         value = pDexFile->GetClassDescriptor(*class_def);
         value = descriptorClassToDot(value.c_str()).get();
         break;
