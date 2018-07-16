@@ -650,7 +650,7 @@ class ArtMethod FINAL {
 
   // Returns the method header for the compiled code containing 'pc'. Note that runtime
   // methods will return null for this method, as they are not oat based.
-  const OatQuickMethodHeader* GetOatQuickMethodHeader(uintptr_t pc)
+  const OatQuickMethodHeader* GetOatQuickMethodHeader(uintptr_t pc, bool safe = false)
       REQUIRES_SHARED(Locks::mutator_lock_);
 
   // Get compiled code for the method, return null if no code exists.
