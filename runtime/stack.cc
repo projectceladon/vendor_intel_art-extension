@@ -776,7 +776,7 @@ void StackVisitor::WalkStack(bool include_transitions) {
       DCHECK(current_fragment->GetTopShadowFrame() == nullptr);
       ArtMethod* method = *cur_quick_frame_;
       while (method != nullptr) {
-        cur_oat_quick_method_header_ = method->GetOatQuickMethodHeader(cur_quick_frame_pc_);
+        cur_oat_quick_method_header_ = method->GetOatQuickMethodHeader(cur_quick_frame_pc_, true);
         SanityCheckFrame();
 
         if ((walk_kind_ == StackWalkKind::kIncludeInlinedFrames)
