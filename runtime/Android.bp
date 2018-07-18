@@ -246,6 +246,8 @@ cc_defaults {
         "entrypoints/quick/quick_thread_entrypoints.cc",
         "entrypoints/quick/quick_throw_entrypoints.cc",
         "entrypoints/quick/quick_trampoline_entrypoints.cc",
+	"vtune/jitprofiling.cc",
+        "vtune_support.cc"
     ],
 
     arch: {
