@@ -62,6 +62,12 @@
 #include "ssa_phi_elimination.h"
 #include "utils/assembler.h"
 #include "verifier/verifier_compiler_binding.h"
+#include "base/utils.h"
+#include "dex/descriptors_names.h"
+
+#ifdef VTUNE_ART
+#include "vtune_support.h"
+#endif
 
 namespace art {
 
@@ -1181,6 +1187,26 @@ bool CanEncodeInlinedMethodInStackMap(const DexFile& caller_dex_file, ArtMethod*
   // - methods in boot image for on-device non-PIC compilation.
   return false;
 }
+#ifdef VTUNE_ART
+static std::string getClassSourceFileName(const char* class_descriptor) {
+  static const std::string UNDEFINED("INTERNAL");
+
+  const char* pos_l = strchr(class_descriptor, 'L');
+  if (pos_l == nullptr) {
+    return UNDEFINED;
+  }
+
+  const char* pos_end = strchr(pos_l, '$');
+  if (pos_end == nullptr) {
+    pos_end = strchr(pos_l, ';');
+    if (pos_end == nullptr) {
+      return UNDEFINED;
+    }
+  }
+
+  return std::string(pos_l + 1, pos_end - pos_l - 1) + ".java";
+}
+#endif
 
 bool OptimizingCompiler::JitCompile(Thread* self,
                                     jit::JitCodeCache* code_cache,
@@ -1262,7 +1288,6 @@ bool OptimizingCompiler::JitCompile(Thread* self,
   ArenaStack arena_stack(runtime->GetJitArenaPool());
   CodeVectorAllocator code_allocator(&allocator);
   VariableSizedHandleScope handles(self);
-
   std::unique_ptr<CodeGenerator> codegen;
   {
     DexCompilationUnit dex_compilation_unit(
@@ -1351,6 +1376,35 @@ bool OptimizingCompiler::JitCompile(Thread* self,
     code_cache->ClearData(self, stack_map_data, roots_data);
     return false;
   }
+
+#ifdef VTUNE_ART
+   {
+      std::string method_name = method->PrettyMethod();
+      const auto* method_header = reinterpret_cast<const OatQuickMethodHeader*>(code);
+      //const void* code_info_ptr = method_header->IsOptimized() ? method_header->GetOptimizedCodeInfoPtr() : nullptr;
+      const char* class_descriptor = method->GetDeclaringClassDescriptor();
+      //std::string class_name = PrettyDescriptor(class_descriptor);
+      std::string class_name(PrettyDescriptor(class_descriptor));
+      const void* ptr = method_header->GetEntryPoint();
+      size_t code_size = method_header->GetCodeSize();
+      // TODO File name should be read from the dex debug stream of the code item.
+      std::string file_name = getClassSourceFileName(class_descriptor);
+      VLOG(compiler) << "JitCompile :: SendMethodToVTune " << class_name << " :: " << method_name;
+      SendMethodToVTune(method_name.c_str(),
+                        ptr,
+                        code_size,
+                        class_name.c_str(),
+                        file_name.c_str(),
+                        method->GetDexFile(),
+			method->GetDexMethodIndex(),
+                        method->GetCodeItem());
+   }
+#endif
+
+
+
+
+
 
   const CompilerOptions& compiler_options = GetCompilerDriver()->GetCompilerOptions();
   if (compiler_options.GenerateAnyDebugInfo()) {

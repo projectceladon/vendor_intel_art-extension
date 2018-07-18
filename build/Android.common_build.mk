@@ -80,4 +80,11 @@ ifeq ($(ART_BUILD_HOST_DEBUG),true)
   ART_BUILD_HOST := true
 endif
 
+# Enable Intel VTune JIT API support
+LIBART_VTUNE ?= true
+ifeq ($(LIBART_VTUNE), true)
+  LIBART_CFLAGS += -DVTUNE_ART
+  LIBART_COMPILER_CFLAGS += -DVTUNE_ART
+endif
+
 endif # ART_ANDROID_COMMON_BUILD_MK
