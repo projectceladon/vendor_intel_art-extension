@@ -438,6 +438,7 @@ HLoopOptimization::HLoopOptimization(HGraph* graph,
 void HLoopOptimization::Run() {
   // Skip if there is no loop or the graph has try-catch/irreducible loops.
   // TODO: make this less of a sledgehammer.
+
   if (!graph_->HasLoops() || graph_->HasTryCatch() || graph_->HasIrreducibleLoops()) {
     return;
   }
@@ -643,7 +644,7 @@ void HLoopOptimization::SimplifyBlocks(LoopNode* node) {
   }
 }
 
-bool HLoopOptimization::OptimizeInnerLoop(LoopNode* node) {
+bool HLoopOptimization::TryOptimizeInnerLoopFinite(LoopNode* node) {
   HBasicBlock* header = node->loop_info->GetHeader();
   HBasicBlock* preheader = node->loop_info->GetPreHeader();
   // Ensure loop header logic is finite.
@@ -711,6 +712,67 @@ bool HLoopOptimization::OptimizeInnerLoop(LoopNode* node) {
     return true;
   }
   return false;
+}
+
+bool HLoopOptimization::OptimizeInnerLoop(LoopNode* node) {
+  return (TryOptimizeInnerLoopFinite(node) ||
+          TryFullUnrolling(node));
+
+}
+
+bool HLoopOptimization::TryFullUnrolling(LoopNode* node) {
+  HLoopInformation* loop_info = node->loop_info;
+  int64_t trip_count = LoopAnalysis::GetLoopTripCount(loop_info, &induction_range_);
+  if (trip_count <= 0) {
+    return false;
+  }
+
+  if (loop_info->NumberOfBackEdges() != 1) {
+    return false;
+  }
+  HBasicBlock* loop_body = loop_info->GetBackEdges()[0];
+  DCHECK(loop_body != nullptr);
+  if (loop_body->IsSingleGoto()) {
+    //Do While Loop. Number of iterations will be 1 more than trip count;
+    trip_count++;
+
+  }
+  LoopAnalysisInfo analysis_info(loop_info);
+
+  LoopAnalysis::CalculateLoopBasicProperties(loop_info, &analysis_info, trip_count);
+
+  if (analysis_info.HasInstructionsPreventingScalarOpts() ){
+    return false;
+  }
+
+  if (analysis_info.GetNumberOfExits() > 1) {
+    return false;
+  }
+
+  if (analysis_info.GetNumberOfBasicBlocks() > 2) {
+    return false;
+  }
+
+  if ((analysis_info.GetNumberOfInstructions() * trip_count) > 60 ) {
+    return false;
+  }
+
+  if (!FullUnrollHelper::IsLoopClonable(loop_info)) {
+    return false;
+  }
+  FullUnrollHelper helper(loop_info,trip_count);
+  if (! helper.IsSimpleLoop()) {
+    return false;
+  }
+  helper.DoFullUnrolling();
+
+  RemoveLoop(node);  // update hierarchy
+
+  if (node->next != nullptr)
+   induction_range_.ReVisit(node->next->loop_info);
+
+  return true;
+
 }
 
 //
