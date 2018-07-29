@@ -682,6 +682,33 @@ HBasicBlock* SuperblockCloner::CloneBasicBlock(const HBasicBlock* orig_block) {
   return copy_block;
 }
 
+HBasicBlock* SuperblockCloner::CloneBasicBlockWithOutPhis(const HBasicBlock* orig_block) {
+  HGraph* graph = orig_block->GetGraph();
+  HBasicBlock* copy_block = new (arena_) HBasicBlock(graph, orig_block->GetDexPc());
+  graph->AddBlock(copy_block);
+
+  // Clone all the instructions and add them to the map.
+  for (HInstructionIterator it(orig_block->GetInstructions()); !it.Done(); it.Advance()) {
+    HInstruction* orig_instr = it.Current();
+    if (IsUselessforcloning(orig_instr) || (exclude_list_.find(orig_instr) != exclude_list_.end()))
+     continue;
+    HInstruction* copy_instr = orig_instr->Clone(arena_);
+    ReplaceInputsWithCopies(copy_instr);
+    copy_block->AddInstruction(copy_instr);
+    if (orig_instr->HasEnvironment()) {
+      DeepCloneEnvironmentWithRemapping(copy_instr, orig_instr->GetEnvironment());
+    }
+    if (hir_map_->find(orig_instr) == hir_map_->end()) {
+      hir_map_->Put(orig_instr, copy_instr);
+    } else {
+      hir_map_->Overwrite(orig_instr, copy_instr);
+    }
+  }
+  if (copy_block->GetLastInstruction() == nullptr || !copy_block->GetLastInstruction()->IsGoto())
+     copy_block->AddInstruction(new (arena_) HGoto());
+  return copy_block;
+}
+
 void SuperblockCloner::CloneBasicBlocks() {
   // By this time ReversePostOrder must be valid: in 'CloneBasicBlock' inputs of the copied
   // instructions might be replaced by copies of the original inputs (depending where those inputs
@@ -700,5 +727,322 @@ void SuperblockCloner::CloneBasicBlocks() {
     }
   }
 }
+
+void SuperblockCloner::UpdateLoopInformation(std::vector<HBasicBlock*>* copy_body) {
+ graph_->ClearDominanceInformation();
+
+ ArenaBitVector outer_loop_bb_set(
+     arena_, graph_->GetBlocks().size(), false, kArenaAllocSuperblockCloner);
+
+ if (HasOuterLoop()) {
+   // add newly created blocks to the outer loop
+   for (HBasicBlock* copy_bb : *copy_body) {
+      outer_loop_bb_set.SetBit(copy_bb->GetBlockId());
+   }
+ }
+ RecalculateBackEdgesInfo(&outer_loop_bb_set);
+
+ graph_->SimplifyCFG();
+ graph_->ComputeDominanceInformation();
+
+ GraphAnalysisResult result = AnalyzeLoopsLocally(& outer_loop_bb_set);
+ DCHECK_EQ(result, kAnalysisSuccess);
+
+ OrderLoopsHeadersPredecessors(graph_);
+
+ graph_->ComputeTryBlockInformation();
+}
+
+bool SuperblockCloner::IsUselessforcloning(HInstruction* instr) {
+  return instr->IsSuspendCheck();
+}
+
+void SuperblockCloner::MapOutOfLoopPhiNodes(const HBasicBlock* header) {
+ for (HInstructionIterator it(header->GetPhis()); !it.Done(); it.Advance()) {
+    HPhi* phi = it.Current()->AsPhi();
+    DCHECK(phi->IsLoopHeaderPhi());
+    DCHECK_EQ(phi->InputCount(), 2u);
+    for (int i = 0, e = phi->InputCount(); i < e ; i ++) {
+      HInstruction* input = phi->InputAt(i);
+      if (IsInOrigBBSet(input->GetBlock())){
+        continue;
+      }
+      hir_map_->Put(phi, input);
+    }
+ }
+}
+
+bool SuperblockCloner::UpdateLoopPhiNodesMap(const HBasicBlock* header) {
+  SafeMap<HInstruction*, HInstruction*> temp_mapping;
+  for (HInstructionIterator it(header->GetPhis()); !it.Done(); it.Advance()) {
+    HPhi* phi = it.Current()->AsPhi();
+    DCHECK(phi->IsLoopHeaderPhi());
+    DCHECK_EQ(phi->InputCount(), 2u);
+
+    HInstruction* in_loop_input = nullptr; //loop_->PhiInput(phi, true);
+
+    for (int i =0, e = phi->InputCount(); i < e ; i++) {
+       HInstruction* input = phi->InputAt(i);
+       if (IsInOrigBBSet(input->GetBlock())){
+         in_loop_input = input;
+         break;
+       }
+    }
+    DCHECK(in_loop_input != nullptr);
+    // We map it to the latest cloned instruction.
+    HInstruction* to_update = GetInstrCopy(in_loop_input);
+
+    // Save it in the temporary mapping (if any clone).
+    if (to_update != nullptr) {
+      temp_mapping.Put(phi, to_update);
+    } else {
+      // Otherwise, no clone means the in-loop input is not in the loop body;
+      // So we need to map the phi node to this in-loop input.
+      temp_mapping.Put(phi, in_loop_input);
+    }
+  }
+
+  // Now that temporary mapping is done, we go through the list again to update the final
+  // mapping that will be used for the loop instructions.
+  for (HInstructionIterator it(header->GetPhis()); !it.Done(); it.Advance()) {
+    HInstruction* phi = it.Current();
+
+    // At this point, we should have at least one mapping per loop header phi.
+    DCHECK(temp_mapping.find(phi) != temp_mapping.end()) << phi;
+    HInstruction* map_insn = temp_mapping.Get(phi);
+
+    // We map the original phi node to the latest clone.
+    if (hir_map_->find(phi) == hir_map_->end()){
+      hir_map_->Put(phi, map_insn);
+    } else {
+      hir_map_->Overwrite(phi, map_insn);
+    }
+  }
+  return true;
+}
+
+HBasicBlock* FullUnrollHelper::GetSingleExitBlock() {
+ HBasicBlock * exit_block = nullptr;
+ for (HBlocksInLoopIterator it(*loop_info_); !it.Done(); it.Advance()) {
+    HBasicBlock* loop_block  = it.Current();
+    for (HBasicBlock* successor : loop_block->GetSuccessors()) {
+      if (!loop_info_->Contains(*successor)){
+        if (exit_block == nullptr){
+           exit_block = successor;
+        } else { return nullptr; }
+      }
+    }
+ }
+ return exit_block;
+}
+
+bool FullUnrollHelper::IsSimpleLoop() {
+ ListLoopConditionInstructions();
+ HBasicBlock* header = loop_info_->GetHeader();
+ HBasicBlock* body = loop_info_->GetBackEdges()[0];
+  // Current implementation does not handle below case
+
+  /*while(true){
+  if (condition)
+   ---
+   ---
+   break;
+   ---
+   ---
+  } */
+
+  HInstruction* first_ins = header->GetFirstInstruction();
+  if (!body->IsSingleGoto()) {
+    if (first_ins->IsSuspendCheck()) {
+      HInstruction* next = first_ins->GetNext();
+      if (!IsLoopConditionInstruction(next)) {
+        return false;
+      }
+    } else {
+     if (!IsLoopConditionInstruction(first_ins))
+       return false;
+    }
+  }
+  return true;
+
+}
+
+
+void FullUnrollHelper::AppendBody(HBasicBlock* preheader, HBasicBlock* exit) {
+  DCHECK(unrolled_entry_ != nullptr);
+  DCHECK(unrolled_tail_ != nullptr);
+  preheader->ReplaceSuccessor(exit, unrolled_entry_);
+  exit->AddPredecessor(unrolled_tail_);
+}
+
+bool FullUnrollHelper::IsLoopClonable(HLoopInformation* loop_info) {
+ for (HBlocksInLoopIterator bl_it(*loop_info) ;!bl_it.Done(); bl_it.Advance()) {
+   HBasicBlock* block = bl_it.Current();
+    for (HInstructionIterator it(block->GetPhis()); !it.Done(); it.Advance()) {
+      HInstruction* instr = it.Current();
+      DCHECK(instr->IsClonable());
+
+    }
+
+    for (HInstructionIterator it(block->GetInstructions()); !it.Done(); it.Advance()) {
+      HInstruction* instr = it.Current();
+      if (!instr->IsClonable() || instr->IsLoadClass()) {
+        return false;
+      }
+
+    }
+  }
+  return true;
+}
+
+void FullUnrollHelper::ListLoopConditionInstructions() {
+   // Last instruction should be the loop control flow, and we do not need it.
+  HBasicBlock* exit_block = GetSingleExitBlock();
+  DCHECK(exit_block != nullptr);
+  HInstruction* control_flow = exit_block->GetPredecessors()[0]->GetLastInstruction();
+  loop_condition_instructions_.insert(control_flow);
+  for (int i = 0, e = control_flow->InputCount(); i < e ; i++) {
+    HInstruction* input = control_flow->InputAt(i);
+    // If control_flow is the only use of its input, then we consider it useless.
+    if (input->HasOnlyOneNonEnvironmentUse()) {
+      loop_condition_instructions_.insert(input);
+    }
+  }
+}
+
+bool FullUnrollHelper::IsLoopConditionInstruction(HInstruction* instr) {
+  return (loop_condition_instructions_.find(instr) != loop_condition_instructions_.end());
+}
+
+void FullUnrollHelper::AddLinks(std::vector<HBasicBlock*> * copy_body) {
+ HBasicBlock* prev_block = nullptr;
+ for (auto it = copy_body->begin(); it != copy_body->end(); ++it) {
+    HBasicBlock* cur_block = *it;
+ if (prev_block == nullptr) {
+   SetUnrolledEntryBlock(cur_block);
+ }
+ if (prev_block  != nullptr) {
+   prev_block->AddSuccessor(cur_block);
+ }
+  prev_block = cur_block;
+  SetUnrolledTailBlock(cur_block);
+ }
+
+}
+
+void FullUnrollHelper::FixLoopUsers() {
+  HGraph* graph = loop_info_->GetHeader()->GetGraph();
+  for (HBasicBlock* orig_block : graph->GetReversePostOrder()) {
+    if (cloner_.IsInOrigBBSet(orig_block) && !orig_block->IsSingleGoto()) {
+      for (HInstructionIterator phi_it(orig_block->GetPhis()); !phi_it.Done(); phi_it.Advance()) {
+       HPhi* phi = phi_it.Current()->AsPhi();
+       HInstruction* last_replacement = cloner_.GetInstrCopy(phi);
+       DCHECK(last_replacement != nullptr);
+       phi->ReplaceWith(last_replacement);
+    }
+
+    // Then, let's replace the loop instructions users.
+    for (HInstructionIterator insn_it(orig_block->GetInstructions());
+         !insn_it.Done();
+         insn_it.Advance()) {
+      HInstruction* insn = insn_it.Current();
+
+      // Skip the instructions we did not copy.
+      if (cloner_.IsUselessforcloning(insn) || IsLoopConditionInstruction(insn)) {
+        continue;
+      }
+
+      HInstruction* last_replacement = cloner_.GetInstrCopy(insn);
+      DCHECK(last_replacement != nullptr);
+      insn->ReplaceWith(last_replacement);
+    }
+  }
+ }
+}
+
+void FullUnrollHelper::ReplaceLoopWithUnroll() {
+  // Remove loop from the graph
+  HBasicBlock* header = loop_info_->GetHeader();
+  HBasicBlock* preheader = loop_info_->GetPreHeader();
+  HBasicBlock* exit = GetSingleExitBlock();
+  ArenaAllocator* allocator = header->GetGraph()->GetAllocator();
+  HBasicBlock* body = loop_info_->GetBackEdges()[0];
+  DCHECK(exit != nullptr);
+  CHECK(body != nullptr);
+  body->DisconnectAndDelete();
+  exit->RemovePredecessor(header);
+  header->RemoveSuccessor(exit);
+  header->RemoveDominatedBlock(exit);
+  header->DisconnectAndDelete();
+  preheader->AddSuccessor(exit);
+  preheader->AddInstruction(new (allocator) HGoto());
+  preheader->AddDominatedBlock(exit);
+  exit->SetDominator(preheader);
+  AppendBody(preheader, exit);
+}
+
+void FullUnrollHelper::DoFullUnrolling () {
+  DCHECK(!loop_info_->IsIrreducible());
+
+  HBasicBlock* loop_header = loop_info_->GetHeader();
+
+  // Check that loop info is up-to-date.
+  DCHECK(loop_info_ == loop_header->GetLoopInformation());
+  HBasicBlock* body = loop_info_->GetBackEdges()[0];
+  bool is_do_while = body->IsSingleGoto();
+  HGraph* graph = loop_header->GetGraph();
+
+  // For the first iteration, it is out of loop inputs
+  cloner_.MapOutOfLoopPhiNodes(loop_header);
+
+  // Wee need not copy loop condition instructions. So list 
+  // them here
+  ListLoopConditionInstructions();
+
+  cloner_.SetExculdeList(loop_condition_instructions_);
+  std::vector<HBasicBlock*> copy_body;
+  std::vector<HBasicBlock*> loop_blocks;
+  for (HBasicBlock* orig_block : graph->GetReversePostOrder()) {
+     if (cloner_.IsInOrigBBSet(orig_block) && !orig_block->IsSingleGoto()) {
+       loop_blocks.push_back(orig_block);
+     }
+  }
+
+  for (int i = 0; i < trip_count_; i++) {
+    for (auto it = loop_blocks.begin(); it != loop_blocks.end(); ++it) {
+       HBasicBlock* orig_block = *it;
+       HBasicBlock* copy_block = cloner_.CloneBasicBlockWithOutPhis(orig_block);
+       DCHECK(copy_block != nullptr);
+       copy_body.push_back(copy_block);
+    }
+    if (!is_do_while) {
+      cloner_.UpdateLoopPhiNodesMap(loop_header);
+    } else {
+    if (i+1 < trip_count_)
+      cloner_.UpdateLoopPhiNodesMap(loop_header);
+    }
+  }
+
+  // Free memory used by vector
+  std::vector<HBasicBlock*>().swap(loop_blocks);
+
+  //Add successor edges to copy blocks
+  AddLinks(&copy_body);
+
+  //Fix users of loop instructions to use values cloned in last iteration
+  FixLoopUsers();
+
+  //Remove loop and replace with unrolled version
+  ReplaceLoopWithUnroll();
+
+  //Update graph's loop information
+  cloner_.UpdateLoopInformation(&copy_body);
+  
+  // Free memory used by vector
+  std::vector<HBasicBlock*>().swap(copy_body);
+
+  return;
+}
+
 
 }  // namespace art

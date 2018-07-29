@@ -494,15 +494,10 @@ public class Main {
   /// CHECK: InstanceFieldSet
   /// CHECK: InstanceFieldSet
   /// CHECK: InstanceFieldSet
-  /// CHECK: InstanceFieldGet
-  /// CHECK: InstanceFieldGet
+  /// CHECK: InstanceFieldSet
 
   /// CHECK-START: void Main.test21(TestClass) load_store_elimination (after)
   /// CHECK: NewInstance
-  /// CHECK: InstanceFieldSet
-  /// CHECK: InstanceFieldSet
-  /// CHECK: InstanceFieldSet
-  /// CHECK: InstanceFieldGet
   /// CHECK: InstanceFieldGet
 
   // Loop side effects can kill heap values, stores need to be kept in that case.
@@ -999,10 +994,8 @@ public class Main {
   /// CHECK: ArrayGet
 
   /// CHECK-START: int Main.testAllocationEliminationOfArray2() load_store_elimination (after)
-  /// CHECK: NewArray
-  /// CHECK: ArraySet
-  /// CHECK: ArraySet
-  /// CHECK: ArrayGet
+  /// CHECK: Add
+  /// CHECK: Add
   private static int testAllocationEliminationOfArray2() {
     // Cannot eliminate array allocation since array is accessed with non-constant
     // index (only 3 elements to prevent vectorization of the reduction).
