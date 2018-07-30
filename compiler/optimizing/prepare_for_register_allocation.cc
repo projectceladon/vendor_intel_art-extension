@@ -68,6 +68,29 @@ void PrepareForRegisterAllocation::VisitBoundsCheck(HBoundsCheck* check) {
   }
 }
 
+#if defined(ART_ENABLE_CODEGEN_x86) || defined(ART_ENABLE_CODEGEN_x86_64)
+void PrepareForRegisterAllocation::VisitX86BoundsCheckMemory(HX86BoundsCheckMemory* check) {
+  check->ReplaceWith(check->InputAt(0));
+
+  if (check->IsStringCharAt()) {
+    // Add a fake environment for String.charAt() inline info as we want
+    // the exception to appear as being thrown from there.
+    ArtMethod* char_at_method = jni::DecodeArtMethod(WellKnownClasses::java_lang_String_charAt);
+    
+    if (GetGraph()->GetArtMethod() != char_at_method) {
+    ArenaAllocator* arena = GetGraph()->GetAllocator();
+    HEnvironment* environment = new (arena) HEnvironment(arena,
+                                                         /* number_of_vregs */ 0u,
+                                                         char_at_method,
+                                                         /* dex_pc */ dex::kDexNoIndex,
+                                                         check);
+    check->InsertRawEnvironment(environment);
+    }
+ } 
+
+}
+#endif
+
 void PrepareForRegisterAllocation::VisitBoundType(HBoundType* bound_type) {
   bound_type->ReplaceWith(bound_type->InputAt(0));
   bound_type->GetBlock()->RemoveInstruction(bound_type);

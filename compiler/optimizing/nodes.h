@@ -1484,6 +1484,13 @@ class HLoopInformationOutwardIterator : public ValueObject {
   M(X86PackedSwitch, Instruction)
 #endif
 
+#if defined(ART_ENABLE_CODEGEN_x86) || defined(ART_ENABLE_CODEGEN_x86_64)
+#define FOR_EACH_CONCRETE_INSTRUCTION_X86_COMMON(M)                     \
+  M(X86BoundsCheckMemory, Instruction)
+#else
+#define FOR_EACH_CONCRETE_INSTRUCTION_X86_COMMON(M)
+#endif
+
 #define FOR_EACH_CONCRETE_INSTRUCTION_X86_64(M)
 
 #define FOR_EACH_CONCRETE_INSTRUCTION(M)                                \
@@ -1494,7 +1501,8 @@ class HLoopInformationOutwardIterator : public ValueObject {
   FOR_EACH_CONCRETE_INSTRUCTION_MIPS(M)                                 \
   FOR_EACH_CONCRETE_INSTRUCTION_MIPS64(M)                               \
   FOR_EACH_CONCRETE_INSTRUCTION_X86(M)                                  \
-  FOR_EACH_CONCRETE_INSTRUCTION_X86_64(M)
+  FOR_EACH_CONCRETE_INSTRUCTION_X86_64(M)                               \
+  FOR_EACH_CONCRETE_INSTRUCTION_X86_COMMON(M)
 
 #define FOR_EACH_ABSTRACT_INSTRUCTION(M)                                \
   M(Condition, BinaryOperation)                                         \
@@ -2023,6 +2031,8 @@ class HInstruction : public ArenaObject<kArenaAllocInstruction> {
     }
     return false;
   }
+
+  virtual size_t GetBaseInputIndex() const { return 0; }
 
   void SetRawInputAt(size_t index, HInstruction* input) {
     SetRawInputRecordAt(index, HUserRecord<HInstruction*>(input));
@@ -7392,7 +7402,7 @@ class HIntermediateAddress FINAL : public HExpression<2> {
 #ifdef ART_ENABLE_CODEGEN_mips
 #include "nodes_mips.h"
 #endif
-#ifdef ART_ENABLE_CODEGEN_x86
+#if defined(ART_ENABLE_CODEGEN_x86) || defined(ART_ENABLE_CODEGEN_x86_64)
 #include "nodes_x86.h"
 #endif
 
