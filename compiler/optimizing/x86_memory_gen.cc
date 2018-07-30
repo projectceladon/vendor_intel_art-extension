@@ -27,8 +27,7 @@ namespace x86 {
 class MemoryOperandVisitor : public HGraphVisitor {
  public:
   MemoryOperandVisitor(HGraph* graph, bool do_implicit_null_checks)
-      : HGraphVisitor(graph),
-        do_implicit_null_checks_(do_implicit_null_checks) {}
+      : HGraphVisitor(graph), do_implicit_null_checks_(do_implicit_null_checks) {}
 
  private:
   void VisitBoundsCheck(HBoundsCheck* check) OVERRIDE {
@@ -44,8 +43,12 @@ class MemoryOperandVisitor : public HGraphVisitor {
     DCHECK_EQ(array->GetType(), DataType::Type::kReference);
 
     // Don't apply this optimization when the array is nullptr.
-    if (array->IsConstant() || (array->IsNullCheck() && array->InputAt(0)->IsConstant())) {
-      return;
+    HInstruction* array_base = array;
+    while (array_base->IsNullCheck() || array_base->IsBoundType()) {
+      array_base = array_base->InputAt(0);
+    }
+    if (array_base->IsConstant()) {
+     return;
     }
 
     // Is there a null check that could be an implicit check?
@@ -58,11 +61,16 @@ class MemoryOperandVisitor : public HGraphVisitor {
       }
     }
 
-    // Can we suppress the ArrayLength and generate at BoundCheck?
+    // Can we remove the ArrayLength?
     if (array_len->HasOnlyOneNonEnvironmentUse()) {
-      array_len->MarkEmittedAtUseSite();
-      // We need the ArrayLength just before the BoundsCheck.
-      array_len->MoveBefore(check);
+      HX86BoundsCheckMemory* new_check =
+        new (GetGraph()->GetAllocator()) HX86BoundsCheckMemory(check->InputAt(0), array, check->GetDexPc(),check->IsStringCharAt());
+      check->GetBlock()->InsertInstructionBefore(new_check, check);
+      check->ReplaceWith(new_check);
+      DCHECK(check->GetEnvironment() != nullptr);
+      new_check->CopyEnvironmentFrom(check->GetEnvironment());
+      check->GetBlock()->RemoveInstruction(check);
+      array_len->GetBlock()->RemoveInstruction(array_len);
     }
   }
 
