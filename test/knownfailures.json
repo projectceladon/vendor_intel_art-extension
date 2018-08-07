@@ -1,5 +1,13 @@
 [
-    {
+     {
+        "tests": ["8112-FBL-NestedLoop_03",
+                  "8112-FBL-TryCatchConditions_01"],
+        "description": ["Disable as it times out after a long time",
+                        ", till a fix arrives."],
+        "bug": "http://b/33389022"
+    },
+
+     {
         "tests": "1934-jvmti-signal-thread",
         "description": ["Disables 1934-jvmti-signal-thread in tracing configurations"],
         "variant": "trace | stream",

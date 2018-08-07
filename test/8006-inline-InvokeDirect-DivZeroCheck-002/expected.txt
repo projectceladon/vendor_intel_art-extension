@@ -1,0 +1,10 @@
+1
+0
+0
+0
+0
+0
+0
+0
+0
+Caught expected ArithematicException - divide by zero

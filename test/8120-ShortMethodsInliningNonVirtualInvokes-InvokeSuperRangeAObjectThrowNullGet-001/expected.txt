@@ -1,0 +1,4 @@
+java.lang.NullPointerException: Attempt to read from null array
+	at SuperTest.getThingies(SuperTest.java:10)
+	at Test.getThingies(Test.java:9)
+	at Main.main(Main.java:24)

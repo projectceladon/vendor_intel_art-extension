@@ -1,0 +1,13 @@
+1
+0
+0
+0
+0
+0
+0
+0
+0
+java.lang.ArithmeticException: divide by zero
+	at Test.b(Test.java:9)
+	at Test.a(Test.java:24)
+	at Main.main(Main.java:10)
