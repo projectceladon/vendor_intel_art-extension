@@ -1,0 +1,4 @@
+Test Main; Subtest test1; Result: 201296
+Test Main; Subtest test2; Result: 16620
+577
+Test Main; Subtest test3; Result: java.lang.reflect.InvocationTargetException, caused by: java.lang.NullPointerException

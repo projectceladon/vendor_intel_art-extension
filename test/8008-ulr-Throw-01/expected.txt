@@ -1,0 +1,3 @@
+java.lang.RuntimeException: Absolutely new RuntimeException
+	at Main.loop(Main.java:8)
+	at Main.main(Main.java:15)

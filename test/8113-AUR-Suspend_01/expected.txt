@@ -1,0 +1,2 @@
+Test Main; Subtest test; Result: 1234
+Test Main; Subtest testWithGCStress; Result: 1234

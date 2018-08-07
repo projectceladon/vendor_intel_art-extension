@@ -1,0 +1,5 @@
+Main.test1 result: 160
+Main.test2 result: 320
+Main.test3 result: 640
+Main.test4 result: 2660
+Main.test5 result: -1550836592
