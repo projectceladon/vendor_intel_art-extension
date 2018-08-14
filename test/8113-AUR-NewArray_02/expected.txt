@@ -1,4 +1,0 @@
-class java.lang.NullPointerException
-Main.runTest(Main.java:22)
-Main.test(Main.java:39)
-Test Main; Subtest testWithGCStress; Result: class java.lang.NullPointerException

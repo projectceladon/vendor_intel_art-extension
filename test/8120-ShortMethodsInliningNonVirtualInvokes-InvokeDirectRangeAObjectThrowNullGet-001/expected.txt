@@ -1,4 +1,0 @@
-Exception in thread "main" java.lang.NullPointerException: Attempt to read from null array
-	at Test.getThingies(Test.java:15)
-	at Test.gimme(Test.java:25)
-	at Main.main(Main.java:24)

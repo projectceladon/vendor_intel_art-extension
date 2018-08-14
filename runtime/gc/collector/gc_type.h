@@ -30,8 +30,6 @@ enum GcType {
   kGcTypeNone,
   // Sticky mark bits GC that attempts to only free objects allocated since the last GC.
   kGcTypeSticky,
-  // Young GC that only collects From bump pointer space.
-  kGcTypeYoung,
   // Partial GC that marks the application heap but not the Zygote.
   kGcTypePartial,
   // Full GC that marks and frees in both the application and Zygote heap.

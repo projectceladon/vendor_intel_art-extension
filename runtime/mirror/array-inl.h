@@ -19,16 +19,15 @@
 
 #include "array.h"
 
-#include "android-base/stringprintf.h"
+#include <android-base/logging.h>
+#include <android-base/stringprintf.h>
 
 #include "base/bit_utils.h"
 #include "base/casts.h"
-#include "base/logging.h"
 #include "class.h"
 #include "gc/heap-inl.h"
-#include "object-inl.h"
 #include "obj_ptr-inl.h"
-#include "thread.h"
+#include "thread-current-inl.h"
 
 namespace art {
 namespace mirror {
@@ -103,10 +102,10 @@ class SetLengthVisitor {
   explicit SetLengthVisitor(int32_t length) : length_(length) {
   }
 
-  void operator()(ObjPtr<Object>* obj, size_t usable_size ATTRIBUTE_UNUSED) const
+  void operator()(ObjPtr<Object> obj, size_t usable_size ATTRIBUTE_UNUSED) const
       REQUIRES_SHARED(Locks::mutator_lock_) {
     // Avoid AsArray as object is not yet in live bitmap or allocation stack.
-    ObjPtr<Array> array = ObjPtr<Array>::DownCast(*obj);
+    ObjPtr<Array> array = ObjPtr<Array>::DownCast(obj);
     // DCHECK(array->IsArrayInstance());
     array->SetLength(length_);
   }
@@ -127,10 +126,10 @@ class SetLengthToUsableSizeVisitor {
       component_size_shift_(component_size_shift) {
   }
 
-  void operator()(ObjPtr<Object>* obj, size_t usable_size) const
+  void operator()(ObjPtr<Object> obj, size_t usable_size) const
       REQUIRES_SHARED(Locks::mutator_lock_) {
     // Avoid AsArray as object is not yet in live bitmap or allocation stack.
-    ObjPtr<Array> array = ObjPtr<Array>::DownCast(*obj);
+    ObjPtr<Array> array = ObjPtr<Array>::DownCast(obj);
     // DCHECK(array->IsArrayInstance());
     int32_t length = (usable_size - header_size_) >> component_size_shift_;
     DCHECK_GE(length, minimum_length_);

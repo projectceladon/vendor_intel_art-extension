@@ -26,6 +26,7 @@ cc_defaults {
     },
     shared_libs: [
         "libbase",
+        "libcrypto", // For computing the digest of image file
     ],
 }
 
@@ -40,10 +41,24 @@ art_cc_binary {
 art_cc_binary {
     name: "patchoatd",
     defaults: [
-        "patchoat-defaults",
         "art_debug_defaults",
+        "patchoat-defaults",
     ],
     shared_libs: [
         "libartd",
+    ],
+}
+
+art_cc_test {
+    name: "art_patchoat_tests",
+    defaults: [
+        "art_gtest_defaults",
+    ],
+    srcs: [
+        "patchoat_test.cc",
+    ],
+    shared_libs: [
+        "libartd",
+        "libcrypto", // For computing the digest of image file
     ],
 }

@@ -24,12 +24,10 @@
 #include "base/value_object.h"
 #include "thread_state.h"
 
-#include "thread-inl.h"
-
 namespace art {
 
 class JavaVMExt;
-struct JNIEnvExt;
+class JNIEnvExt;
 template<class MirrorType> class ObjPtr;
 class Thread;
 
@@ -128,53 +126,6 @@ class ScopedObjectAccessAlreadyRunnable : public ValueObject {
   JNIEnvExt* const env_;
   // The full JavaVM.
   JavaVMExt* const vm_;
-};
-
-class ScopedObjectAccessNoAssertion {
- public:
-  Thread* Self() const {
-    return self_;
-  }
-
-  JNIEnvExt* Env() const {
-    return env_;
-  }
-
-  JavaVMExt* Vm() const {
-    return vm_;
-  }
-
-  template<typename T>
-  ObjPtr<T> Decode(jobject obj) const NO_THREAD_SAFETY_ANALYSIS {
-    return ObjPtr<T>::DownCast(Self()->DecodeJObject(obj));
-  }
-
- protected:
-  explicit ScopedObjectAccessNoAssertion(JNIEnv* env) ALWAYS_INLINE
-      : self_(ThreadForEnv(env)), env_(down_cast<JNIEnvExt*>(env)), vm_(env_->vm) {
-  }
-
-  // Here purely to force inlining.
-  ~ScopedObjectAccessNoAssertion() ALWAYS_INLINE {
-  }
-
-  // Self thread, can be null.
-  Thread* const self_;
-  // The full JNIEnv.
-  JNIEnvExt* const env_;
-  // The full JavaVM.
-  JavaVMExt* const vm_;
-};
-
-class ScopedFastObjectAccess : public ScopedObjectAccessNoAssertion {
- public:
-  explicit ScopedFastObjectAccess(JNIEnv* env) ALWAYS_INLINE
-      : ScopedObjectAccessNoAssertion(env) {}
-
-  ~ScopedFastObjectAccess() ALWAYS_INLINE {}
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ScopedFastObjectAccess);
 };
 
 // Entry/exit processing for transitions from Native to Runnable (ie within JNI functions).

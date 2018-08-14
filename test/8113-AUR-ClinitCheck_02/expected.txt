@@ -1,3 +1,0 @@
-class java.lang.ExceptionInInitializerError
-Main.test(Main.java:47)
-Test Main; Subtest testWithGCStress; Result: class java.lang.NoClassDefFoundError

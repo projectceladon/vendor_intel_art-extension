@@ -1,3 +1,0 @@
-Initial nextThingy is -128
-Final nextThingy value is -83
-Final test.thingies value is -83

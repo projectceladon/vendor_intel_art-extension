@@ -20,7 +20,9 @@
 #include "heap.h"
 
 #include "allocation_listener.h"
+#include "base/quasi_atomic.h"
 #include "base/time_utils.h"
+#include "base/utils.h"
 #include "gc/accounting/atomic_stack.h"
 #include "gc/accounting/card_table-inl.h"
 #include "gc/allocation_record.h"
@@ -30,13 +32,11 @@
 #include "gc/space/large_object_space.h"
 #include "gc/space/region_space-inl.h"
 #include "gc/space/rosalloc_space-inl.h"
+#include "handle_scope-inl.h"
 #include "obj_ptr-inl.h"
 #include "runtime.h"
-#include "handle_scope-inl.h"
 #include "thread-inl.h"
-#include "utils.h"
 #include "verify_object.h"
-#include "gc/gcprofiler.h"
 
 namespace art {
 namespace gc {
@@ -79,8 +79,9 @@ inline mirror::Object* Heap::AllocObjectWithAllocator(Thread* self,
   size_t bytes_allocated;
   size_t usable_size;
   size_t new_num_bytes_allocated = 0;
-  if (IsTLABAllocator(allocator))
+  if (IsTLABAllocator(allocator)) {
     byte_count = RoundUp(byte_count, space::BumpPointerSpace::kAlignment);
+  }
   // If we have a thread local allocation we don't need to update bytes allocated.
   if (IsTLABAllocator(allocator) && byte_count <= self->TlabSize()) {
     obj = self->AllocTlab(byte_count);
@@ -91,10 +92,7 @@ inline mirror::Object* Heap::AllocObjectWithAllocator(Thread* self,
     }
     bytes_allocated = byte_count;
     usable_size = bytes_allocated;
-    if (AllocatorHasAllocationStack(allocator)) {
-      PushOnAllocationStack(self, &obj);
-    }
-    pre_fence_visitor(&obj, usable_size);
+    pre_fence_visitor(obj, usable_size);
     QuasiAtomic::ThreadFenceForConstructor();
   } else if (
       !kInstrumented && allocator == kAllocatorTypeRosAlloc &&
@@ -106,14 +104,11 @@ inline mirror::Object* Heap::AllocObjectWithAllocator(Thread* self,
       obj->AssertReadBarrierState();
     }
     usable_size = bytes_allocated;
-    if (AllocatorHasAllocationStack(allocator)) {
-      PushOnAllocationStack(self, &obj);
-    }
-    pre_fence_visitor(&obj, usable_size);
+    pre_fence_visitor(obj, usable_size);
     QuasiAtomic::ThreadFenceForConstructor();
   } else {
-    // bytes allocated that takes bulk thread-local buffer allocations into account.
-    size_t bytes_tl_bulk_allocated = 0;
+    // Bytes allocated that takes bulk thread-local buffer allocations into account.
+    size_t bytes_tl_bulk_allocated = 0u;
     obj = TryToAllocate<kInstrumented, false>(self, allocator, byte_count, &bytes_allocated,
                                               &usable_size, &bytes_tl_bulk_allocated);
     if (UNLIKELY(obj == nullptr)) {
@@ -140,13 +135,6 @@ inline mirror::Object* Heap::AllocObjectWithAllocator(Thread* self,
         return nullptr;
       }
     }
-
-    if (Runtime::Current()->EnabledGcProfile()) {
-      GcProfiler* gcProfiler = GcProfiler::GetInstance();
-      if (obj != nullptr && gcProfiler->ProfileSuccAllocInfo()) {
-        gcProfiler->InsertSuccAllocRecord(byte_count, klass.Ptr());
-      }
-    }
     DCHECK_GT(bytes_allocated, 0u);
     DCHECK_GT(usable_size, 0u);
     obj->SetClass(klass);
@@ -165,28 +153,20 @@ inline mirror::Object* Heap::AllocObjectWithAllocator(Thread* self,
       // space (besides promotions) under the SS/GSS collector.
       WriteBarrierField(obj, mirror::Object::ClassOffset(), klass);
     }
-    if (AllocatorHasAllocationStack(allocator)) {
-      PushOnAllocationStack(self, &obj);
-    }
-    pre_fence_visitor(&obj, usable_size);
+    pre_fence_visitor(obj, usable_size);
     QuasiAtomic::ThreadFenceForConstructor();
-    new_num_bytes_allocated = num_bytes_allocated_.FetchAndAddRelaxed(bytes_tl_bulk_allocated) +
-        bytes_tl_bulk_allocated;
+    size_t num_bytes_allocated_before =
+        num_bytes_allocated_.FetchAndAddRelaxed(bytes_tl_bulk_allocated);
+    new_num_bytes_allocated = num_bytes_allocated_before + bytes_tl_bulk_allocated;
     if (bytes_tl_bulk_allocated > 0) {
       // Only trace when we get an increase in the number of bytes allocated. This happens when
       // obtaining a new TLAB and isn't often enough to hurt performance according to golem.
-      TraceHeapSize(new_num_bytes_allocated + bytes_tl_bulk_allocated);
+      TraceHeapSize(new_num_bytes_allocated);
     }
   }
   if (kIsDebugBuild && Runtime::Current()->IsStarted()) {
     CHECK_LE(obj->SizeOf(), usable_size);
   }
-
-  if (Runtime::Current()->EnabledGcProfile()) {
-    GcProfiler* gcProfiler = GcProfiler::GetInstance();
-    gcProfiler->AddAllocInfo(bytes_allocated);
-  }
-
   // TODO: Deprecate.
   if (kInstrumented) {
     if (Runtime::Current()->HasStatsEnabled()) {
@@ -215,6 +195,9 @@ inline mirror::Object* Heap::AllocObjectWithAllocator(Thread* self,
     }
   } else {
     DCHECK(!IsAllocTrackingEnabled());
+  }
+  if (AllocatorHasAllocationStack(allocator)) {
+    PushOnAllocationStack(self, &obj);
   }
   if (kInstrumented) {
     if (gc_stress_mode_) {
@@ -279,8 +262,12 @@ inline mirror::Object* Heap::TryToAllocate(Thread* self,
     case kAllocatorTypeBumpPointer: {
       DCHECK(bump_pointer_space_ != nullptr);
       alloc_size = RoundUp(alloc_size, space::BumpPointerSpace::kAlignment);
-      ret = bump_pointer_space_->AllocNonvirtual(alloc_size, bytes_allocated, usable_size,
-                                                 bytes_tl_bulk_allocated);
+      ret = bump_pointer_space_->AllocNonvirtual(alloc_size);
+      if (LIKELY(ret != nullptr)) {
+        *bytes_allocated = alloc_size;
+        *usable_size = alloc_size;
+        *bytes_tl_bulk_allocated = alloc_size;
+      }
       break;
     }
     case kAllocatorTypeRosAlloc: {
@@ -416,9 +403,8 @@ inline bool Heap::IsOutOfMemoryOnAllocation(AllocatorType allocator_type,
         return true;
       }
       // TODO: Grow for allocation is racy, fix it.
-      VLOG(heap) << "Growing heap from " << PrettySize(max_allowed_footprint_) << " to "
-          << PrettySize(new_footprint) << " for a " << PrettySize(alloc_size) << " allocation";
-      SetIdealFootprint(new_footprint);
+      VlogHeapGrowth(max_allowed_footprint_, new_footprint, alloc_size);
+      max_allowed_footprint_ = new_footprint;
     }
   }
   return false;

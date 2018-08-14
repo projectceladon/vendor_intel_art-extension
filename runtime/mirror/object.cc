@@ -18,22 +18,23 @@
 
 #include "object.h"
 
-#include "art_field.h"
-#include "art_field-inl.h"
 #include "array-inl.h"
-#include "class.h"
+#include "art_field-inl.h"
+#include "art_field.h"
 #include "class-inl.h"
+#include "class.h"
 #include "class_linker-inl.h"
-#include "dex_file-inl.h"
+#include "dex/descriptors_names.h"
+#include "dex/dex_file-inl.h"
 #include "gc/accounting/card_table-inl.h"
 #include "gc/heap.h"
+#include "handle_scope-inl.h"
 #include "iftable-inl.h"
 #include "monitor.h"
 #include "object-inl.h"
 #include "object-refvisitor-inl.h"
 #include "object_array-inl.h"
 #include "runtime.h"
-#include "handle_scope-inl.h"
 #include "throwable.h"
 #include "well_known_classes.h"
 
@@ -137,9 +138,9 @@ class CopyObjectVisitor {
   CopyObjectVisitor(Handle<Object>* orig, size_t num_bytes)
       : orig_(orig), num_bytes_(num_bytes) {}
 
-  void operator()(ObjPtr<Object>* obj, size_t usable_size ATTRIBUTE_UNUSED) const
+  void operator()(ObjPtr<Object> obj, size_t usable_size ATTRIBUTE_UNUSED) const
       REQUIRES_SHARED(Locks::mutator_lock_) {
-    Object::CopyObject(*obj, orig_->Get(), num_bytes_);
+    Object::CopyObject(obj, orig_->Get(), num_bytes_);
   }
 
  private:
@@ -174,7 +175,7 @@ uint32_t Object::GenerateIdentityHashCode() {
   do {
     expected_value = hash_code_seed.LoadRelaxed();
     new_value = expected_value * 1103515245 + 12345;
-  } while (!hash_code_seed.CompareExchangeWeakRelaxed(expected_value, new_value) ||
+  } while (!hash_code_seed.CompareAndSetWeakRelaxed(expected_value, new_value) ||
       (expected_value & LockWord::kHashMask) == 0);
   return expected_value & LockWord::kHashMask;
 }
@@ -239,7 +240,8 @@ void Object::CheckFieldAssignmentImpl(MemberOffset field_offset, ObjPtr<Object> 
       if (field.GetOffset().Int32Value() == field_offset.Int32Value()) {
         CHECK_NE(field.GetTypeAsPrimitiveType(), Primitive::kPrimNot);
         // TODO: resolve the field type for moving GC.
-        ObjPtr<mirror::Class> field_type = field.GetType<!kMovingCollector>();
+        ObjPtr<mirror::Class> field_type =
+            kMovingCollector ? field.LookupResolvedType() : field.ResolveType();
         if (field_type != nullptr) {
           CHECK(field_type->IsAssignableFrom(new_value->GetClass()));
         }
@@ -256,7 +258,8 @@ void Object::CheckFieldAssignmentImpl(MemberOffset field_offset, ObjPtr<Object> 
       if (field.GetOffset().Int32Value() == field_offset.Int32Value()) {
         CHECK_NE(field.GetTypeAsPrimitiveType(), Primitive::kPrimNot);
         // TODO: resolve the field type for moving GC.
-        ObjPtr<mirror::Class> field_type = field.GetType<!kMovingCollector>();
+        ObjPtr<mirror::Class> field_type =
+            kMovingCollector ? field.LookupResolvedType() : field.ResolveType();
         if (field_type != nullptr) {
           CHECK(field_type->IsAssignableFrom(new_value->GetClass()));
         }

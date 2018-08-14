@@ -1,2 +1,0 @@
-Initial workJ value is 1.4E-45
-Final workJ value is 1.4E-45

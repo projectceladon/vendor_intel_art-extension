@@ -1,4 +1,0 @@
-java.lang.ClassCastException: Main$A cannot be cast to Main$D
-Main.runTest(Main.java:27)
-Main.test(Main.java:43)
-Test Main; Subtest testWithGCStress; Result: java.lang.ClassCastException: Main$A cannot be cast to Main$D

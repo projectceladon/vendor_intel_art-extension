@@ -23,7 +23,6 @@
 #include "base/timing_logger.h"
 #include "jit/profile_saver_options.h"
 #include "obj_ptr.h"
-#include "profile_compilation_info.h"
 #include "thread_pool.h"
 
 namespace art {
@@ -42,14 +41,12 @@ namespace jit {
 
 class JitCodeCache;
 class JitOptions;
-class JniTask : public Task { };
 
 static constexpr int16_t kJitCheckForOSR = -1;
 static constexpr int16_t kJitHotnessDisabled = -2;
 
 class Jit {
  public:
-  static constexpr size_t kDefaultCompileThreshold = 10000;
   static constexpr size_t kDefaultPriorityThreadWeightRatio = 1000;
   static constexpr size_t kDefaultInvokeTransitionWeightRatio = 500;
   // How frequently should the interpreter check to see if OSR compilation is ready.
@@ -154,7 +151,7 @@ class Jit {
   bool CanInvokeCompiledCode(ArtMethod* method);
 
   // Return whether the runtime should use a priority thread weight when sampling.
-  static bool ShouldUsePriorityThreadWeight();
+  static bool ShouldUsePriorityThreadWeight(Thread* self);
 
   // If an OSR compiled version is available for `method`,
   // and `dex_pc + dex_pc_offset` is an entry point of that compiled
@@ -178,7 +175,6 @@ class Jit {
 
   // Start JIT threads.
   void Start();
-  bool AddJniTask(Thread* self, JniTask* task);
 
  private:
   Jit();
@@ -256,6 +252,13 @@ class JitOptions {
   void SetSaveProfilingInfo(bool save_profiling_info) {
     profile_saver_options_.SetEnabled(save_profiling_info);
   }
+  void SetWaitForJitNotificationsToSaveProfile(bool value) {
+    profile_saver_options_.SetWaitForJitNotificationsToSave(value);
+  }
+  void SetProfileAOTCode(bool value) {
+    profile_saver_options_.SetProfileAOTCode(value);
+  }
+
   void SetJitAtFirstUse() {
     use_jit_compilation_ = true;
     compile_threshold_ = 0;

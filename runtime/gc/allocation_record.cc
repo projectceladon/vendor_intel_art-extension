@@ -18,6 +18,7 @@
 
 #include "art_method-inl.h"
 #include "base/enums.h"
+#include "base/logging.h"  // For VLOG
 #include "base/stl_util.h"
 #include "obj_ptr-inl.h"
 #include "object_callbacks.h"
@@ -130,8 +131,8 @@ static inline void SweepClassObject(AllocRecord* record, IsMarkedVisitor* visito
     // The class object can become null if we implement class unloading.
     // In that case we might still want to keep the class name string (not implemented).
     mirror::Object* new_object = visitor->IsMarked(old_object);
-    // For the above reason, the new_object may be null.
-    if (UNLIKELY(old_object != new_object && new_object != nullptr)) {
+    DCHECK(new_object != nullptr);
+    if (UNLIKELY(old_object != new_object)) {
       klass = GcRoot<mirror::Class>(new_object->AsClass());
     }
   }
@@ -288,7 +289,7 @@ void AllocRecordObjectMap::RecordAllocation(Thread* self,
     return;
   }
 
-  // Wait for GC's sweeping to complete and allow new records
+  // Wait for GC's sweeping to complete and allow new records.
   while (UNLIKELY((!kUseReadBarrier && !allow_new_record_) ||
                   (kUseReadBarrier && !self->GetWeakRefAccessEnabled()))) {
     // Check and run the empty checkpoint before blocking so the empty checkpoint will work in the

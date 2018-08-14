@@ -1,2 +1,0 @@
-Test Main; Subtest test; Result: 150006
-Test Main; Subtest testWithGCStress; Result: 150006

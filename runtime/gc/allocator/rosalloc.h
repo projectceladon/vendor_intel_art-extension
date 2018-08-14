@@ -26,10 +26,11 @@
 #include <unordered_set>
 #include <vector>
 
+#include <android-base/logging.h>
+
 #include "base/allocator.h"
 #include "base/bit_utils.h"
 #include "base/mutex.h"
-#include "base/logging.h"
 #include "globals.h"
 #include "thread.h"
 
@@ -420,8 +421,6 @@ class RosAlloc {
     // Allocates a slot in a run.
     ALWAYS_INLINE void* AllocSlot();
     // Frees a slot in a run. This is used in a non-bulk free.
-    // This is also used in parallel copying to revoke thread local slots.
-    template<bool kThreadLocal = false>
     void FreeSlot(void* ptr);
     // Add the given slot to the bulk free list. Returns the bracket size.
     size_t AddToBulkFreeList(void* ptr);
@@ -758,11 +757,9 @@ class RosAlloc {
   // and the footprint.
   Mutex lock_ DEFAULT_MUTEX_ACQUIRED_AFTER;
   // The reader-writer lock to allow one bulk free at a time while
-  // allowing multiple individual frees at the same time.
-  // Currently RosAlloc is using bulk free(BulkFree) to free garbages
-  // The individual free is not used any more. Thus no need this lock
-  // for BulkFree. Keep this lock for multiple individual frees, since
-  // the individual free code is still there.
+  // allowing multiple individual frees at the same time. Also, this
+  // is used to avoid race conditions between BulkFree() and
+  // RevokeThreadLocalRuns() on the bulk free list.
   ReaderWriterMutex bulk_free_lock_ DEFAULT_MUTEX_ACQUIRED_AFTER;
 
   // The page release mode.
@@ -864,9 +861,7 @@ class RosAlloc {
   // Allocate the given allocation request in an existing thread local
   // run without allocating a new run.
   ALWAYS_INLINE void* AllocFromThreadLocalRun(Thread* self, size_t size, size_t* bytes_allocated);
-  // Free object in thread local run.
-  // Used for parallel copy in GSS.
-  bool FreeFromThreadLocalRun(Thread* self, size_t size, void* addr);
+
   // Returns the maximum bytes that could be allocated for the given
   // size in bulk, that is the maximum value for the
   // bytes_allocated_bulk out param returned by RosAlloc::Alloc().

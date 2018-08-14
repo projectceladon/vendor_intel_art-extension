@@ -1,8 +1,0 @@
-Test Main; Subtest test_01; Result: 3.08797019E8
-Test Main; Subtest test_02; Result: -4.35630057E8
-Test Main; Subtest test_03; Result: 310000
-Test Main; Subtest test_04; Result: 11
-Test Main; Subtest test_05; Result: 45
-Test Main; Subtest test_06; Result: 2452
-Test Main; Subtest test_07; Result: 4.0
-Test Main; Subtest test_08; Result: 8.589958144E9

@@ -17,8 +17,6 @@
 #include "x86_memory_gen.h"
 #include "code_generator.h"
 #include "driver/compiler_options.h"
-#include "ext_alias.h"
-#include "mirror/array-inl.h"
 
 namespace art {
 namespace x86 {
@@ -29,289 +27,10 @@ namespace x86 {
 class MemoryOperandVisitor : public HGraphVisitor {
  public:
   MemoryOperandVisitor(HGraph* graph, bool do_implicit_null_checks)
-      : HGraphVisitor(graph), do_implicit_null_checks_(do_implicit_null_checks) {}
+      : HGraphVisitor(graph),
+        do_implicit_null_checks_(do_implicit_null_checks) {}
 
  private:
-  bool BinaryFP(HBinaryOperation* bin) {
-    if (Primitive::IsFloatingPointType(bin->GetResultType()) &&
-        (bin->InputAt(0)->IsConstant() || bin->InputAt(1)->IsConstant()
-         || bin->InputAt(0)->IsX86LoadFromConstantTable()
-         || bin->InputAt(1)->IsX86LoadFromConstantTable())) {
-      return true;
-    }
-    return false;
-  }
-
-  void VisitAdd(HAdd* add) OVERRIDE {
-    VisitMathOp(add, false);
-  }
-
-  void VisitSub(HSub* sub) OVERRIDE {
-    VisitMathOp(sub, false);
-  }
-
-  void VisitMul(HMul* mul) OVERRIDE {
-    VisitMathOp(mul, false);
-  }
-
-  void VisitDiv(HDiv* div) OVERRIDE {
-    VisitMathOp(div, true);
-  }
-
-  void VisitMathOp(HBinaryOperation* bin_op, bool float_only) {
-    // Does this operation have a FP constant?
-    if (BinaryFP(bin_op)) {
-      // Nothing more that we can do.
-      return;
-    }
-
-    // Can we convert to a HInstructionRHSMemory variant?
-    HInstruction* rhs = bin_op->GetRight();
-    HInstruction* lhs = bin_op->GetLeft();
-    if (TryMemoryOperation(bin_op, lhs, rhs, float_only)) {
-      // We did it.
-      return;
-    }
-
-    // We didn't use the RHS. Can we use the LHS?
-    if (bin_op->IsCommutative()) {
-      TryMemoryOperation(bin_op, rhs, lhs, float_only);
-    }
-  }
-
-  bool IsSafeToReplaceWithMemOp(HInstruction* rhs, HBinaryOperation* bin_op) {
-    // There is a case when we can't convert an op to mem variant.
-    // Let's say we have the following instructions:
-    // a = ArrayGet b, c
-    // e = ArraySet b, c, f
-    // g = Mul a, f
-    // h = ArraySet b, c, g
-    //
-    // If we convert it into
-    // e = ArraySet b, c, f
-    // g = MulRHSMemory b, c, f
-    // h = ArraySet b, c, g
-    // then we violate flow dependency.
-    // There is a similar case, when he have FieldGet/FieldSet
-    // instead of ArrayGet/ArraySet.
-
-    if (rhs->GetBlock() != bin_op->GetBlock()) {
-      // For analysis simplification we want to need
-      // rhs and binary op to be in the same block.
-      return false;
-    }
-
-    for (HInstruction* instruction = rhs->GetNext();
-         instruction != nullptr && instruction != bin_op;
-         instruction = instruction->GetNext()) {
-      switch (instruction->GetKind()) {
-        case HInstruction::kArrayGet:
-        case HInstruction::kInstanceFieldGet:
-        case HInstruction::kStaticFieldGet:
-          // A read is harmless, even if it is to the same address.
-          break;
-        default:
-          if (alias_checker_.Alias(instruction, rhs) != AliasCheck::kNoAlias) {
-            // This instruction can alias with the load.  Don't generate an
-            // operation from memory.
-            return false;
-          }
-          break;
-      }
-    }
-    // No instruction between rhs and bin_op aliased with rhs.  It is safe to
-    // combine the instructions into one.
-    return true;
-  }
-
-  bool TryMemoryOperation(HBinaryOperation* bin_op,
-                          HInstruction* lhs,
-                          HInstruction* rhs,
-                          bool float_only) {
-    if (!rhs->HasOnlyOneNonEnvironmentUse()) {
-      return false;
-    }
-    HInstruction::InstructionKind mem_kind = rhs->GetKind();
-    switch (mem_kind) {
-      case HInstruction::kInstanceFieldGet:
-      case HInstruction::kStaticFieldGet: {
-        const FieldInfo& field_info = (mem_kind == HInstruction::kStaticFieldGet) ?
-                                        rhs->AsStaticFieldGet()->GetFieldInfo() :
-                                        rhs->AsInstanceFieldGet()->GetFieldInfo();
-        if (field_info.IsVolatile()) {
-          // Ignore volatiles.
-          break;
-        }
-
-        if (!IsSafeToReplaceWithMemOp(rhs, bin_op)) {
-          // Conversion into memory operation is not permitted.
-          break;
-        }
-
-        Primitive::Type field_type = field_info.GetFieldType();
-        uint32_t offset = field_info.GetFieldOffset().Uint32Value();
-
-        HInstructionRHSMemory* new_insn = nullptr;
-        HInstruction* base = nullptr;
-        switch (field_type) {
-          case Primitive::kPrimInt:
-            if (!float_only) {
-              base = rhs->InputAt(0);
-              new_insn = GetRHSMemory(bin_op, rhs, lhs, base, nullptr, offset);
-            }
-            break;
-          case Primitive::kPrimFloat:
-          case Primitive::kPrimDouble:
-            base = rhs->InputAt(0);
-            new_insn = GetRHSMemory(bin_op, rhs, lhs, base, nullptr, offset);
-            break;
-          default:
-            // Unsupported type.
-            break;
-        }
-        if (new_insn) {
-          if (mem_kind == HInstruction::kStaticFieldGet) {
-            new_insn->SetFromStatic();
-          }
-          bin_op->GetBlock()->ReplaceAndRemoveInstructionWith(bin_op, new_insn);
-          rhs->GetBlock()->RemoveInstruction(rhs);
-          DCHECK(base != nullptr);
-          if (rhs->HasEnvironment()) {
-            new_insn->CopyEnvironmentFrom(rhs->GetEnvironment());
-          }
-          return true;
-        }
-        break;
-      }
-      case HInstruction::kArrayGet: {
-        if (!IsSafeToReplaceWithMemOp(rhs, bin_op)) {
-          // Conversion into memory operation is not permitted.
-          break;
-        }
-
-        HArrayGet* get = rhs->AsArrayGet();
-        Primitive::Type type = get->GetType();
-        uint32_t data_offset = GetArrayOffset(type);
-        HInstruction* new_insn = nullptr;
-        HInstruction* base = nullptr;
-
-        switch (type) {
-          case Primitive::kPrimInt:
-            if (!float_only) {
-              base = get->GetArray();
-              new_insn = GetRHSMemory(bin_op, get, lhs, base, get->GetIndex(), data_offset);
-            }
-            break;
-          case Primitive::kPrimFloat:
-          case Primitive::kPrimDouble:
-            base = get->GetArray();
-            new_insn = GetRHSMemory(bin_op, get, lhs, base, get->GetIndex(), data_offset);
-            break;
-          default:
-            // Unsupported type.
-            break;
-        }
-        if (new_insn) {
-          bin_op->GetBlock()->ReplaceAndRemoveInstructionWith(bin_op, new_insn);
-          rhs->GetBlock()->RemoveInstruction(rhs);
-          DCHECK(base != nullptr);
-          if (rhs->HasEnvironment()) {
-            new_insn->CopyEnvironmentFrom(rhs->GetEnvironment());
-          }
-          return true;
-        }
-        break;
-      }
-      default:
-        break;
-    }
-
-    // Failed to convert to a memory operation.
-    return false;
-  }
-
-  uint32_t GetArrayOffset(Primitive::Type type) {
-    switch (type) {
-      case Primitive::kPrimInt:
-        return art::mirror::Array::DataOffset(sizeof(int32_t)).Uint32Value();
-      case Primitive::kPrimFloat:
-        return art::mirror::Array::DataOffset(sizeof(float)).Uint32Value();
-      case Primitive::kPrimDouble:
-        return art::mirror::Array::DataOffset(sizeof(double)).Uint32Value();
-      default:
-        // Unsupported type.
-        return 0;
-    }
-  }
-
-  void TryConvertConstantIndexToOffset(Primitive::Type type,
-                                       HInstruction*& index,
-                                       uint32_t& data_offset) {
-    HInstruction* temp_index = index;
-    if (temp_index->IsBoundsCheck()) {
-      temp_index = temp_index->InputAt(0);
-    }
-    if (!temp_index->IsIntConstant()) {
-      return;
-    }
-    int32_t index_value = temp_index->AsIntConstant()->GetValue();
-
-    // Scale the index by the type.
-    switch (type) {
-      case Primitive::kPrimInt:
-        index_value *= sizeof(int32_t);
-        break;
-      case Primitive::kPrimFloat:
-        index_value *= sizeof(float);
-        break;
-      case Primitive::kPrimDouble:
-        index_value *= sizeof(double);
-        break;
-      default:
-        break;
-    }
-
-    // Replace the index with adjusted offset.
-    index = nullptr;
-    data_offset += index_value;
-  }
-
-  HInstructionRHSMemory* GetRHSMemory(HBinaryOperation* bin_op, HInstruction* get,
-                                      HInstruction* lhs, HInstruction* base,
-                                      HInstruction* index, uint32_t data_offset) {
-    ArenaAllocator* arena = GetGraph()->GetArena();
-    if (index != nullptr) {
-      TryConvertConstantIndexToOffset(bin_op->GetType(), index, data_offset);
-    }
-
-    // Is this valid to do a null check on?
-    if (base->IsNullCheck() && get->IsInstanceFieldGet() && data_offset >= kPageSize) {
-      // We can't use an implicit null check. Just use the original instruction.
-      return nullptr;
-    }
-
-    HInstructionRHSMemory* result = nullptr;
-    switch (bin_op->GetKind()) {
-      case HInstruction::kAdd:
-        result = new (arena) HAddRHSMemory(bin_op->GetType(), lhs, base, index, data_offset, arena);
-        break;
-      case HInstruction::kSub:
-        result = new (arena) HSubRHSMemory(bin_op->GetType(), lhs, base, index, data_offset, arena);
-        break;
-      case HInstruction::kMul:
-        result = new (arena) HMulRHSMemory(bin_op->GetType(), lhs, base, index, data_offset, arena);
-        break;
-      case HInstruction::kDiv:
-        result = new (arena) HDivRHSMemory(bin_op->GetType(), lhs, base, index, data_offset, arena);
-        break;
-      default:
-        LOG(FATAL) << "Unexpected type " << bin_op->GetType();
-        break;
-    }
-
-    return result;
-  }
-
   void VisitBoundsCheck(HBoundsCheck* check) OVERRIDE {
     // Replace the length by the array itself, so that we can do compares to memory.
     HArrayLength* array_len = check->InputAt(1)->AsArrayLength();
@@ -322,15 +41,11 @@ class MemoryOperandVisitor : public HGraphVisitor {
     }
 
     HInstruction* array = array_len->InputAt(0);
-    DCHECK_EQ(array->GetType(), Primitive::kPrimNot);
+    DCHECK_EQ(array->GetType(), DataType::Type::kReference);
 
     // Don't apply this optimization when the array is nullptr.
-    HInstruction* array_base = array;
-    while (array_base->IsNullCheck() || array_base->IsBoundType()) {
-      array_base = array_base->InputAt(0);
-    }
-    if (array_base->IsConstant()) {
-     return;
+    if (array->IsConstant() || (array->IsNullCheck() && array->InputAt(0)->IsConstant())) {
+      return;
     }
 
     // Is there a null check that could be an implicit check?
@@ -343,23 +58,15 @@ class MemoryOperandVisitor : public HGraphVisitor {
       }
     }
 
-    // Can we remove the ArrayLength?
+    // Can we suppress the ArrayLength and generate at BoundCheck?
     if (array_len->HasOnlyOneNonEnvironmentUse()) {
-      HX86BoundsCheckMemory* new_check =
-        new (GetGraph()->GetArena()) HX86BoundsCheckMemory(check->InputAt(0), array, check->GetDexPc(), check->IsStringCharAt());
-      check->GetBlock()->InsertInstructionBefore(new_check, check);
-      check->ReplaceWith(new_check);
-      DCHECK(check->GetEnvironment() != nullptr);
-      new_check->CopyEnvironmentFrom(check->GetEnvironment());
-      check->GetBlock()->RemoveInstruction(check);
-      array_len->GetBlock()->RemoveInstruction(array_len);
+      array_len->MarkEmittedAtUseSite();
+      // We need the ArrayLength just before the BoundsCheck.
+      array_len->MoveBefore(check);
     }
   }
 
   bool do_implicit_null_checks_;
-
-  // Alias checker for RHSMemory generation.
-  AliasCheck alias_checker_;
 };
 
 X86MemoryOperandGeneration::X86MemoryOperandGeneration(HGraph* graph,

@@ -19,6 +19,8 @@ import (
 	"android/soong/cc"
 	"fmt"
 	"sync"
+
+	"github.com/google/blueprint/proptools"
 )
 
 var supportedArches = []string{"arm", "arm64", "mips", "mips64", "x86", "x86_64"}
@@ -32,43 +34,16 @@ func globalFlags(ctx android.BaseContext) ([]string, []string) {
 
 	tlab := false
 
-	// CC and readbarrier are tightly coupled in our code.
-	// Throughout the code, there are assumptions on CC to be the collector when readbarrier is turned on.
-	// Also there is hardcoding to pick CC as the fg & bg collector (refer runtime.cc), if readbarrier is turned on.
-	// Load the env variable ahead, so we can override it based on default GC type.
-	// (Un)Setting ART_USE_READ_BARRIER has no effect if the choice of GC is not CC, as we disable it below.
-	artUseReadBarrier := !envFalse(ctx, "ART_USE_READ_BARRIER") && ctx.AConfig().ArtUseReadBarrier()
-
-	// Need to change the deafult GC to GENCOPYING for all, once we fully understand and evaluate GENCOPYING
-	// Currently the default is CC, as deined in build/core/soong_config.mk and
-	// defaulting to GENCOPYING is being done only for Gordon Peak devices via mixins
-	gcType := ctx.AConfig().Getenv("ART_DEFAULT_GC_TYPE")
-	if gcType == "" {
-		gcType = ctx.AConfig().ArtDefaultGCType()
-	}
+	gcType := envDefault(ctx, "ART_DEFAULT_GC_TYPE", "CMS")
 
 	if envTrue(ctx, "ART_TEST_DEBUG_GC") {
 		gcType = "SS"
 		tlab = true
 	}
 
-	// If we are going to use GENCOPYING, enable TLAB
-	if (gcType == "GENCOPYING") {
-		tlab = true
-	}
-
-	// Only CC uses ReadBarrier, for all other GC Choices disable ReadBarrier
-	if (gcType != "CC") {
-		artUseReadBarrier = false
-	}
-
 	cflags = append(cflags, "-DART_DEFAULT_GC_TYPE_IS_"+gcType)
 	if tlab {
 		cflags = append(cflags, "-DART_USE_TLAB=1")
-	}
-
-	if !envFalse(ctx, "ART_ENABLE_VDEX") {
-		cflags = append(cflags, "-DART_ENABLE_VDEX")
 	}
 
 	imtSize := envDefault(ctx, "ART_IMT_SIZE", "43")
@@ -79,7 +54,7 @@ func globalFlags(ctx android.BaseContext) ([]string, []string) {
 		asflags = append(asflags, "-DART_HEAP_POISONING=1")
 	}
 
-	if artUseReadBarrier {
+	if !envFalse(ctx, "ART_USE_READ_BARRIER") && ctx.AConfig().ArtUseReadBarrier() {
 		// Used to change the read barrier type. Valid values are BAKER, BROOKS,
 		// TABLELOOKUP. The default is BAKER.
 		barrierType := envDefault(ctx, "ART_READ_BARRIER_TYPE", "BAKER")
@@ -90,6 +65,9 @@ func globalFlags(ctx android.BaseContext) ([]string, []string) {
 			"-DART_USE_READ_BARRIER=1",
 			"-DART_READ_BARRIER_TYPE_IS_"+barrierType+"=1")
 	}
+
+  cdexLevel := envDefault(ctx, "ART_DEFAULT_COMPACT_DEX_LEVEL", "fast")
+  cflags = append(cflags, "-DART_DEFAULT_COMPACT_DEX_LEVEL="+cdexLevel)
 
 	// We need larger stack overflow guards for ASAN, as the compiled code will have
 	// larger frame sizes. For simplicity, just use global not-target-specific cflags.
@@ -119,6 +97,16 @@ func globalFlags(ctx android.BaseContext) ([]string, []string) {
 		cflags = append(cflags, "-DART_ENABLE_ADDRESS_SANITIZER=1")
 		asflags = append(asflags, "-DART_ENABLE_ADDRESS_SANITIZER=1")
 	}
+
+	if envTrue(ctx, "ART_MIPS32_CHECK_ALIGNMENT") {
+		// Enable the use of MIPS32 CHECK_ALIGNMENT macro for debugging purposes
+		asflags = append(asflags, "-DART_MIPS32_CHECK_ALIGNMENT")
+	}
+
+	if envTrueOrDefault(ctx, "USE_D8_DESUGAR") {
+		cflags = append(cflags, "-DUSE_D8_DESUGAR=1")
+	}
+
 	return cflags, asflags
 }
 
@@ -175,6 +163,11 @@ func hostFlags(ctx android.BaseContext) []string {
 	cflags = append(cflags, "-DART_BASE_ADDRESS_MIN_DELTA="+minDelta)
 	cflags = append(cflags, "-DART_BASE_ADDRESS_MAX_DELTA="+maxDelta)
 
+	if len(ctx.AConfig().SanitizeHost()) > 0 && !envFalse(ctx, "ART_ENABLE_ADDRESS_SANITIZER") {
+		// We enable full sanitization on the host by default.
+		cflags = append(cflags, "-DART_ENABLE_ADDRESS_SANITIZER=1")
+	}
+
 	return cflags
 }
 
@@ -222,47 +215,33 @@ func debugDefaults(ctx android.LoadHookContext) {
 
 func customLinker(ctx android.LoadHookContext) {
 	linker := envDefault(ctx, "CUSTOM_TARGET_LINKER", "")
-	if linker != "" {
-		type props struct {
-			DynamicLinker string
-		}
-
-		p := &props{}
-		p.DynamicLinker = linker
-		ctx.AppendProperties(p)
+	type props struct {
+		DynamicLinker string
 	}
+
+	p := &props{}
+	if linker != "" {
+		p.DynamicLinker = linker
+	}
+
+	ctx.AppendProperties(p)
 }
 
 func prefer32Bit(ctx android.LoadHookContext) {
-	if envTrue(ctx, "HOST_PREFER_32_BIT") {
-		type props struct {
-			Target struct {
-				Host struct {
-					Compile_multilib string
-				}
+	type props struct {
+		Target struct {
+			Host struct {
+				Compile_multilib *string
 			}
 		}
-
-		p := &props{}
-		p.Target.Host.Compile_multilib = "prefer32"
-		ctx.AppendProperties(p)
 	}
-}
 
-func capstoneLinker(ctx android.LoadHookContext) {
-       type props struct {
-		Cflags   []string
-		Asflags  []string
-       }
-       p := &props{}
-       p.Cflags, p.Asflags = globalFlags(ctx)
+	p := &props{}
+	if envTrue(ctx, "HOST_PREFER_32_BIT") {
+		p.Target.Host.Compile_multilib = proptools.StringPtr("prefer32")
+	}
 
-       if !envFalse(ctx, "ART_CAPSTONE_INCLUDES") && ctx.AConfig().AutoFastJni() {
-	       fmt.Println("capstonelink:", true)
-	       p.Cflags = append(p.Cflags, "-DCAPSTONE=1")
-	       p.Asflags = append(p.Asflags, "-DCAPSTONE=1")
-	       ctx.AppendProperties(p)
-       }
+	ctx.AppendProperties(p)
 }
 
 func testMap(config android.Config) map[string][]string {
@@ -294,10 +273,10 @@ var artTestMutex sync.Mutex
 
 func init() {
 	android.RegisterModuleType("art_cc_library", artLibrary)
+	android.RegisterModuleType("art_cc_static_library", artStaticLibrary)
 	android.RegisterModuleType("art_cc_binary", artBinary)
 	android.RegisterModuleType("art_cc_test", artTest)
 	android.RegisterModuleType("art_cc_test_library", artTestLibrary)
-	android.RegisterModuleType("art_capstone_dependancies", artCapstoneDependancies)
 	android.RegisterModuleType("art_cc_defaults", artDefaultsFactory)
 	android.RegisterModuleType("art_global_defaults", artGlobalDefaultsFactory)
 	android.RegisterModuleType("art_debug_defaults", artDebugDefaultsFactory)
@@ -325,15 +304,19 @@ func artDefaultsFactory() android.Module {
 	return module
 }
 
-func  artCapstoneDependancies() android.Module {
-	module := artDefaultsFactory()
-        android.AddLoadHook(module, capstoneLinker)
+func artLibrary() android.Module {
+	m, _ := cc.NewLibrary(android.HostAndDeviceSupported)
+	module := m.Init()
+
+	installCodegenCustomizer(module, true)
+
 	return module
 }
 
-func artLibrary() android.Module {
-	library, _ := cc.NewLibrary(android.HostAndDeviceSupported)
-	module := library.Init()
+func artStaticLibrary() android.Module {
+	m, library := cc.NewLibrary(android.HostAndDeviceSupported)
+	library.BuildOnlyStatic()
+	module := m.Init()
 
 	installCodegenCustomizer(module, true)
 
@@ -386,4 +369,8 @@ func envTrue(ctx android.BaseContext, key string) bool {
 
 func envFalse(ctx android.BaseContext, key string) bool {
 	return ctx.AConfig().Getenv(key) == "false"
+}
+
+func envTrueOrDefault(ctx android.BaseContext, key string) bool {
+	return ctx.AConfig().Getenv(key) != "false"
 }
