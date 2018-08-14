@@ -1,4 +1,0 @@
-Test Main; Subtest test_01; Result: 5.0095E7
-Test Main; Subtest test_02; Result: 6.6696733034E10
-Test Main; Subtest test_03; Result: 0.0
-Test Main; Subtest test_04; Result: 0.0

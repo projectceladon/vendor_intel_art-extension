@@ -17,7 +17,7 @@
 ifndef ART_ANDROID_COMMON_BUILD_MK
 ART_ANDROID_COMMON_BUILD_MK = true
 
-include $(VENDOR_ART_PATH)/build/Android.common.mk
+include art/build/Android.common.mk
 
 # These can be overridden via the environment or by editing to
 # enable/disable certain build configuration.
@@ -49,13 +49,12 @@ endif
 # Enable the read barrier by default.
 ART_USE_READ_BARRIER ?= true
 
-ART_CPP_EXTENSION := .cc
-
-ART_USE_TLAB := true
-
-ifneq (,$(findstring sofia,$(TARGET_BOARD_PLATFORM)))
-  art_cflags += -DSOFIA
+# Default compact dex level to none.
+ifeq ($(ART_DEFAULT_COMPACT_DEX_LEVEL),)
+ART_DEFAULT_COMPACT_DEX_LEVEL := none
 endif
+
+ART_CPP_EXTENSION := .cc
 
 ifndef LIBART_IMG_HOST_BASE_ADDRESS
   $(error LIBART_IMG_HOST_BASE_ADDRESS unset)
@@ -79,12 +78,6 @@ ifeq ($(ART_BUILD_HOST_NDEBUG),true)
 endif
 ifeq ($(ART_BUILD_HOST_DEBUG),true)
   ART_BUILD_HOST := true
-endif
-
-# Include the vendor common build makefile.
-VENDOR_COMMON_BUILD_MK := $(VENDOR_ART_PATH)/build/Android.common_build.ext.mk
-ifneq ($(wildcard $(VENDOR_COMMON_BUILD_MK)),)
-  include $(VENDOR_COMMON_BUILD_MK)
 endif
 
 endif # ART_ANDROID_COMMON_BUILD_MK

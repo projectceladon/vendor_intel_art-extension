@@ -18,23 +18,20 @@
 #define ART_RUNTIME_GC_SPACE_BUMP_POINTER_SPACE_WALK_INL_H_
 
 #include "bump_pointer_space.h"
+
 #include "base/bit_utils.h"
 #include "mirror/object-inl.h"
 #include "thread-current-inl.h"
-#include "thread_list.h"
-#include "scoped_thread_state_change.h"
 
 namespace art {
 namespace gc {
 namespace space {
 
 template <typename Visitor>
-void BumpPointerSpace::WalkThreadUnsafe(std::vector<TlabPtrs>* active_tlabs, Visitor&& visitor) {
+inline void BumpPointerSpace::Walk(Visitor&& visitor) {
   uint8_t* pos = Begin();
   uint8_t* end = End();
-
-  size_t tlab_pos = 0;
-
+  uint8_t* main_end = pos;
   // Internal indirection w/ NO_THREAD_SAFETY_ANALYSIS. Optimally, we'd like to have an annotation
   // like
   //   REQUIRES_AS(visitor.operator(mirror::Object*))
@@ -48,60 +45,52 @@ void BumpPointerSpace::WalkThreadUnsafe(std::vector<TlabPtrs>* active_tlabs, Vis
     visitor(obj);
   };
 
-  while(pos < end) {
+  {
+    MutexLock mu(Thread::Current(), block_lock_);
+    // If we have 0 blocks then we need to update the main header since we have bump pointer style
+    // allocation into an unbounded region (actually bounded by Capacity()).
+    if (num_blocks_ == 0) {
+      UpdateMainBlock();
+    }
+    main_end = Begin() + main_block_size_;
+    if (num_blocks_ == 0) {
+      // We don't have any other blocks, this means someone else may be allocating into the main
+      // block. In this case, we don't want to try and visit the other blocks after the main block
+      // since these could actually be part of the main block.
+      end = main_end;
+    }
+  }
+  // Walk all of the objects in the main block first.
+  while (pos < main_end) {
     mirror::Object* obj = reinterpret_cast<mirror::Object*>(pos);
     // No read barrier because obj may not be a valid object.
     if (obj->GetClass<kDefaultVerifyFlags, kWithoutReadBarrier>() == nullptr) {
-      // We are in live TLAB or last object is not initialized yet.
-      while (tlab_pos < active_tlabs->size() && pos >= (*active_tlabs)[tlab_pos].end_) {
-        tlab_pos++;
-      }
-
-      if (tlab_pos < active_tlabs->size()) {
-        if(pos >= (*active_tlabs)[tlab_pos].start_) {
-          // We are in live TLAB. Move to end of TLAB.
-          pos = (*active_tlabs)[tlab_pos].end_;
-        } else {
-          // There is a race condition where a thread has just allocated an object but not set the
-          // class. Move to next TLAB.
-          pos = (*active_tlabs)[tlab_pos].start_;
-        }
-      } else {
-        // There is a race condition where a thread has just allocated an object but not set the
-        // class. We can't know the size of this object, so we don't visit it and exit the function
-        // since there is guaranteed to be not other blocks.
-        return;
-      }
+      // There is a race condition where a thread has just allocated an object but not set the
+      // class. We can't know the size of this object, so we don't visit it and exit the function
+      // since there is guaranteed to be not other blocks.
+      return;
     } else {
       no_thread_safety_analysis_visit(obj);
       pos = reinterpret_cast<uint8_t*>(GetNextObject(obj));
     }
   }
-}
-
-template <typename Visitor>
-void BumpPointerSpace::Walk(Visitor&& visitor) NO_THREAD_SAFETY_ANALYSIS {
-  std::vector<TlabPtrs> active_tlabs;
-  // Collecting TLAB info requires stop the world.
-  // That's not allowed when Walk is called by SS/GSS heap for verification.
-  // Check the number of active tlabs
-  if(tlabs_alive_.LoadSequentiallyConsistent() != 0) {
-    Thread* self = Thread::Current();
-    if (Locks::mutator_lock_->IsExclusiveHeld(self)) {
-      // The mutators are already suspended.
-      CollectActiveTlabsUnsafe(&active_tlabs);
-    } else if (Locks::mutator_lock_->IsSharedHeld(self)) {
-      // The mutators are not suspended yet and we have a shared access
-      // to the mutator lock. Temporarily release the shared access by
-      // transitioning to the suspend state, and suspend the mutators.
-      ScopedThreadSuspension sts(self, kSuspended);
-      CollectActiveTlabsWithSuspendAll(self, &active_tlabs);
-    } else {
-      // The mutators are not suspended yet. Suspend the mutators.
-      CollectActiveTlabsWithSuspendAll(self, &active_tlabs);
+  // Walk the other blocks (currently only TLABs).
+  while (pos < end) {
+    BlockHeader* header = reinterpret_cast<BlockHeader*>(pos);
+    size_t block_size = header->size_;
+    pos += sizeof(BlockHeader);  // Skip the header so that we know where the objects
+    mirror::Object* obj = reinterpret_cast<mirror::Object*>(pos);
+    const mirror::Object* end_obj = reinterpret_cast<const mirror::Object*>(pos + block_size);
+    CHECK_LE(reinterpret_cast<const uint8_t*>(end_obj), End());
+    // We don't know how many objects are allocated in the current block. When we hit a null class
+    // assume its the end. TODO: Have a thread update the header when it flushes the block?
+    // No read barrier because obj may not be a valid object.
+    while (obj < end_obj && obj->GetClass<kDefaultVerifyFlags, kWithoutReadBarrier>() != nullptr) {
+      no_thread_safety_analysis_visit(obj);
+      obj = GetNextObject(obj);
     }
+    pos += block_size;
   }
-  WalkThreadUnsafe(&active_tlabs, visitor);
 }
 
 }  // namespace space

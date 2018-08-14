@@ -61,23 +61,23 @@ public class Main {
   /// CHECK-DAG:     <<CheckedIndex:i\d+>>  BoundsCheck [<<Index>>,<<Length>>]
   /// CHECK-DAG:     <<ArraySet:v\d+>>      ArraySet [<<CheckedArray>>,<<CheckedIndex>>,<<Value>>]
 
-  /* ArrayLength & BoundsCheck are eliminated by "x86_memory_operand_generation" pass which is not running in bronze */
-
   /// CHECK-START-X86_64: void Main.testArrayLengthBoundsCheckX86(int[], int) x86_memory_operand_generation (after)
-  /// CHECK-DAG:     <<Array:l\d+>>            ParameterValue
-  /// CHECK-DAG:     <<Index:i\d+>>            ParameterValue
-  /// CHECK-DAG:     <<Value:i\d+>>            IntConstant 9
-  /// CHECK-DAG:     <<CheckedArray:l\d+>>     NullCheck [<<Array>>]
-  /// CHECK-DAG:     <<X86CheckedArray:i\d+>> X86BoundsCheckMemory [<<Index>>,<<CheckedArray>>]
-  /// CHECK-DAG:     <<ArraySet:v\d+>>         ArraySet [<<CheckedArray>>,<<X86CheckedArray>>,<<Value>>]
+  /// CHECK-DAG:     <<Array:l\d+>>         ParameterValue
+  /// CHECK-DAG:     <<Index:i\d+>>         ParameterValue
+  /// CHECK-DAG:     <<Value:i\d+>>         IntConstant 9
+  /// CHECK-DAG:     <<CheckedArray:l\d+>>  NullCheck [<<Array>>]
+  /// CHECK-DAG:     <<Length:i\d+>>        ArrayLength [<<CheckedArray>>] is_string_length:false emitted_at_use:true loop:none
+  /// CHECK-DAG:     <<CheckedIndex:i\d+>>  BoundsCheck [<<Index>>,<<Length>>]
+  /// CHECK-DAG:     <<ArraySet:v\d+>>      ArraySet [<<CheckedArray>>,<<CheckedIndex>>,<<Value>>]
 
   // Test assumes parameter value is in lower 8 registers (it is passed in edx).
   /// CHECK-START-X86_64: void Main.testArrayLengthBoundsCheckX86(int[], int) disassembly (after)
-  /// CHECK-DAG:     <<Array:l\d+>>           ParameterValue
-  /// CHECK-DAG:     <<Index:i\d+>>           ParameterValue
-  /// CHECK-DAG:     <<Value:i\d+>>           IntConstant 9
-  /// CHECK:         <<CheckedArray:l\d+>>    NullCheck [<<Array>>]
-  /// CHECK-NEXT:    <<X86CheckedArray:i\d+>> X86BoundsCheckMemory [<<Index>>,<<Array>>]
+  /// CHECK-DAG:     <<Array:l\d+>>         ParameterValue
+  /// CHECK-DAG:     <<Index:i\d+>>         ParameterValue
+  /// CHECK-DAG:     <<Value:i\d+>>         IntConstant 9
+  /// CHECK:         <<CheckedArray:l\d+>>  NullCheck [<<Array>>]
+  /// CHECK-NEXT:    <<Length:i\d+>>        ArrayLength [<<Array>>] is_string_length:false emitted_at_use:true loop:none
+  /// CHECK-NEXT:    <<CheckedIndex:i\d+>>  BoundsCheck [<<Index>>,<<Length>>]
   /// CHECK-NEXT:                           cmp [<<BaseReg:\w+>> + 8], e<<IndexReg:\w+>>
   /// CHECK:         <<ArraySet:v\d+>>      ArraySet [<<Array>>,<<Index>>,<<Value>>]
   /// CHECK-NEXT:                           mov [<<BaseReg>> + r<<IndexReg>> * 4 + 12], 9

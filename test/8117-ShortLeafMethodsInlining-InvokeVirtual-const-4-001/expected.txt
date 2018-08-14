@@ -1,2 +1,0 @@
-Initial workJ value is true
-Final workJ value is true

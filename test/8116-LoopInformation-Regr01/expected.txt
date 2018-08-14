@@ -1,2 +1,0 @@
-Main.test1 result: 31
-Main.test2 result: 31

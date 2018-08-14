@@ -1,1 +1,0 @@
-Test to evaluate a trivial loop with logical and operations in it.

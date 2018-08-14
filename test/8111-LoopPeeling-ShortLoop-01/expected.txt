@@ -1,8 +1,0 @@
-Test Main; Subtest test_01; Result: 1.234500012345E-5
-Test Main; Subtest test_02; Result: 1.234500012345E-5
-Test Main; Subtest test_03; Result: 
-Test Main; Subtest test_04; Result: abcd
-Test Main; Subtest test_05; Result: 8.187762407965459E8
-Test Main; Subtest test_06; Result: 2600.0
-Test Main; Subtest test_07; Result: 34.0
-Test Main; Subtest test_08; Result: 12

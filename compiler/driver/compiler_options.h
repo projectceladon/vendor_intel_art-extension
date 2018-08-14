@@ -22,16 +22,15 @@
 #include <vector>
 
 #include "base/macros.h"
+#include "base/utils.h"
 #include "compiler_filter.h"
-#include "dex/pass_manager.h"
 #include "globals.h"
 #include "optimizing/register_allocator.h"
-#include "utils.h"
 
 namespace art {
 
 namespace verifier {
-  class VerifierDepsTest;
+class VerifierDepsTest;
 }  // namespace verifier
 
 class DexFile;
@@ -162,6 +161,9 @@ class CompilerOptions FINAL {
     return generate_mini_debug_info_;
   }
 
+  // Should run-time checks be emitted in debug mode?
+  bool EmitRunTimeChecksInDebugMode() const;
+
   bool GetGenerateBuildId() const {
     return generate_build_id_;
   }
@@ -178,10 +180,19 @@ class CompilerOptions FINAL {
     return implicit_suspend_checks_;
   }
 
+  // Are we compiling a boot image?
   bool IsBootImage() const {
     return boot_image_;
   }
 
+  // Are we compiling a core image (small boot image only used for ART testing)?
+  bool IsCoreImage() const {
+    // Ensure that `core_image_` => `boot_image_`.
+    DCHECK(!core_image_ || boot_image_);
+    return core_image_;
+  }
+
+  // Are we compiling an app image?
   bool IsAppImage() const {
     return app_image_;
   }
@@ -212,19 +223,20 @@ class CompilerOptions FINAL {
     return init_failure_output_.get();
   }
 
-  const PassManagerOptions* GetPassManagerOptions() const {
-    return &pass_manager_options_;
-  }
-
   bool AbortOnHardVerifierFailure() const {
     return abort_on_hard_verifier_failure_;
+  }
+  bool AbortOnSoftVerifierFailure() const {
+    return abort_on_soft_verifier_failure_;
   }
 
   const std::vector<const DexFile*>* GetNoInlineFromDexFile() const {
     return no_inline_from_;
   }
 
-  bool ParseCompilerOption(const StringPiece& option, UsageFn Usage);
+  bool ParseCompilerOptions(const std::vector<std::string>& options,
+                            bool ignore_unrecognized,
+                            std::string* error_msg);
 
   void SetNonPic() {
     compile_pic_ = false;
@@ -242,6 +254,10 @@ class CompilerOptions FINAL {
     return force_determinism_;
   }
 
+  bool DeduplicateCode() const {
+    return deduplicate_code_;
+  }
+
   RegisterAllocator::Strategy GetRegisterAllocationStrategy() const {
     return register_allocation_strategy_;
   }
@@ -250,19 +266,28 @@ class CompilerOptions FINAL {
     return passes_to_run_;
   }
 
+  bool GetDumpTimings() const {
+    return dump_timings_;
+  }
+
+  bool GetDumpStats() const {
+    return dump_stats_;
+  }
+
+  bool CountHotnessInCompiledCode() const {
+    return count_hotness_in_compiled_code_;
+  }
+
  private:
-  void ParseDumpInitFailures(const StringPiece& option, UsageFn Usage);
-  void ParsePassOptions(const StringPiece& option, UsageFn Usage);
+  bool ParseDumpInitFailures(const std::string& option, std::string* error_msg);
   void ParseDumpCfgPasses(const StringPiece& option, UsageFn Usage);
-  void ParsePrintPasses(const StringPiece& option, UsageFn Usage);
-  void ParseDisablePasses(const StringPiece& option, UsageFn Usage);
   void ParseInlineMaxCodeUnits(const StringPiece& option, UsageFn Usage);
   void ParseNumDexMethods(const StringPiece& option, UsageFn Usage);
   void ParseTinyMethodMax(const StringPiece& option, UsageFn Usage);
   void ParseSmallMethodMax(const StringPiece& option, UsageFn Usage);
   void ParseLargeMethodMax(const StringPiece& option, UsageFn Usage);
   void ParseHugeMethodMax(const StringPiece& option, UsageFn Usage);
-  void ParseRegisterAllocationStrategy(const StringPiece& option, UsageFn Usage);
+  bool ParseRegisterAllocationStrategy(const std::string& option, std::string* error_msg);
 
   CompilerFilter::Filter compiler_filter_;
   size_t huge_method_threshold_;
@@ -278,6 +303,7 @@ class CompilerOptions FINAL {
   const std::vector<const DexFile*>* no_inline_from_;
 
   bool boot_image_;
+  bool core_image_;
   bool app_image_;
   // When using a profile file only the top K% of the profiled samples will be compiled.
   double top_k_profile_threshold_;
@@ -289,15 +315,17 @@ class CompilerOptions FINAL {
   bool implicit_so_checks_;
   bool implicit_suspend_checks_;
   bool compile_pic_;
+  bool dump_timings_;
+  bool dump_stats_;
 
   // Vector of methods to have verbose output enabled for.
   std::vector<std::string> verbose_methods_;
 
-  PassManagerOptions pass_manager_options_;
-
   // Abort compilation with an error if we find a class that fails verification with a hard
   // failure.
   bool abort_on_hard_verifier_failure_;
+  // Same for soft failures.
+  bool abort_on_soft_verifier_failure_;
 
   // Log initialization of initialization failures to this stream if not null.
   std::unique_ptr<std::ostream> init_failure_output_;
@@ -308,6 +336,13 @@ class CompilerOptions FINAL {
   // Whether the compiler should trade performance for determinism to guarantee exactly reproducible
   // outcomes.
   bool force_determinism_;
+
+  // Whether code should be deduplicated.
+  bool deduplicate_code_;
+
+  // Whether compiled code should increment the hotness count of ArtMethod. Note that the increments
+  // won't be atomic for performance reasons, so we accept races, just like in interpreter.
+  bool count_hotness_in_compiled_code_;
 
   RegisterAllocator::Strategy register_allocation_strategy_;
 
@@ -323,6 +358,9 @@ class CompilerOptions FINAL {
   friend class DexToDexDecompilerTest;
   friend class CommonCompilerTest;
   friend class verifier::VerifierDepsTest;
+
+  template <class Base>
+  friend bool ReadCompilerOptions(Base& map, CompilerOptions* options, std::string* error_msg);
 
   DISALLOW_COPY_AND_ASSIGN(CompilerOptions);
 };

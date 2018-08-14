@@ -16,7 +16,9 @@
 
 #include "mark_compact.h"
 
-#include "base/logging.h"
+#include <android-base/logging.h>
+
+#include "base/macros.h"
 #include "base/mutex-inl.h"
 #include "base/timing_logger.h"
 #include "gc/accounting/heap_bitmap-inl.h"
@@ -69,17 +71,8 @@ void MarkCompact::RunPhases() {
     ScopedPause pause(this);
     GetHeap()->PreGcVerificationPaused(this);
     GetHeap()->PrePauseRosAllocVerification(this);
-    if (Runtime::Current()->EnabledGcProfile()) {
-      uint64_t mark_start = NanoTime();
-      MarkingPhase();
-      RegisterMark(NanoTime() - mark_start);
-      uint64_t sweep_start = NanoTime();
-      ReclaimPhase();
-      RegisterSweep(NanoTime() - sweep_start);
-    } else {
-      MarkingPhase();
-      ReclaimPhase();
-    }
+    MarkingPhase();
+    ReclaimPhase();
   }
   GetHeap()->PostGcVerification(this);
   FinishPhase();

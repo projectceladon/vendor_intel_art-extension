@@ -80,17 +80,15 @@ public class Main {
   }
 
   /// CHECK-START: void Main.loop5(boolean) liveness (after)
-  /// CHECK:         <<Arg:z\d+>>  ParameterValue  liveness:<<ArgLiv:\d+>> ranges:{[<<ArgLiv>>,<<ArgLoopUse2:\d+>>)} uses:[<<ArgUse:\d+>>,<<ArgLoopUse1:\d+>>,<<ArgUse1:\d+>>,<<ArgLoopUse2>>]
+  /// CHECK:         <<Arg:z\d+>>  ParameterValue  liveness:<<ArgLiv:\d+>> ranges:{[<<ArgLiv>>,<<ArgLoopUse2:\d+>>)} uses:[<<ArgUse:\d+>>,<<ArgLoopUse1:\d+>>,<<ArgLoopUse2>>]
   /// CHECK:                       InvokeVirtual   [{{l\d+}},<<Arg>>] method_name:java.io.PrintStream.println liveness:<<InvokeLiv:\d+>>
   /// CHECK:                       Goto            liveness:<<GotoLiv1:\d+>>
-  /// CHECK:                       Exit
   /// CHECK:                       Goto            liveness:<<GotoLiv2:\d+>>
-  /// CHECK:                       Goto            liveness:<<GotoLiv3:\d+>>
-  /// CHECK:                       Goto            liveness:<<GotoLiv4:\d+>>
-  /// CHECK-EVAL:    <<InvokeLiv>> == <<ArgLoopUse1>>
-  /// CHECK-EVAL:    <<GotoLiv4>> < <<GotoLiv1>>
-  /// CHECK-EVAL:    <<GotoLiv4>> + 2 == <<ArgUse1>>
-  /// CHECK-EVAL:    <<GotoLiv1>> + 2 == <<ArgLoopUse2>>
+  /// CHECK:                       Exit
+  /// CHECK-EVAL:    <<InvokeLiv>> == <<ArgUse>>
+  /// CHECK-EVAL:    <<GotoLiv1>> < <<GotoLiv2>>
+  /// CHECK-EVAL:    <<GotoLiv1>> + 2 == <<ArgLoopUse1>>
+  /// CHECK-EVAL:    <<GotoLiv2>> + 2 == <<ArgLoopUse2>>
 
   public static void loop5(boolean incoming) {
     // 'incoming' must have a use at both back edges.
@@ -106,13 +104,12 @@ public class Main {
   /// CHECK:                       InvokeVirtual   [{{l\d+}},<<Arg>>] method_name:java.io.PrintStream.println liveness:<<InvokeLiv:\d+>>
   /// CHECK:                       Add
   /// CHECK:                       Goto            liveness:<<GotoLiv1:\d+>>
-  /// CHECK:                       Exit
+  /// CHECK:                       Add
   /// CHECK:                       Goto            liveness:<<GotoLiv2:\d+>>
-  /// CHECK:                       Goto            liveness:<<GotoLiv3:\d+>>
-  /// CHECK:                       Goto            liveness:<<GotoLiv4:\d+>>
+  /// CHECK:                       Exit
   /// CHECK-EVAL:    <<InvokeLiv>> == <<ArgUse>>
-  /// CHECK-EVAL:    <<GotoLiv4>> < <<GotoLiv1>>
-  /// CHECK-EVAL:    <<GotoLiv1>> + 2 == <<ArgLoopUse>>
+  /// CHECK-EVAL:    <<GotoLiv1>> < <<GotoLiv2>>
+  /// CHECK-EVAL:    <<GotoLiv2>> + 2 == <<ArgLoopUse>>
 
   public static void loop6(boolean incoming) {
     // 'incoming' must have a use only at the first loop's back edge.
@@ -177,8 +174,8 @@ public class Main {
   /// CHECK:         <<Arg:z\d+>>  StaticFieldGet  liveness:<<ArgLiv:\d+>> ranges:{[<<ArgLiv>>,<<ArgLoopUse:\d+>>)} uses:[<<ArgUse:\d+>>,<<ArgLoopUse>>]
   /// CHECK:                       If [<<Arg>>]    liveness:<<IfLiv:\d+>>
   /// CHECK:                       Goto            liveness:<<GotoLiv1:\d+>>
-  /// CHECK:                       Exit
-  /// CHECK:                       Goto            liveness:<<GotoLiv2:\d+>>
+  /// CHECK-DAG:                   Goto            liveness:<<GotoLiv2:\d+>>
+  /// CHECK-DAG:                   Exit
   /// CHECK-EVAL:    <<IfLiv>> + 1 == <<ArgUse>>
   /// CHECK-EVAL:    <<GotoLiv1>> < <<GotoLiv2>>
   /// CHECK-EVAL:    <<GotoLiv1>> + 2 == <<ArgLoopUse>>

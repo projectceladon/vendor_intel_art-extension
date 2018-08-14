@@ -19,8 +19,10 @@
 
 #include <iosfwd>
 
+#include <android-base/logging.h>
+
 #include "base/bit_utils.h"
-#include "base/logging.h"
+#include "base/macros.h"
 #include "instruction_set.h"
 
 namespace art {
@@ -30,15 +32,7 @@ namespace art {
 class CodeOffset {
  public:
   ALWAYS_INLINE static CodeOffset FromOffset(uint32_t offset, InstructionSet isa = kRuntimeISA) {
-  //atul.b done changes to fix Klocwork issue 8902
-  size_t getInsSet = GetInstructionSetInstructionAlignment(isa);
-  if(LIKELY(getInsSet!=0))
-    return CodeOffset(offset / getInsSet);
-  else
-  {
-    LOG(FATAL) << "Invalid CodeOffset. ";
-    return CodeOffset();
-  }
+    return CodeOffset(offset / GetInstructionSetInstructionAlignment(isa));
   }
 
   ALWAYS_INLINE static CodeOffset FromCompressedOffset(uint32_t offset) {

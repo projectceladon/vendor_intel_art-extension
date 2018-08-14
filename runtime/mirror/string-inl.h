@@ -22,20 +22,29 @@
 
 #include "array.h"
 #include "base/bit_utils.h"
+#include "base/globals.h"
+#include "base/utils.h"
 #include "class.h"
 #include "common_throws.h"
+#include "dex/utf.h"
 #include "gc/heap-inl.h"
-#include "globals.h"
 #include "runtime.h"
 #include "thread.h"
-#include "utf.h"
-#include "utils.h"
 
 namespace art {
 namespace mirror {
 
 inline uint32_t String::ClassSize(PointerSize pointer_size) {
+#ifdef USE_D8_DESUGAR
+  // Two lambdas in CharSequence:
+  //   lambda$chars$0$CharSequence
+  //   lambda$codePoints$1$CharSequence
+  // which were virtual functions in standalone desugar, becomes
+  // direct functions with D8 desugaring.
+  uint32_t vtable_entries = Object::kVTableLength + 54;
+#else
   uint32_t vtable_entries = Object::kVTableLength + 56;
+#endif
   return Class::ComputeClassSize(true, vtable_entries, 0, 0, 0, 1, 2, pointer_size);
 }
 
@@ -45,10 +54,10 @@ class SetStringCountVisitor {
   explicit SetStringCountVisitor(int32_t count) : count_(count) {
   }
 
-  void operator()(ObjPtr<Object>* obj, size_t usable_size ATTRIBUTE_UNUSED) const
+  void operator()(ObjPtr<Object> obj, size_t usable_size ATTRIBUTE_UNUSED) const
       REQUIRES_SHARED(Locks::mutator_lock_) {
     // Avoid AsString as object is not yet in live bitmap or allocation stack.
-    ObjPtr<String> string = ObjPtr<String>::DownCast(*obj);
+    ObjPtr<String> string = ObjPtr<String>::DownCast(obj);
     string->SetCount(count_);
     DCHECK(!string->IsCompressed() || kUseStringCompression);
   }
@@ -65,10 +74,10 @@ class SetStringCountAndBytesVisitor {
       : count_(count), src_array_(src_array), offset_(offset), high_byte_(high_byte) {
   }
 
-  void operator()(ObjPtr<Object>* obj, size_t usable_size ATTRIBUTE_UNUSED) const
+  void operator()(ObjPtr<Object> obj, size_t usable_size ATTRIBUTE_UNUSED) const
       REQUIRES_SHARED(Locks::mutator_lock_) {
     // Avoid AsString as object is not yet in live bitmap or allocation stack.
-    ObjPtr<String> string = ObjPtr<String>::DownCast(*obj);
+    ObjPtr<String> string = ObjPtr<String>::DownCast(obj);
     string->SetCount(count_);
     DCHECK(!string->IsCompressed() || kUseStringCompression);
     int32_t length = String::GetLengthFromCount(count_);
@@ -101,10 +110,10 @@ class SetStringCountAndValueVisitorFromCharArray {
     count_(count), src_array_(src_array), offset_(offset) {
   }
 
-  void operator()(ObjPtr<Object>* obj, size_t usable_size ATTRIBUTE_UNUSED) const
+  void operator()(ObjPtr<Object> obj, size_t usable_size ATTRIBUTE_UNUSED) const
       REQUIRES_SHARED(Locks::mutator_lock_) {
     // Avoid AsString as object is not yet in live bitmap or allocation stack.
-    ObjPtr<String> string = ObjPtr<String>::DownCast(*obj);
+    ObjPtr<String> string = ObjPtr<String>::DownCast(obj);
     string->SetCount(count_);
     const uint16_t* const src = src_array_->GetData() + offset_;
     const int32_t length = String::GetLengthFromCount(count_);
@@ -132,10 +141,10 @@ class SetStringCountAndValueVisitorFromString {
     count_(count), src_string_(src_string), offset_(offset) {
   }
 
-  void operator()(ObjPtr<Object>* obj, size_t usable_size ATTRIBUTE_UNUSED) const
+  void operator()(ObjPtr<Object> obj, size_t usable_size ATTRIBUTE_UNUSED) const
       REQUIRES_SHARED(Locks::mutator_lock_) {
     // Avoid AsString as object is not yet in live bitmap or allocation stack.
-    ObjPtr<String> string = ObjPtr<String>::DownCast(*obj);
+    ObjPtr<String> string = ObjPtr<String>::DownCast(obj);
     string->SetCount(count_);
     const int32_t length = String::GetLengthFromCount(count_);
     bool compressible = kUseStringCompression && String::IsCompressed(count_);

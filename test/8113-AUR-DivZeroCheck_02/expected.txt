@@ -1,4 +1,0 @@
-java.lang.ArithmeticException: divide by zero
-Main.runTest(Main.java:22)
-Main.test(Main.java:30)
-Test Main; Subtest testWithGCStress; Result: java.lang.ArithmeticException: divide by zero

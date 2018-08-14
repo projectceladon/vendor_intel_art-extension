@@ -1,4 +1,0 @@
-Initial nextThingy value is class Foo
-Initial nextThingy.a is F
-Initial nextThingy value is class Foo
-Initial nextThingy.a is G

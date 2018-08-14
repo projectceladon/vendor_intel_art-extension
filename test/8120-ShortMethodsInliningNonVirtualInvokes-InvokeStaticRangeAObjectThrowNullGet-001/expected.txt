@@ -1,3 +1,0 @@
-Exception in thread "main" java.lang.NullPointerException: Attempt to read from null array
-	at Main.getThingies(Main.java:7)
-	at Main.main(Main.java:30)

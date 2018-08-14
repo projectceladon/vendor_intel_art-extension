@@ -18,15 +18,18 @@
 
 #include <sstream>
 
-#include "base/logging.h"
+#include <android-base/logging.h>
+
+#include "base/file_utils.h"
+#include "base/macros.h"
 #include "base/stringpiece.h"
+#include "base/utils.h"
 #include "debugger.h"
 #include "gc/heap.h"
 #include "monitor.h"
 #include "runtime.h"
 #include "ti/agent.h"
 #include "trace.h"
-#include "utils.h"
 
 #include "cmdline_parser.h"
 #include "runtime_options.h"
@@ -89,15 +92,18 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
           .IntoKey(M::CheckJni)
       .Define("-Xjniopts:forcecopy")
           .IntoKey(M::JniOptsForceCopy)
-      .Define({"-Xrunjdwp:_", "-agentlib:jdwp=_"})
-          .WithType<JDWP::JdwpOptions>()
+      .Define("-XjdwpProvider:_")
+          .WithType<JdwpProvider>()
+          .IntoKey(M::JdwpProvider)
+      .Define({"-Xrunjdwp:_", "-agentlib:jdwp=_", "-XjdwpOptions:_"})
+          .WithType<std::string>()
           .IntoKey(M::JdwpOptions)
       // TODO Re-enable -agentlib: once I have a good way to transform the values.
       // .Define("-agentlib:_")
       //     .WithType<std::vector<ti::Agent>>().AppendValues()
       //     .IntoKey(M::AgentLib)
       .Define("-agentpath:_")
-          .WithType<std::list<ti::Agent>>().AppendValues()
+          .WithType<std::list<ti::AgentSpec>>().AppendValues()
           .IntoKey(M::AgentPath)
       .Define("-Xms_")
           .WithType<MemoryKiB>()
@@ -117,18 +123,6 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
       .Define("-XX:NonMovingSpaceCapacity=_")
           .WithType<MemoryKiB>()
           .IntoKey(M::NonMovingSpaceCapacity)
-      .Define("-XX:BumpSpaceCapacity=_")
-          .WithType<MemoryKiB>()
-          .IntoKey(M::BumpSpaceCapacity)
-      .Define("-XX:TenureThreshold=_")
-          .WithType<unsigned int>()
-          .IntoKey(M::TenureThreshold)
-      .Define("-XX:TLABSize=_")
-          .WithType<MemoryKiB>()
-          .IntoKey(M::TLABSize)
-      .Define("-XX:TLABAllocThreshold=_")
-          .WithType<MemoryKiB>()
-          .IntoKey(M::TLABAllocThreshold)
       .Define("-XX:HeapTargetUtilization=_")
           .WithType<double>().WithRange(0.1, 0.9)
           .IntoKey(M::HeapTargetUtilization)
@@ -141,12 +135,6 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
       .Define("-XX:ConcGCThreads=_")
           .WithType<unsigned int>()
           .IntoKey(M::ConcGCThreads)
-      .Define("-XX:ConcurrentGCCycleStart=_")
-          .WithType<unsigned int>()
-          .IntoKey(M::ConcurrentGCCycleStart)
-      .Define("-XX:ConcurrentGCStartFactor=_")
-          .WithType<unsigned int>()
-          .IntoKey(M::ConcurrentGCStartFactor)
       .Define("-Xss_")
           .WithType<Memory<1>>()
           .IntoKey(M::StackSize)
@@ -310,10 +298,6 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
       .Define("-Xzygote-max-boot-retry=_")
           .WithType<unsigned int>()
           .IntoKey(M::ZygoteMaxFailedBoots)
-      .Define("-Xjit-stress-mode")
-          .IntoKey(M::JitStressMode)
-      .Define("-Xjit-block-mode")
-          .IntoKey(M::JitBlockMode)
       .Define("-Xno-dex-file-fallback")
           .IntoKey(M::NoDexFileFallback)
       .Define("-Xno-sig-chain")
@@ -330,28 +314,28 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
           .IntoKey(M::Experimental)
       .Define("-Xforce-nb-testing")
           .IntoKey(M::ForceNativeBridge)
-	  .Define("-XX:GcProfile")
-          .WithValue(true)
-          .IntoKey(M::GcProfile)
-      .Define("-X:GcProfileDir:_")
-          .WithType<std::string>()
-          .IntoKey(M::GcProfileDir)
-      .Define("-XX:GcProfAlloc")
-          .WithValue(true)
-          .IntoKey(M::GcProfAlloc)
-      .Define("-XX:GcProfAtStart")
-          .WithValue(true)
-          .IntoKey(M::GcProfAtStart)
       .Define("-Xplugin:_")
           .WithType<std::vector<Plugin>>().AppendValues()
           .IntoKey(M::Plugins)
       .Define("-XX:ThreadSuspendTimeout=_")  // in ms
           .WithType<MillisecondsToNanoseconds>()  // store as ns
           .IntoKey(M::ThreadSuspendTimeout)
+      .Define("-XX:GlobalRefAllocStackTraceLimit=_")  // Number of free slots to enable tracing.
+          .WithType<unsigned int>()
+          .IntoKey(M::GlobalRefAllocStackTraceLimit)
       .Define("-XX:SlowDebug=_")
           .WithType<bool>()
           .WithValueMap({{"false", false}, {"true", true}})
           .IntoKey(M::SlowDebug)
+      .Define("-Xtarget-sdk-version:_")
+          .WithType<int>()
+          .IntoKey(M::TargetSdkVersion)
+      .Define("-Xhidden-api-checks")
+          .IntoKey(M::HiddenApiChecks)
+      .Define("-Xuse-stderr-logger")
+          .IntoKey(M::UseStderrLogger)
+      .Define("-Xonly-use-system-oat-files")
+          .IntoKey(M::OnlyUseSystemOatFiles)
       .Ignore({
           "-ea", "-da", "-enableassertions", "-disableassertions", "--runtime-arg", "-esa",
           "-dsa", "-enablesystemassertions", "-disablesystemassertions", "-Xrs", "-Xint:_",
@@ -399,7 +383,7 @@ bool ParsedOptions::ProcessSpecialOptions(const RuntimeOptions& options,
     } else if (option == "imageinstructionset") {
       const char* isa_str = reinterpret_cast<const char*>(options[i].second);
       auto&& image_isa = GetInstructionSetFromString(isa_str);
-      if (image_isa == kNone) {
+      if (image_isa == InstructionSet::kNone) {
         Usage("%s is not a valid instruction set.", isa_str);
         return false;
       }
@@ -485,12 +469,6 @@ static void MaybeOverrideVerbosity() {
 bool ParsedOptions::DoParse(const RuntimeOptions& options,
                             bool ignore_unrecognized,
                             RuntimeArgumentMap* runtime_options) {
-  // Initialize Gc profiling parameters, turn off by default.
-  enable_gcprofile_ = false;
-  gcprofile_dir_ = "/data/local/tmp/gcprofile";
-  enable_succ_alloc_profile_ = false;
-  enable_gcprofile_at_start_ = false;
-
   for (size_t i = 0; i < options.size(); ++i) {
     if (true && options[0].first == "-Xzygote") {
       LOG(INFO) << "option[" << i << "]=" << options[i].first;
@@ -531,7 +509,8 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
     Usage(nullptr);
     return false;
   } else if (args.Exists(M::ShowVersion)) {
-    UsageMessage(stdout,"ART version %s %s\n",Runtime::GetVersion(),
+    UsageMessage(stdout,"ART version %s %s\n",
+                 Runtime::GetVersion(),
                  GetInstructionSetString(kRuntimeISA));
     UsageMessage(stdout, "Extension version %s\n", Runtime::GetArtExtensionVersion());
     Exit(0);
@@ -544,11 +523,6 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
     Exit(0);
   }
 
-  if (args.Exists(M::JitStressMode)) {
-    args.Set(M::JITWarmupThreshold, 1U);
-    args.Set(M::JITCompileThreshold, 1U);
-  }
-
   // Set a default boot class path if we didn't get an explicit one via command line.
   if (getenv("BOOTCLASSPATH") != nullptr) {
     args.SetIfMissing(M::BootClassPath, std::string(getenv("BOOTCLASSPATH")));
@@ -558,6 +532,10 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
   if (getenv("CLASSPATH") != nullptr) {
     args.SetIfMissing(M::ClassPath, std::string(getenv("CLASSPATH")));
   }
+
+  // Default to number of processors minus one since the main GC thread also does work.
+  args.SetIfMissing(M::ParallelGCThreads, gc::Heap::kDefaultEnableParallelGC ?
+      static_cast<unsigned int>(sysconf(_SC_NPROCESSORS_CONF) - 1u) : 0u);
 
   // -verbose:
   {
@@ -584,7 +562,7 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
     // If not low memory mode, semispace otherwise.
 
     gc::CollectorType background_collector_type_;
-    gc::CollectorType collector_type_ = (XGcOption{}).collector_type_;  // NOLINT [whitespace/braces] [5]
+    gc::CollectorType collector_type_ = (XGcOption{}).collector_type_;
     bool low_memory_mode_ = args.Exists(M::LowMemoryMode);
 
     background_collector_type_ = args.GetOrDefault(M::BackgroundGc);
@@ -593,10 +571,6 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
       if (xgc != nullptr && xgc->collector_type_ != gc::kCollectorTypeNone) {
         collector_type_ = xgc->collector_type_;
       }
-    }
-
-    if (collector_type_ == gc::kCollectorTypeGenCopying) {
-      background_collector_type_ = collector_type_;
     }
 
     if (background_collector_type_ == gc::kCollectorTypeNone) {
@@ -609,18 +583,6 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
     }
 
     args.Set(M::BackgroundGc, BackgroundGcOption { background_collector_type_ });
-
-    // If foregroud is SS/GSS/GenCopying, Enable Parallel GC.
-    if (collector_type_ == gc::kCollectorTypeGSS ||
-        collector_type_ == gc::kCollectorTypeSS||
-        collector_type_ == gc::kCollectorTypeGenCopying) {
-        args.SetIfMissing(M::ParallelGCThreads,
-            static_cast<unsigned int>(sysconf(_SC_NPROCESSORS_CONF) - 1u) );
-    } else {
-      // Default to number of processors minus one since the main GC thread also does work.
-      args.SetIfMissing(M::ParallelGCThreads, gc::Heap::kDefaultEnableParallelGC ?
-          static_cast<unsigned int>(sysconf(_SC_NPROCESSORS_CONF) -1u) : 0u);
-    }
   }
 
   // If a reference to the dalvik core.jar snuck in, replace it with
@@ -844,10 +806,6 @@ void ParsedOptions::Usage(const char* fmt, ...) {
   UsageMessage(stream, "  -Xjitdisableopt\n");
   UsageMessage(stream, "  -Xjitsuspendpoll\n");
   UsageMessage(stream, "  -XX:mainThreadStackSize=N\n");
-  UsageMessage(stream, "  -XX:GcProfile\n");
-  UsageMessage(stream, "  -XGcProfileDir:dirname\n");
-  UsageMessage(stream, "  -XX:GcProfAlloc\n");
-  UsageMessage(stream, "  -XX:GcProfAtStart\n");
   UsageMessage(stream, "\n");
 
   Exit((error) ? 1 : 0);

@@ -1,4 +1,0 @@
-Main.test1 result: -410407986
-Main.test2 result: -1
-Main.test3 result: 124076833
-Main.test4 result: -1

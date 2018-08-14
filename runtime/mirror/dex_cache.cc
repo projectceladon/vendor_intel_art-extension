@@ -17,15 +17,14 @@
 #include "dex_cache-inl.h"
 
 #include "art_method-inl.h"
-#include "base/logging.h"
 #include "class_linker.h"
 #include "gc/accounting/card_table-inl.h"
 #include "gc/heap.h"
 #include "globals.h"
 #include "linear_alloc.h"
 #include "oat_file.h"
-#include "object.h"
 #include "object-inl.h"
+#include "object.h"
 #include "object_array-inl.h"
 #include "runtime.h"
 #include "string.h"
@@ -216,7 +215,7 @@ void DexCache::SetLocation(ObjPtr<mirror::String> location) {
   SetFieldObject<false>(OFFSET_OF_OBJECT_MEMBER(DexCache, location_), location);
 }
 
-#if !defined(__aarch64__) && !defined(__x86_64__)
+#if !defined(__aarch64__) && !defined(__x86_64__) && !defined(__mips__)
 static pthread_mutex_t dex_cache_slow_atomic_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 DexCache::ConversionPair64 DexCache::AtomicLoadRelaxed16B(std::atomic<ConversionPair64>* target) {

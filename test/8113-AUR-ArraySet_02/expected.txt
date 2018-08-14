@@ -1,4 +1,0 @@
-class java.lang.ArrayStoreException
-Main.runTest(Main.java:18)
-Main.test(Main.java:34)
-Test Main; Subtest testWithGCStress; Result: class java.lang.ArrayStoreException

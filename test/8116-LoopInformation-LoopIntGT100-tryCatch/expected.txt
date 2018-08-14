@@ -1,5 +1,0 @@
-Main.test1 result: 170
-Main.test2 result: 330
-Main.test3 result: 641
-Main.test4 result: 4160
-Main.test5 result: 719552596
