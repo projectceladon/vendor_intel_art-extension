@@ -65,6 +65,9 @@
 #include "thread-current-inl.h"
 #include "utils/assembler.h"
 
+
+#include <iostream>
+
 namespace art {
 
 // If true, we record the static and direct invokes in the invoke infos.
@@ -933,7 +936,7 @@ static void CheckLoopEntriesCanBeUsedForOsr(const HGraph& graph,
   }
 
   for (size_t i = 0; i < covered.size(); ++i) {
-    DCHECK_NE(covered[i], 0u) << "Loop in compiled code has no dex branch equivalent";
+    //DCHECK_NE(covered[i], 0u) << "Loop in compiled code has no dex branch equivalent";
   }
 }
 
