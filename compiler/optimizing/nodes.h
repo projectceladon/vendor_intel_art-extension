@@ -339,6 +339,7 @@ class HGraph : public ArenaObject<kArenaAllocGraph> {
         invoke_type_(invoke_type),
         in_ssa_form_(false),
         number_of_cha_guards_(0),
+        is_recursive_(false),
         instruction_set_(instruction_set),
         cached_null_constant_(nullptr),
         cached_int_constants_(std::less<int32_t>(), allocator->Adapter(kArenaAllocConstantsMap)),
@@ -611,6 +612,9 @@ class HGraph : public ArenaObject<kArenaAllocGraph> {
   void SetNumberOfCHAGuards(uint32_t num) { number_of_cha_guards_ = num; }
   void IncrementNumberOfCHAGuards() { number_of_cha_guards_++; }
 
+  bool IsMethodRecursive() const { return is_recursive_; }
+  void SetMethodRecursive(bool val) { is_recursive_ = val; }
+
  private:
   void RemoveInstructionsAsUsersFromDeadBlocks(const ArenaBitVector& visited) const;
   void RemoveDeadBlocks(const ArenaBitVector& visited);
@@ -725,6 +729,9 @@ class HGraph : public ArenaObject<kArenaAllocGraph> {
   // Number of CHA guards in the graph. Used to short-circuit the
   // CHA guard optimization pass when there is no CHA guard left.
   uint32_t number_of_cha_guards_;
+
+  // it tells whether (or not) current method is recursive
+  bool is_recursive_;
 
   const InstructionSet instruction_set_;
 

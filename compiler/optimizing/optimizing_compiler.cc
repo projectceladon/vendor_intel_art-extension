@@ -641,6 +641,7 @@ void OptimizingCompiler::RunOptimizations(HGraph* graph,
     OptDef(OptimizationPass::kSharpening),
     OptDef(OptimizationPass::kConstantFolding),
     OptDef(OptimizationPass::kInstructionSimplifier),
+    OptDef(OptimizationPass::kTailRecursionElimination),
     OptDef(OptimizationPass::kDeadCodeElimination, "dead_code_elimination$initial")
   };
   RunOptimizations(graph,
