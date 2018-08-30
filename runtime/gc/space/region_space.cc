@@ -217,7 +217,13 @@ void RegionSpace::SetFromSpace(accounting::ReadBarrierTable* rb_table, bool forc
         DCHECK((state == RegionState::kRegionStateAllocated ||
                 state == RegionState::kRegionStateLarge) &&
                type == RegionType::kRegionTypeToSpace);
-        bool should_evacuate = force_evacuate_all || r->ShouldBeEvacuated();
+        //We donot want to evacuate regions containing large objects at all
+        //Attempting to evacuate live Large objects currently happens only during full evacuation
+        //Which has no advantage in the first place, with the side effect that the evacuation can fail because of fragmentation (Harmony Stress exposes it)
+        //The logic in ClearFromSpace checks for live_bytes_ == 0,
+        // to clear out any unevacFromSpaces with no live objects.
+        //We expect the large objects to be cleared out that way during force_evacuate_all as well
+        bool should_evacuate = (force_evacuate_all || r->ShouldBeEvacuated()) && !r->IsLarge();
         if (should_evacuate) {
           r->SetAsFromSpace();
           DCHECK(r->IsInFromSpace());
