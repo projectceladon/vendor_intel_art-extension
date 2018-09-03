@@ -90,6 +90,7 @@ class InstructionSimplifierVisitor : public HGraphDelegateVisitor {
   void VisitAbove(HAbove* condition) OVERRIDE;
   void VisitAboveOrEqual(HAboveOrEqual* condition) OVERRIDE;
   void VisitDiv(HDiv* instruction) OVERRIDE;
+  void VisitRem(HRem* instruction) OVERRIDE;
   void VisitMul(HMul* instruction) OVERRIDE;
   void VisitNeg(HNeg* instruction) OVERRIDE;
   void VisitNot(HNot* instruction) OVERRIDE;
@@ -1665,6 +1666,139 @@ void InstructionSimplifierVisitor::VisitDiv(HDiv* instruction) {
       return;
     }
   }
+}
+void InstructionSimplifierVisitor::VisitRem(HRem* instruction) {
+
+  DataType::Type type = instruction->GetType();
+  if (!DataType::IsIntOrLongType(type)) {
+    return ;
+  }
+  // Replace code looking like
+  //  y = x % (2^n)
+  // with
+  //  temp = x & (2^n - 1);
+  //  y = (x < 0) ? ((temp == 0) ? 0 : (temp | ~(2^n - 1))) : temp
+
+  HConstant* right_cst = instruction->GetConstantRight();
+
+  if (right_cst != nullptr) {
+    int64_t value = Int64FromConstant(right_cst);
+    if (!IsPowerOfTwo(value)) {
+      return;
+    }
+    HGraph* graph = GetGraph();
+    HInstruction* left = instruction->GetLeastConstantLeft();
+    DCHECK(left != nullptr);
+    ArenaAllocator* allocator = graph->GetAllocator();
+
+    HBasicBlock* rem_block = new (allocator) HBasicBlock (graph);
+    HBasicBlock* rest_of_ins_block = new (allocator) HBasicBlock (graph);
+    graph->AddBlock(rem_block);
+    graph->AddBlock(rest_of_ins_block);
+
+    HBasicBlock* orig_block = instruction->GetBlock();
+
+    int size = orig_block->GetSuccessors().size();
+    HBasicBlock*  orig_successors [size];
+
+    for (int i =0 ; i < size; i++) {
+       orig_successors[i] = orig_block->GetSuccessors()[i];
+    }
+    for (int i = 0; i< size; i++) {
+      HBasicBlock* succ = orig_successors[i];
+      succ->ReplacePredecessor(orig_block, rest_of_ins_block);
+     }
+
+    orig_block->AddSuccessor(rem_block);
+    rem_block->AddSuccessor(rest_of_ins_block);
+
+    int found = 0;
+    for (HInstructionIterator it(orig_block->GetInstructions()); !it.Done(); it.Advance()) {
+      HInstruction* current = it.Current();
+       if (found == 1) {
+        current->MoveToBlock(rest_of_ins_block, false);
+      }
+      if ( (found == 0) && (current->Equals(instruction))) {
+        found = 1;
+      }
+    }
+
+    instruction->MoveToBlock(rem_block, false);
+    orig_block->AddInstruction(new (allocator) HGoto(rem_block->GetDexPc()));
+
+    //Now replace Rem with diamond structure
+    HInstruction* constant_0 = graph->GetConstant(left->GetType(),0);
+    HInstruction* new_right_cst = graph->GetConstant(left->GetType(), value-1, left->GetDexPc());
+
+    HInstruction * cmp = new (allocator) HGreaterThanOrEqual(left, constant_0);
+    HIf* if_inst = new (allocator) HIf(cmp);
+    HAnd* and_ins = new (allocator) HAnd(type, left, new_right_cst, instruction->GetDexPc());
+    HInstruction* cmp_and = new (allocator) HNotEqual(and_ins, constant_0);
+    HIf* if_and = new (allocator) HIf(cmp_and);
+    HNot* not_ins = new (allocator) HNot (new_right_cst->GetType(), new_right_cst, new_right_cst->GetDexPc());
+    HOr* or_ins = new (allocator) HOr (and_ins->GetType(), and_ins, not_ins, instruction->GetDexPc());
+
+    HBasicBlock* false_succ = new (allocator) HBasicBlock (graph);
+    HBasicBlock* and_false_succ = new (allocator) HBasicBlock (graph);
+    HBasicBlock* and_true_succ = new (allocator) HBasicBlock (graph);
+    HBasicBlock * true_succ = new (allocator) HBasicBlock (graph);
+    HBasicBlock* join_block = new (allocator) HBasicBlock (graph);
+    graph->AddBlock(false_succ);
+    graph->AddBlock(and_false_succ);
+    graph->AddBlock(and_true_succ);
+    graph->AddBlock(true_succ);
+    graph->AddBlock(join_block);
+
+    rem_block->AddInstruction(and_ins);
+    rem_block->AddInstruction(cmp);
+    rem_block->AddInstruction(if_inst);
+
+    //Add true successor first and then false
+    rem_block->AddSuccessor(true_succ);
+    rem_block->AddSuccessor(false_succ);
+    false_succ->AddSuccessor(and_true_succ);
+    false_succ->AddSuccessor(and_false_succ);
+    and_false_succ->AddSuccessor(join_block);
+    and_true_succ->AddSuccessor(join_block);
+    true_succ->AddSuccessor(join_block);
+    join_block->AddSuccessor(rest_of_ins_block);
+
+    false_succ->AddInstruction(cmp_and);
+    false_succ->AddInstruction(if_and);
+
+    and_false_succ->AddInstruction(new (allocator) HGoto());
+
+    and_true_succ->AddInstruction(not_ins);
+    and_true_succ->AddInstruction(or_ins);
+    and_true_succ->AddInstruction(new (allocator) HGoto());
+
+    true_succ->AddInstruction(new (allocator) HGoto());
+
+    // create a phi for the rem instruction
+    HPhi* phi = new (allocator) HPhi(allocator, kNoRegNumber, 0, HPhi::ToPhiType(and_ins->GetType()));
+    join_block->AddPhi(phi);
+    phi->AddInput(constant_0);
+    phi->AddInput(or_ins);
+    phi->AddInput(and_ins);
+    join_block->AddInstruction(new (allocator) HGoto());
+
+    //Remove the link we created earlier
+    rest_of_ins_block->RemovePredecessor(rem_block);
+    rem_block->RemoveSuccessor(rest_of_ins_block);
+
+    //Finally replace uses of rem with phi
+    instruction->ReplaceWith(phi);
+    DCHECK(!instruction->HasUses());
+    instruction->GetBlock()->RemoveInstruction(instruction);
+
+    //Rebuild loop and dominance Information
+    graph->ClearLoopInformation();
+    graph->ClearDominanceInformation();
+    graph->BuildDominatorTree();
+
+    RecordSimplification();
+    return ;
+   }
 }
 
 void InstructionSimplifierVisitor::VisitMul(HMul* instruction) {
