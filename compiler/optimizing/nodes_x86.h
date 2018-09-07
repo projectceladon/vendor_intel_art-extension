@@ -17,6 +17,8 @@
 #ifndef ART_COMPILER_OPTIMIZING_NODES_X86_H_
 #define ART_COMPILER_OPTIMIZING_NODES_X86_H_
 
+#include "nodes.h"
+
 namespace art {
 
 // Compute the address of the method for X86 Constant area support.
@@ -128,6 +130,120 @@ class HX86PackedSwitch FINAL : public HTemplateInstruction<2> {
   const int32_t num_entries_;
 };
 
+class HAndNot FINAL : public HBinaryOperation {
+ public:
+  HAndNot(DataType::Type result_type,
+       HInstruction* left,
+       HInstruction* right,
+       uint32_t dex_pc = kNoDexPc)
+      : HBinaryOperation(kAndNot, result_type, left, right, SideEffects::None(), dex_pc) {
+  }
+
+  bool IsCommutative() const OVERRIDE { return false; }
+
+  template <typename T> static T Compute(T x, T y) { return ~x & y; }
+
+  HConstant* Evaluate(HIntConstant* x, HIntConstant* y) const OVERRIDE {
+    return GetBlock()->GetGraph()->GetIntConstant(
+        Compute(x->GetValue(), y->GetValue()), GetDexPc());
+  }
+  HConstant* Evaluate(HLongConstant* x, HLongConstant* y) const OVERRIDE {
+    return GetBlock()->GetGraph()->GetLongConstant(
+        Compute(x->GetValue(), y->GetValue()), GetDexPc());
+  }
+  HConstant* Evaluate(HFloatConstant* x ATTRIBUTE_UNUSED,
+                      HFloatConstant* y ATTRIBUTE_UNUSED) const OVERRIDE {
+    LOG(FATAL) << DebugName() << " is not defined for float values";
+    UNREACHABLE();
+  }
+  HConstant* Evaluate(HDoubleConstant* x ATTRIBUTE_UNUSED,
+                      HDoubleConstant* y ATTRIBUTE_UNUSED) const OVERRIDE {
+    LOG(FATAL) << DebugName() << " is not defined for double values";
+    UNREACHABLE();
+  }
+
+  DECLARE_INSTRUCTION(AndNot);
+
+ protected:
+  DEFAULT_COPY_CONSTRUCTOR(AndNot);
+};
+
+class HAndNeg FINAL : public HUnaryOperation {
+ public:
+  HAndNeg(DataType::Type result_type, HInstruction* input, uint32_t dex_pc = kNoDexPc)
+      : HUnaryOperation(kAndNeg, result_type, input, dex_pc) {
+    DCHECK_EQ(result_type, DataType::Kind(input->GetType()));
+  }
+
+  template <typename T> static T Compute(T x) { return x & -x; }
+
+  HConstant* Evaluate(HIntConstant* x) const OVERRIDE {
+    return GetBlock()->GetGraph()->GetIntConstant(Compute(x->GetValue()), GetDexPc());
+  }
+  HConstant* Evaluate(HLongConstant* x) const OVERRIDE {
+    return GetBlock()->GetGraph()->GetLongConstant(Compute(x->GetValue()), GetDexPc());
+  }
+  HConstant* Evaluate(HFloatConstant* x ATTRIBUTE_UNUSED) const OVERRIDE {
+    LOG(FATAL) << DebugName() << "is not defined for float values";
+    UNREACHABLE();
+  }
+  HConstant* Evaluate(HDoubleConstant* x ATTRIBUTE_UNUSED) const OVERRIDE {
+    LOG(FATAL) << DebugName() << "is not defined for double values";
+    UNREACHABLE();
+  }
+
+  DECLARE_INSTRUCTION(AndNeg);
+
+ protected:
+  DEFAULT_COPY_CONSTRUCTOR(AndNeg);
+};
+
+class HBitwiseAddRight FINAL : public HUnaryOperation {
+ public:
+  HBitwiseAddRight(DataType::Type result_type,InstructionKind op,  HInstruction* input, uint32_t dex_pc = kNoDexPc)
+      : HUnaryOperation(kBitwiseAddRight, result_type, input, dex_pc),
+        op_kind_(op) {
+    DCHECK_EQ(result_type, DataType::Kind(input->GetType()));
+    DCHECK(op == HInstruction::kAnd || op == HInstruction::kXor) << op;
+  }
+  template <typename T>
+  auto Compute(T x) const -> decltype(x & (x-1)) {
+    static_assert(std::is_same<decltype(x & (x-1)), decltype(x ^(x-1))>::value,
+                  "Inconsistent  bitwise types");
+    switch (op_kind_) {
+      case HInstruction::kAnd:
+        return x & (x-1);
+      case HInstruction::kXor:
+        return x ^ (x-1);
+      default:
+        LOG(FATAL) << "Unreachable";
+        UNREACHABLE();
+    }
+  }
+
+  HConstant* Evaluate(HIntConstant* x) const OVERRIDE {
+    return GetBlock()->GetGraph()->GetIntConstant(Compute(x->GetValue()), GetDexPc());
+  }
+  HConstant* Evaluate(HLongConstant* x) const OVERRIDE {
+    return GetBlock()->GetGraph()->GetLongConstant(Compute(x->GetValue()), GetDexPc());
+  }
+  HConstant* Evaluate(HFloatConstant* x ATTRIBUTE_UNUSED) const OVERRIDE {
+    LOG(FATAL) << DebugName() << "is not defined for float values";
+    UNREACHABLE();
+  }
+  HConstant* Evaluate(HDoubleConstant* x ATTRIBUTE_UNUSED) const OVERRIDE {
+    LOG(FATAL) << DebugName() << "is not defined for double values";
+    UNREACHABLE();
+  }
+  InstructionKind GetOpKind() const { return op_kind_; }
+
+  DECLARE_INSTRUCTION(BitwiseAddRight);
+
+ protected:
+ const InstructionKind op_kind_;
+
+  DEFAULT_COPY_CONSTRUCTOR(BitwiseAddRight);
+  
 // X86/X86-64 version of HBoundsCheck that checks length in array descriptor.
 class HX86BoundsCheckMemory : public HExpression<2> {
  public:
