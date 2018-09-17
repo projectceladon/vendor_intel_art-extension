@@ -967,7 +967,7 @@ void FullUnrollHelper::ReplaceLoopWithUnroll() {
   HBasicBlock* exit = GetSingleExitBlock();
   ArenaAllocator* allocator = header->GetGraph()->GetAllocator();
   HBasicBlock* body = loop_info_->GetBackEdges()[0];
-  DCHECK(exit != nullptr);
+  CHECK(exit != nullptr);
   CHECK(body != nullptr);
   body->DisconnectAndDelete();
   exit->RemovePredecessor(header);
