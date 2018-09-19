@@ -23,6 +23,9 @@
 #include "arch/context.h"
 #include "art_method-inl.h"
 #include "base/stringpiece.h"
+#ifdef CAPSTONE
+#include "binary_analyzer/binary_analyzer.h"
+#endif
 #include "class_linker-inl.h"
 #include "debugger.h"
 #include "dex/descriptors_names.h"
@@ -397,9 +400,55 @@ void ArtMethod::Invoke(Thread* self, uint32_t* args, uint32_t args_size, JValue*
   self->PopManagedStackFragment(fragment);
 }
 
+#ifdef CAPSTONE
+
+class AutoFastJniDetectTask FINAL : public jit::JniTask {
+ public:
+  AutoFastJniDetectTask(ArtMethod* method, const void* native_method)
+      : method_(method), native_method_(native_method) { }
+
+  ~AutoFastJniDetectTask() { }
+
+  void Run(Thread* self) OVERRIDE {
+    ScopedObjectAccess soa(self);
+    bool is_fast = IsFastJNI(method_->GetDexMethodIndex(), *method_->GetDexFile(), native_method_);
+    if (is_fast) {
+      method_->SetAccessFlags(method_->GetAccessFlags() | kAccFastNative);
+    }
+  }
+
+  void Finalize() OVERRIDE {
+    delete this;
+  }
+
+ private:
+  ArtMethod* const method_;
+  const void* native_method_;
+
+  DISALLOW_IMPLICIT_CONSTRUCTORS(AutoFastJniDetectTask);
+};
+
+#endif // #ifdef CAPSTONE
+
 const void* ArtMethod::RegisterNative(const void* native_method) {
   CHECK(IsNative()) << PrettyMethod();
   CHECK(native_method != nullptr) << PrettyMethod();
+
+#ifdef CAPSTONE
+  const bool not_going_to_unregister = (native_method != GetJniDlsymLookupStub());
+  if (Runtime::Current()->IsAutoFastDetect() && not_going_to_unregister) {
+    jit::Jit* jit = Runtime::Current()->GetJit();
+    if (jit != nullptr) {
+      jit->AddJniTask(Thread::Current(), new AutoFastJniDetectTask(this, native_method));
+    } else {
+      // If we can't use JIT's thread pool it's better to disable auto fast JNI detection because
+      // if we run it in main thread it causes ~20% app launch time regression, so we decided to
+      // disable it as app launch time much more important than this optimization. Now auto fast
+      // JNI detection doesn't work in AOT at all. In JIT mode it doesn't work too but only between
+      // process startup and JIT creation.
+    }
+  }
+#endif
   void* new_native_method = nullptr;
   Runtime::Current()->GetRuntimeCallbacks()->RegisterNativeMethod(this,
                                                                   native_method,
