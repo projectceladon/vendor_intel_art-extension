@@ -25,7 +25,7 @@ JIT_DEBUG_REGISTER_CODE_LDFLAGS = [
 
 cc_defaults {
     name: "libart_defaults",
-    defaults: ["art_defaults"],
+    defaults: ["libcapstone-defaults","art_defaults"],
     host_supported: true,
     srcs: [
         "aot_class_linker.cc",
@@ -526,6 +526,28 @@ art_cc_library {
         "external/icu/icu4c/source/common",
     ],
 }
+
+art_capstone_dependancies {
+    name: "libcapstone-defaults",
+    host_supported: true,
+    clang: true,
+
+    product_variables: {
+       autoFastJni: {
+             srcs: [
+                "binary_analyzer/binary_analyzer_x86.cc",
+                "binary_analyzer/disassembler.cc",
+             ],
+             include_dirs: [
+                 "external/capstone/include",
+                 "external/capstone",
+             ],
+             shared_libs: ["libcapstone"],
+        },
+    },
+
+}
+
 
 art_cc_test {
     name: "art_runtime_tests",
