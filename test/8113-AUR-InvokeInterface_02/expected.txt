@@ -1,0 +1,7 @@
+class java.lang.ArithmeticException
+C.intFunc(Main.java:25)
+Main.runTest(Main.java:41)
+class java.lang.ArithmeticException
+C.intFunc(Main.java:25)
+Main.runTest(Main.java:41)
+Test Main; Subtest testWithGCStress; Result: class java.lang.ArithmeticException

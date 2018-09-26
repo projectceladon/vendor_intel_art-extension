@@ -59,7 +59,7 @@
 #include "vdex_file.h"
 #include "verifier_compiler_binding.h"
 #include "verifier_deps.h"
-
+#include "dex/code_item_accessors-inl.h"
 namespace art {
 namespace verifier {
 

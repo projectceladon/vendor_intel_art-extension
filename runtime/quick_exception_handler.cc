@@ -32,6 +32,7 @@
 #include "mirror/class_loader.h"
 #include "mirror/throwable.h"
 #include "oat_quick_method_header.h"
+#include "oat_file.h"
 #include "stack.h"
 #include "stack_map.h"
 
@@ -421,6 +422,28 @@ class DeoptimizeStackVisitor FINAL : public StackVisitor {
 
     if (!vreg_map.IsValid()) {
       return;
+    }
+
+    if (!single_frame_deopt_ && number_of_vregs > 0) {
+      // Check that the method we deoptimize was compiled with the debuggable flag.
+      const OatFile::OatDexFile* oat_dex_file = m->GetDexCache()->GetDexFile()->GetOatDexFile();
+      if (oat_dex_file != nullptr &&
+          oat_dex_file->GetOatFile()->Contains(GetCurrentOatQuickMethodHeader())) {
+        CHECK(oat_dex_file->GetOatFile()->IsDebuggable())
+            << "Cannot deoptimize non-debuggable method " << ArtMethod::PrettyMethod(m)
+            << " from " << oat_dex_file->GetOatFile()->GetLocation();
+      } else {
+        CHECK(Runtime::Current()->GetJit() != nullptr);
+        jit::JitCodeCache* code_cache = Runtime::Current()->GetJit()->GetCodeCache();
+        if (code_cache != nullptr && code_cache->ContainsPc(GetCurrentOatQuickMethodHeader())) {
+          CHECK(Runtime::Current()->IsJavaDebuggable())  // JIT must have taken the debuggable flag.
+              << "Cannot deoptimize non-debuggable JIT method " << ArtMethod::PrettyMethod(m);
+        } else {
+          LOG(FATAL) << "Neither AOT nor JIT: header=0x"
+                     << std::hex << GetCurrentOatQuickMethodHeader()
+                     << ", method: " << ArtMethod::PrettyMethod(m);
+        }
+      }
     }
 
     for (uint16_t vreg = 0; vreg < number_of_vregs; ++vreg) {

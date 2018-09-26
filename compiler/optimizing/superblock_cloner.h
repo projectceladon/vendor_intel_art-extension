@@ -173,6 +173,36 @@ class SuperblockCloner : public ValueObject {
   // and hir_map_.
   void CloneBasicBlocks();
 
+  HBasicBlock* CloneBasicBlockWithOutPhis(const HBasicBlock* orig_block);
+
+  /**
+   * @brief During the unrolling iterations (except the very first one), we need to take the in-loop
+   * phi inputs into account when copying instructions using loop phi nodes. This mapping is computed
+   * when this method is called.
+   * @return Returns true if the update was successful, or false otherwise.
+   */
+  bool UpdateLoopPhiNodesMap(const HBasicBlock* loop_header);
+
+  /**
+   * @brief During the first unroll iteration, we need to take the out-of-loop values into account
+   * to map the body instructions to their correct values. This facility will map them accordingly.
+   * @return Returns true if the mapping was successful, or false otherwise.
+   */
+  void MapOutOfLoopPhiNodes(const HBasicBlock* loop_header);
+
+  bool IsUselessforcloning(HInstruction* instruction);
+
+  void UpdateLoopInformation(std::vector<HBasicBlock*>*copy_body);
+
+  bool HasOuterLoop(){
+  return outer_loop_ != nullptr ;
+  }
+
+  void SetExculdeList(std::unordered_set<HInstruction*> list){
+    exclude_list_= list;
+  }
+
+
   HInstruction* GetInstrCopy(HInstruction* orig_instr) const {
     auto copy_input_iter = hir_map_->find(orig_instr);
     DCHECK(copy_input_iter != hir_map_->end());
@@ -298,10 +328,54 @@ class SuperblockCloner : public ValueObject {
   // Area in the graph for which control-flow (back edges, loops, dominators) needs to be adjusted.
   HLoopInformation* outer_loop_;
   HBasicBlockSet outer_loop_bb_set_;
+  // List of instructions that we should not clone.
+  std::unordered_set<HInstruction*> exclude_list_;
 
   ART_FRIEND_TEST(SuperblockClonerTest, AdjustControlFlowInfo);
 
   DISALLOW_COPY_AND_ASSIGN(SuperblockCloner);
+};
+
+class FullUnrollHelper : public ValueObject {
+ public:
+  explicit FullUnrollHelper(HLoopInformation* info,
+                            int64_t trip_count) :
+      loop_info_(info),
+      bb_map_(std::less<HBasicBlock*>(),
+            info->GetHeader()->GetGraph()->GetAllocator()->Adapter(kArenaAllocSuperblockCloner)),
+      hir_map_(std::less<HInstruction*>(),
+             info->GetHeader()->GetGraph()->GetAllocator()->Adapter(kArenaAllocSuperblockCloner)),
+      cloner_(info->GetHeader()->GetGraph(), &info->GetBlocks(), &bb_map_, &hir_map_),
+      trip_count_(trip_count),
+      unrolled_entry_(nullptr),
+      unrolled_tail_(nullptr) {
+    DCHECK(!info->IsIrreducible());
+  }
+
+
+  void DoFullUnrolling();
+  void ListLoopConditionInstructions();
+  bool IsLoopConditionInstruction(HInstruction* copy_instr);
+  bool IsSimpleLoop();
+  void AddLinks(std::vector<HBasicBlock*> * copy_body);
+  void ReplaceLoopWithUnroll();
+  void FixLoopUsers();
+  HBasicBlock * GetSingleExitBlock();
+  void SetUnrolledEntryBlock( HBasicBlock* bb) { DCHECK(bb != nullptr); unrolled_entry_ = bb; }
+  void SetUnrolledTailBlock( HBasicBlock* bb ) { DCHECK(bb != nullptr); unrolled_tail_ = bb; }
+  void AppendBody(HBasicBlock* preheader, HBasicBlock* exit);
+  static bool IsLoopClonable(HLoopInformation* loop_info);
+
+ private:
+  HLoopInformation* loop_info_;
+  SuperblockCloner::HBasicBlockMap bb_map_;
+  SuperblockCloner::HInstructionMap hir_map_;
+  SuperblockCloner cloner_;
+  int64_t trip_count_;
+  std::unordered_set<HInstruction*> loop_condition_instructions_;
+  HBasicBlock* unrolled_entry_;
+  HBasicBlock* unrolled_tail_;
+  DISALLOW_COPY_AND_ASSIGN(FullUnrollHelper);
 };
 
 }  // namespace art

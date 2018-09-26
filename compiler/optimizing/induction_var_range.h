@@ -164,6 +164,11 @@ class InductionVarRange {
    * Checks if header logic of a loop terminates. Sets trip-count tc if known.
    */
   bool IsFinite(HLoopInformation* loop, /*out*/ int64_t* tc) const;
+    /**
+   * Checks if a trip count is known for the loop and sets 'trip_count' to its value in this case.
+   */
+  bool HasKnownTripCount(HLoopInformation* loop, /*out*/ int64_t* trip_count) const;
+
 
   /**
    * Checks if the given instruction is a unit stride induction inside the closest enveloping
@@ -193,6 +198,14 @@ class InductionVarRange {
     kAtLeast
   };
 
+  /** Checks if header logic of a loop terminates. If trip count is known (constant) sets
+   * 'is_constant' to true and 'trip_count' to the trip count value.
+   */
+  bool CheckForFiniteAndConstantProps(HLoopInformation* loop,
+                                      /*out*/ bool* is_constant,
+                                      /*out*/ int64_t* trip_count) const;
+
+  
   /**
    * Returns true if exact or upper/lower bound on the given induction
    * information is known as a 64-bit constant, which is returned in value.

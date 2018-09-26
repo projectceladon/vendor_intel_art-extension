@@ -339,6 +339,7 @@ class HGraph : public ArenaObject<kArenaAllocGraph> {
         invoke_type_(invoke_type),
         in_ssa_form_(false),
         number_of_cha_guards_(0),
+        is_recursive_(false),
         instruction_set_(instruction_set),
         cached_null_constant_(nullptr),
         cached_int_constants_(std::less<int32_t>(), allocator->Adapter(kArenaAllocConstantsMap)),
@@ -611,6 +612,9 @@ class HGraph : public ArenaObject<kArenaAllocGraph> {
   void SetNumberOfCHAGuards(uint32_t num) { number_of_cha_guards_ = num; }
   void IncrementNumberOfCHAGuards() { number_of_cha_guards_++; }
 
+  bool IsMethodRecursive() const { return is_recursive_; }
+  void SetMethodRecursive(bool val) { is_recursive_ = val; }
+
  private:
   void RemoveInstructionsAsUsersFromDeadBlocks(const ArenaBitVector& visited) const;
   void RemoveDeadBlocks(const ArenaBitVector& visited);
@@ -725,6 +729,9 @@ class HGraph : public ArenaObject<kArenaAllocGraph> {
   // Number of CHA guards in the graph. Used to short-circuit the
   // CHA guard optimization pass when there is no CHA guard left.
   uint32_t number_of_cha_guards_;
+
+  // it tells whether (or not) current method is recursive
+  bool is_recursive_;
 
   const InstructionSet instruction_set_;
 
@@ -1484,6 +1491,13 @@ class HLoopInformationOutwardIterator : public ValueObject {
   M(X86PackedSwitch, Instruction)
 #endif
 
+#if defined(ART_ENABLE_CODEGEN_x86) || defined(ART_ENABLE_CODEGEN_x86_64)
+#define FOR_EACH_CONCRETE_INSTRUCTION_X86_COMMON(M)                     \
+  M(X86BoundsCheckMemory, Instruction)
+#else
+#define FOR_EACH_CONCRETE_INSTRUCTION_X86_COMMON(M)
+#endif
+
 #define FOR_EACH_CONCRETE_INSTRUCTION_X86_64(M)
 
 #define FOR_EACH_CONCRETE_INSTRUCTION(M)                                \
@@ -1494,7 +1508,8 @@ class HLoopInformationOutwardIterator : public ValueObject {
   FOR_EACH_CONCRETE_INSTRUCTION_MIPS(M)                                 \
   FOR_EACH_CONCRETE_INSTRUCTION_MIPS64(M)                               \
   FOR_EACH_CONCRETE_INSTRUCTION_X86(M)                                  \
-  FOR_EACH_CONCRETE_INSTRUCTION_X86_64(M)
+  FOR_EACH_CONCRETE_INSTRUCTION_X86_64(M)                               \
+  FOR_EACH_CONCRETE_INSTRUCTION_X86_COMMON(M)
 
 #define FOR_EACH_ABSTRACT_INSTRUCTION(M)                                \
   M(Condition, BinaryOperation)                                         \
@@ -2024,6 +2039,8 @@ class HInstruction : public ArenaObject<kArenaAllocInstruction> {
     return false;
   }
 
+  virtual size_t GetBaseInputIndex() const { return 0; }
+
   void SetRawInputAt(size_t index, HInstruction* input) {
     SetRawInputRecordAt(index, HUserRecord<HInstruction*>(input));
   }
@@ -2213,6 +2230,9 @@ class HInstruction : public ArenaObject<kArenaAllocInstruction> {
 
   // Move `this` instruction before `cursor`
   void MoveBefore(HInstruction* cursor, bool do_checks = true);
+
+  // Move `this` instruction and append to the end of new_block
+  void MoveToBlock(HBasicBlock* new_block, bool do_checks = true);
 
   // Move `this` before its first user and out of any loops. If there is no
   // out-of-loop user that dominates all other users, move the instruction
@@ -7392,7 +7412,7 @@ class HIntermediateAddress FINAL : public HExpression<2> {
 #ifdef ART_ENABLE_CODEGEN_mips
 #include "nodes_mips.h"
 #endif
-#ifdef ART_ENABLE_CODEGEN_x86
+#if defined(ART_ENABLE_CODEGEN_x86) || defined(ART_ENABLE_CODEGEN_x86_64)
 #include "nodes_x86.h"
 #endif
 
