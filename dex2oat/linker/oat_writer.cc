@@ -192,7 +192,8 @@ class OatWriter::OatClassHeader {
   OatClassHeader(uint32_t offset,
                  uint32_t num_non_null_compiled_methods,
                  uint32_t num_methods,
-                 ClassStatus status)
+                 ClassStatus status,
+                 BitVector* method_verif_bitmap)
       : status_(enum_cast<uint16_t>(status)),
         offset_(offset) {
     // We just arbitrarily say that 0 methods means kOatClassNoneCompiled and that we won't use
@@ -205,12 +206,24 @@ class OatWriter::OatClassHeader {
     } else {
       type_ = kOatClassSomeCompiled;
     }
+    if (status == ClassStatus::kRetryVerificationAtRuntime ||
+        status == ClassStatus::kResolved) {
+      method_verification_bitmap_.reset(method_verif_bitmap);
+      method_verification_bitmap_size_ = method_verification_bitmap_->GetSizeOf();
+    } else {
+      method_verification_bitmap_ = nullptr;
+      method_verification_bitmap_size_ = 0;
+    }
   }
 
   bool Write(OatWriter* oat_writer, OutputStream* out, const size_t file_offset) const;
 
-  static size_t SizeOf() {
-    return sizeof(status_) + sizeof(type_);
+  size_t SizeOf() {
+    return sizeof(status_)
+           + sizeof(type_)
+           + method_verification_bitmap_size_
+           + ((status_ == enum_cast<uint16_t>(ClassStatus::kRetryVerificationAtRuntime) ||
+             status_ == enum_cast<uint16_t>(ClassStatus::kResolved)) ? sizeof(method_verification_bitmap_size_) : 0);
   }
 
   // Data to write.
@@ -219,6 +232,10 @@ class OatWriter::OatClassHeader {
 
   static_assert(OatClassType::kOatClassMax < (1 << 16), "oat_class type won't fit in 16bits");
   uint16_t type_;
+
+  uint32_t method_verification_bitmap_size_;
+
+  std::unique_ptr<BitVector> method_verification_bitmap_;
 
   // Offset of start of OatClass from beginning of OatHeader. It is
   // used to validate file position when writing.
@@ -231,7 +248,8 @@ class OatWriter::OatClass {
  public:
   OatClass(const dchecked_vector<CompiledMethod*>& compiled_methods,
            uint32_t compiled_methods_with_code,
-           uint16_t oat_class_type);
+           uint16_t oat_class_type,
+           size_t oat_header_size);
   OatClass(OatClass&& src) = default;
   size_t SizeOf() const;
   bool Write(OatWriter* oat_writer, OutputStream* out) const;
@@ -431,6 +449,7 @@ OatWriter::OatWriter(bool compiling_boot_image,
     size_oat_class_offsets_(0),
     size_oat_class_type_(0),
     size_oat_class_status_(0),
+    size_oat_class_method_verification_bitmap_(0),
     size_oat_class_method_bitmaps_(0),
     size_oat_class_method_offsets_(0),
     size_method_bss_mappings_(0u),
@@ -959,16 +978,21 @@ class OatWriter::InitOatClassesMethodVisitor : public DexMethodVisitor {
       }
     }
 
+    BitVector* method_verif_bitmap =
+               writer_->compiler_driver_->GetMethodVerificationBitmap(class_ref);
+
     writer_->oat_class_headers_.emplace_back(offset_,
                                              compiled_methods_with_code_,
                                              compiled_methods_.size(),
-                                             status);
+                                             status,
+                                             method_verif_bitmap);
     OatClassHeader& header = writer_->oat_class_headers_.back();
     offset_ += header.SizeOf();
     if (writer_->MayHaveCompiledMethods()) {
       writer_->oat_classes_.emplace_back(compiled_methods_,
                                          compiled_methods_with_code_,
-                                         header.type_);
+                                         header.type_,
+                                         header.SizeOf());
       offset_ += writer_->oat_classes_.back().SizeOf();
     }
     return DexMethodVisitor::EndClass();
@@ -2968,6 +2992,7 @@ bool OatWriter::WriteCode(OutputStream* out) {
     DO_STAT(size_oat_class_offsets_);
     DO_STAT(size_oat_class_type_);
     DO_STAT(size_oat_class_status_);
+    DO_STAT(size_oat_class_method_verification_bitmap_);
     DO_STAT(size_oat_class_method_bitmaps_);
     DO_STAT(size_oat_class_method_offsets_);
     DO_STAT(size_method_bss_mappings_);
@@ -4293,7 +4318,8 @@ bool OatWriter::OatDexFile::WriteClassOffsets(OatWriter* oat_writer, OutputStrea
 
 OatWriter::OatClass::OatClass(const dchecked_vector<CompiledMethod*>& compiled_methods,
                               uint32_t compiled_methods_with_code,
-                              uint16_t oat_class_type)
+                              uint16_t oat_class_type,
+                              size_t oat_header_size)
     : compiled_methods_(compiled_methods) {
   const uint32_t num_methods = compiled_methods.size();
   CHECK_LE(compiled_methods_with_code, num_methods);
@@ -4303,7 +4329,7 @@ OatWriter::OatClass::OatClass(const dchecked_vector<CompiledMethod*>& compiled_m
   method_offsets_.resize(compiled_methods_with_code);
   method_headers_.resize(compiled_methods_with_code);
 
-  uint32_t oat_method_offsets_offset_from_oat_class = OatClassHeader::SizeOf();
+  uint32_t oat_method_offsets_offset_from_oat_class = oat_header_size;
   // We only create this instance if there are at least some compiled.
   if (oat_class_type == kOatClassSomeCompiled) {
     method_bitmap_.reset(new BitVector(num_methods, false, Allocator::GetMallocAllocator()));
@@ -4350,6 +4376,23 @@ bool OatWriter::OatClassHeader::Write(OatWriter* oat_writer,
     return false;
   }
   oat_writer->size_oat_class_type_ += sizeof(type_);
+  if (status_ == enum_cast<uint16_t>(ClassStatus::kRetryVerificationAtRuntime) ||
+      status_ == enum_cast<uint16_t>(ClassStatus::kResolved)) {
+   if (!out->WriteFully(&method_verification_bitmap_size_, sizeof(method_verification_bitmap_size_))) {
+      PLOG(ERROR) << "Failed to write method verification bitmap size to " << out->GetLocation();
+      return false;
+    }
+    oat_writer->size_oat_class_method_verification_bitmap_ += sizeof(method_verification_bitmap_size_);
+
+    if (method_verification_bitmap_size_ != 0) {
+      DCHECK(method_verification_bitmap_ != nullptr);
+      if (!out->WriteFully(method_verification_bitmap_->GetRawStorage(), method_verification_bitmap_size_)) {
+        PLOG(ERROR) << "Failed to write method verification bitmap to " << out->GetLocation();
+        return false;
+      }
+      oat_writer->size_oat_class_method_verification_bitmap_ += method_verification_bitmap_size_;
+    }
+  }
   return true;
 }
 

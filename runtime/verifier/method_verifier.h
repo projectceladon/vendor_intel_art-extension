@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "base/arena_allocator.h"
+#include "base/bit_vector-inl.h"
 #include "base/macros.h"
 #include "base/scoped_arena_containers.h"
 #include "base/value_object.h"
@@ -289,7 +290,9 @@ class MethodVerifier {
                                    bool allow_soft_failures,
                                    HardFailLogMode log_level,
                                    bool need_precise_constants,
-                                   std::string* error_string)
+                                   std::string* error_string,
+                                   BitVector* unverified_method_bitmap,
+                                   const uint32_t* oat_file_unverified_method_bitmap)
       REQUIRES_SHARED(Locks::mutator_lock_);
 
   /*

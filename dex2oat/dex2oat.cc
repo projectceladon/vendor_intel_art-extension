@@ -1889,6 +1889,8 @@ class Dex2Oat FINAL {
       // Only set the compiler filter if we are doing separate compilation since there is a bit
       // of overhead when checking if a class was previously verified.
       callbacks_->SetDoesClassUnloading(true, driver_.get());
+    } else {
+      callbacks_->SetDoesClassUnloading(false, driver_.get());
     }
 
     // Setup vdex for compilation.
