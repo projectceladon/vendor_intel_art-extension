@@ -69,4 +69,16 @@ bool QuickCompilerCallbacks::CanUseOatStatusForVerification(mirror::Class* klass
   return std::find(dex_files_->begin(), dex_files_->end(), dex_file) == dex_files_->end();
 }
 
+void QuickCompilerCallbacks::RecordVerificationBitmap(ClassReference ref, BitVector* verification_bitmap) {
+  if (compiler_driver_ != nullptr)
+    return compiler_driver_->RecordClassMethodVerificationBitmap(ref, verification_bitmap);
+}
+
+BitVector* QuickCompilerCallbacks::GetVerificationBitmap(ClassReference ref) {
+  BitVector* verification_bitmap = nullptr;
+  if (compiler_driver_ != nullptr)
+    verification_bitmap = compiler_driver_->GetMethodVerificationBitmap(ref);
+  return verification_bitmap;
+}
+
 }  // namespace art

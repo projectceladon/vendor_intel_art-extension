@@ -18,6 +18,7 @@
 #define ART_RUNTIME_NOOP_COMPILER_CALLBACKS_H_
 
 #include "compiler_callbacks.h"
+#include "base/bit_vector-inl.h"
 
 namespace art {
 
@@ -37,6 +38,8 @@ class NoopCompilerCallbacks FINAL : public CompilerCallbacks {
   bool IsRelocationPossible() OVERRIDE { return false; }
 
   verifier::VerifierDeps* GetVerifierDeps() const OVERRIDE { return nullptr; }
+
+  BitVector* GetVerificationBitmap(ClassReference ref ATTRIBUTE_UNUSED) OVERRIDE { return nullptr;}
 
  private:
   DISALLOW_COPY_AND_ASSIGN(NoopCompilerCallbacks);

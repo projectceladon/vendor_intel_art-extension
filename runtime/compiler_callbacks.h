@@ -17,6 +17,7 @@
 #ifndef ART_RUNTIME_COMPILER_CALLBACKS_H_
 #define ART_RUNTIME_COMPILER_CALLBACKS_H_
 
+#include "base/bit_vector-inl.h"
 #include "base/mutex.h"
 #include "dex/class_reference.h"
 #include "class_status.h"
@@ -66,6 +67,11 @@ class CompilerCallbacks {
 
   virtual void SetDoesClassUnloading(bool does_class_unloading ATTRIBUTE_UNUSED,
                                      CompilerDriver* compiler_driver ATTRIBUTE_UNUSED) {}
+
+  virtual void RecordVerificationBitmap(ClassReference ref ATTRIBUTE_UNUSED,
+                                     BitVector* verification_bitmap ATTRIBUTE_UNUSED) {}
+
+  virtual BitVector* GetVerificationBitmap(ClassReference ref ATTRIBUTE_UNUSED) = 0;
 
   bool IsBootImage() {
     return mode_ == CallbackMode::kCompileBootImage;

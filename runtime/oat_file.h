@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "base/array_ref.h"
+#include "base/bit_vector-inl.h"
 #include "base/mutex.h"
 #include "base/os.h"
 #include "base/safe_map.h"
@@ -229,6 +230,14 @@ class OatFile {
     // is present. Note that most callers should use GetOatMethod.
     uint32_t GetOatMethodOffsetsOffset(uint32_t method_index) const;
 
+    const uint32_t* GetVerificationBitmap() const {
+        return verification_bitmap_;
+    }
+
+    uint32_t GetVerificationBitmapSize() const{
+      return verification_bitmap_size_;
+    }
+
     // A representation of an invalid OatClass, used when an OatClass can't be found.
     // See FindOatClass().
     static OatClass Invalid() {
@@ -237,7 +246,9 @@ class OatFile {
                       kOatClassNoneCompiled,
                       /* bitmap_size */ 0,
                       /* bitmap_pointer */ nullptr,
-                      /* methods_pointer */ nullptr);
+                      /* methods_pointer */ nullptr,
+                      /* verif_bitmap_size */ 0,
+                      /* verification_bitmap_pointer */ nullptr);
     }
 
    private:
@@ -246,7 +257,9 @@ class OatFile {
              OatClassType type,
              uint32_t bitmap_size,
              const uint32_t* bitmap_pointer,
-             const OatMethodOffsets* methods_pointer);
+             const OatMethodOffsets* methods_pointer,
+             uint32_t verif_bitmap_size,
+             const uint32_t* verification_bitmap_pointer);
 
     const OatFile* const oat_file_;
 
@@ -257,6 +270,10 @@ class OatFile {
     const uint32_t* const bitmap_;
 
     const OatMethodOffsets* const methods_pointer_;
+
+    uint32_t verification_bitmap_size_;
+
+    const uint32_t* const verification_bitmap_;
 
     friend class art::OatDexFile;
   };
