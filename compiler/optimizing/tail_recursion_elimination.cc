@@ -22,7 +22,7 @@ bool TailRecursionElimination::CheckTailRecursive(HInstruction* instr, const cha
   HInvoke* invoke = nullptr;
   if (instr->IsInvokeStaticOrDirect() || instr->IsInvokeVirtual()) {
     invoke = instr->AsInvoke();
-    DCHECK(invoke);
+    CHECK(invoke);
   }
   else {
     return false;
@@ -103,7 +103,7 @@ void BuildEnvManuallyFor(HGraph* graph, HInstruction* instruction, ArenaVector<H
   int num_vregs = graph->GetNumberOfVRegs();
   HEnvironment* environment = new (allocator) HEnvironment( allocator, num_vregs /*current_locals->size()*/,
         graph->GetArtMethod(), instruction->GetDexPc(), instruction);
-  DCHECK(environment);
+  CHECK(environment);
 
   environment->CopyFrom(ArrayRef<HInstruction* const>(*current_locals));
   instruction->SetRawEnvironment(environment);
@@ -139,6 +139,7 @@ bool TailRecursionElimination::IdentifyIfRetBlkMainParam(HBasicBlock* exit_blk, 
           HInstruction* inst1 = use1.GetUser();
           if (inst1->IsIf()) {
             HIf* inst2 = inst1->AsIf();
+            CHECK(inst2);
             HBasicBlock* true_successor = inst2->IfTrueSuccessor();
             HBasicBlock* false_successor = inst2->IfFalseSuccessor();
 
@@ -146,12 +147,13 @@ bool TailRecursionElimination::IdentifyIfRetBlkMainParam(HBasicBlock* exit_blk, 
             // and find which path contains recursive invoke instruction
             std::vector<HBasicBlock*> block_list;
             HBasicBlock* arr_blk[2] = {true_successor, false_successor};
+            unsigned int num_blk[2] = {0, 0};
 
             for (int iter_blk = 0; iter_blk < 2; iter_blk++) {
               block_list.clear();
               HBasicBlock* cur_blk = arr_blk[iter_blk];
-              block_list.push_back(cur_blk);
               while (cur_blk != exit_blk->GetSinglePredecessor()) {
+                num_blk[iter_blk]++;
                 if (trec.recursive_invoke_map_.find(cur_blk) != trec.recursive_invoke_map_.end()) {
                   if (iter_blk == 0) {
                     if_true_invoke = true;
@@ -172,25 +174,39 @@ bool TailRecursionElimination::IdentifyIfRetBlkMainParam(HBasicBlock* exit_blk, 
                     }
                   }
                 }
-                cur_blk = block_list.front();
-                block_list.erase(block_list.begin());
+
+                if (!(block_list.empty())) {
+                  cur_blk = block_list.front();
+                  block_list.erase(block_list.begin());
+                }
               }
             }
 
+            // the exit successor of IF condition should have only 1 block in between
             if ((if_true_invoke == true) && (if_false_invoke == true)) {
               return false;
             }
             else if (if_false_invoke == true) {
-              if_break_true = true;
-              inst_if = inst2;
-              flag_if = true;
-              break;
+              if (num_blk[0] > 1) {
+                return false;
+              }
+              else {
+                if_break_true = true;
+                inst_if = inst2;
+                flag_if = true;
+                break;
+              }
             }
             else if (if_true_invoke == true) {
-              if_break_true = false;
-              inst_if = inst2;
-              flag_if = true;
-              break;
+              if (num_blk[1] > 1) {
+                return false;
+              }
+              else {
+                if_break_true = false;
+                inst_if = inst2;
+                flag_if = true;
+                break;
+              }
             }
           }
           else if (inst1->IsReturn()) {
@@ -233,12 +249,48 @@ bool TailRecursionElimination::IdentifyIfRetBlkMainParam(HBasicBlock* exit_blk, 
   }
 
   // if there is no important param, then do not handle
-  if (trec.imp_param_ == nullptr) {
+  if ((trec.imp_param_ == nullptr) || (trec.inst_if_exit_ == nullptr)) {
     return false;
   }
   else {
     return true;
   }
+}
+
+// API for creation of accumulator instruction which will be input for return
+// statement inside new loop exit block
+HInstruction* TailRecursionElimination::GetAccInstruction(HInstruction* val1, HInstruction* val2, TREContext& trec) {
+
+  if ((val1 == nullptr) || (val2 == nullptr)) {
+    return nullptr;
+  }
+
+  // get allocator
+  ArenaAllocator* allocator = graph_->GetAllocator();
+  DCHECK(allocator);
+  DataType::Type ret_type = trec.ret_type_;
+  HInstruction* new_instr = nullptr;
+
+  if (trec.ret_op_->IsAdd()) {
+    new_instr = new (allocator) HAdd(ret_type, val1, val2);
+  }
+  else if (trec.ret_op_->IsSub()) {
+    new_instr = new (allocator) HSub(ret_type, val1, val2);
+  }
+  else if (trec.ret_op_->IsMul()) {
+    new_instr = new (allocator) HMul(ret_type, val1, val2);
+  }
+  else if (trec.ret_op_->IsDiv()) {
+    new_instr = new (allocator) HDiv(ret_type, val1, val2, trec.ret_op_->GetDexPc());
+  }
+  else if (trec.ret_op_->IsShl()) {
+    new_instr = new (allocator) HShl(ret_type, val1, val2, trec.ret_op_->GetDexPc());
+  }
+  else if (trec.ret_op_->IsShr()) {
+    new_instr = new (allocator) HShr(ret_type, val1, val2, trec.ret_op_->GetDexPc());
+  }
+
+  return new_instr;
 }
 
 // API to perform method graph transformations for tail-recursion elimination
@@ -272,7 +324,7 @@ bool TailRecursionElimination::TransformMethodGraph(HBasicBlock* exit_blk, HBasi
     // for now, don't handle other cases
     return false;
   }
-  DCHECK(new_loop_header);
+  CHECK(new_loop_header);
 
   // avoid the case where 2 or more recursive invokes exist in same block with different induction var operation as input
   HInstruction* input_param_invoke = nullptr;
@@ -297,28 +349,107 @@ bool TailRecursionElimination::TransformMethodGraph(HBasicBlock* exit_blk, HBasi
     }
   }
 
-  // add new PHI for accumulator variable in loop header
-  HPhi* phi_accumulator = new (allocator) HPhi(allocator, kNoRegNumber, 0, HPhi::ToPhiType(ret_type));
-  DCHECK(phi_accumulator);
-  new_loop_header->AddPhi(phi_accumulator);
+  // check whether we can decide initial value for accumulator PHI
+  HBasicBlock* new_loop_back_edge = exit_blk->GetSinglePredecessor();
+  HInstruction* ret_loop_back_edge = nullptr;
 
+  // identify second input for accumulator PHI
+  HInstruction* last_accu_op = nullptr;
+  for (HInstructionIterator it(new_loop_back_edge->GetInstructions()); !it.Done(); it.Advance()) {
+    HInstruction* cur_inst = it.Current();
+    if (cur_inst->IsReturn()) {
+      last_accu_op = cur_inst->InputAt(0);
+      ret_loop_back_edge = cur_inst;
+    }
+  }
 
-  // add new PHI for induction variable in loop header
-  HPhi* phi_induction = new (allocator) HPhi(allocator, kNoRegNumber, 0, HPhi::ToPhiType(ret_type));
-  DCHECK(phi_induction);
+  CHECK(last_accu_op);
+  HInstruction* if_exit_val = nullptr;
+  if (last_accu_op != nullptr) {
+
+    // retrieving return value of exit-successor of major (i.e. recursion break) IF instruction
+    if (last_accu_op->IsPhi()) {
+      HPhi* t_phi = last_accu_op->AsPhi();
+      //unsigned int t_index = (trec.if_true_exit_ == true)? 0:1;
+      unsigned int t_index = (trec.if_true_exit_ == true)? 1:0;
+      if_exit_val = t_phi->InputAt(t_index);
+    }
+  }
+
+  // initial value for accumulator variable
+  HInstruction* inst_accumulator_val = nullptr;
+  if (if_exit_val) {
+    if (if_exit_val->IsConstant()) {
+      inst_accumulator_val = if_exit_val;
+    }
+    else if (if_exit_val == imp_param) {
+      inst_accumulator_val = (inst_if_exit->InputAt(0))->InputAt(1); 
+    }
+    else if ((if_exit_val->IsBinaryOperation()) && (if_exit_val->InputAt(0) == imp_param)
+              && (if_exit_val->InputAt(1)->IsConstant())) {
+      HInstruction* t_inst = (inst_if_exit->InputAt(0))->InputAt(1);
+      CHECK(t_inst);
+      uint64_t val1 = t_inst->AsConstant()->GetValueAsUint64();
+
+      HConstant* t_inst1 = if_exit_val->InputAt(1)->AsConstant();
+      CHECK(t_inst1);
+      uint64_t val2 = t_inst1->GetValueAsUint64();
+
+      if (if_exit_val->IsAdd()) {
+        inst_accumulator_val = graph_->GetConstant(ret_type, val1 + val2);
+      }
+      else if (if_exit_val->IsSub()) {
+        inst_accumulator_val = graph_->GetConstant(ret_type, val1 - val2);
+      }
+      else if (if_exit_val->IsMul()) {
+        inst_accumulator_val = graph_->GetConstant(ret_type, val1 * val2);
+      }
+      else if (if_exit_val->IsDiv()) {
+        inst_accumulator_val = graph_->GetConstant(ret_type, val1 / val2);
+      }
+      else if (if_exit_val->IsShl()) {
+        inst_accumulator_val = graph_->GetConstant(ret_type, val1 << val2);
+      }
+      else if (if_exit_val->IsShr()) {
+        inst_accumulator_val = graph_->GetConstant(ret_type, val1 >> val2);
+      }
+      else {
+        return false;
+      }
+    }
+    else if (if_exit_val == trec.acc_param_) {
+      if (trec.ret_op_ && trec.ret_op_->IsBinaryOperation() && (trec.ret_op_->IsDiv() || trec.ret_op_->IsMul())) {
+        inst_accumulator_val = graph_->GetConstant(ret_type, 1);
+      }
+      else {
+        inst_accumulator_val = graph_->GetConstant(ret_type, 0);
+      }
+    }
+    else {
+      return false;
+    }
+  }
+
+  // add new PHI for induction variable in loop header (type same as recursion impacting parameter)
+  HPhi* phi_induction = new (allocator) HPhi(allocator, kNoRegNumber, 0, HPhi::ToPhiType(imp_param->GetType()));
+  CHECK(phi_induction);
   new_loop_header->AddPhi(phi_induction);
 
-  // add new PHI for accumulator function parameter in loop header
+  // add new PHI for accumulator function parameter in loop header (type same as accumulator method parameter)
   HPhi* phi_acc_param = nullptr;
   if (trec.acc_param_ != nullptr) {
-    phi_acc_param = new (allocator) HPhi(allocator, kNoRegNumber, 0, HPhi::ToPhiType(ret_type));
-    DCHECK(phi_acc_param);
+    phi_acc_param = new (allocator) HPhi(allocator, kNoRegNumber, 0, HPhi::ToPhiType(trec.acc_param_->GetType()));
+    CHECK(phi_acc_param);
     new_loop_header->AddPhi(phi_acc_param);
     phi_acc_param->AddInput(trec.acc_param_);
   }
 
+  // add new PHI for accumulator variable in loop header (type same as method return type)
+  HPhi* phi_accumulator = new (allocator) HPhi(allocator, kNoRegNumber, 0, HPhi::ToPhiType(ret_type));
+  CHECK(phi_accumulator);
+  new_loop_header->AddPhi(phi_accumulator);
+
   // make loop and add back-edge between new block and old pre-exit block
-  HBasicBlock* new_loop_back_edge = exit_blk->GetSinglePredecessor();
   new_loop_header->AddBackEdge(new_loop_back_edge);
   HLoopInformation* loop_info = new_loop_header->GetLoopInformation();
   loop_info->SetHeader(new_loop_header);
@@ -326,7 +457,7 @@ bool TailRecursionElimination::TransformMethodGraph(HBasicBlock* exit_blk, HBasi
   // add suspend check in loop header "new_loop_header"
   HInstruction* first_ins = new_loop_header->GetFirstInstruction();
   HSuspendCheck* suspend_check = new (allocator) HSuspendCheck(new_loop_header->GetDexPc());
-  DCHECK(suspend_check);
+  CHECK(suspend_check);
   new_loop_header->InsertInstructionBefore(suspend_check, first_ins);
 
   // Add environment for suspend check
@@ -335,7 +466,7 @@ bool TailRecursionElimination::TransformMethodGraph(HBasicBlock* exit_blk, HBasi
 
   for (std::vector<HInstruction*>::iterator iter1 = trec.param_list_.begin(); iter1 != trec.param_list_.end(); ++iter1) {
     HInstruction* t_inst = *iter1;
-    DCHECK(t_inst);
+    CHECK(t_inst);
     if (t_inst == imp_param) {
       current_locals.push_back(phi_induction);
     }
@@ -356,43 +487,13 @@ bool TailRecursionElimination::TransformMethodGraph(HBasicBlock* exit_blk, HBasi
   loop_info->SetSuspendCheck(suspend_check);
   graph_->OrderLoopHeaderPredecessors(new_loop_header);
 
-  // identify second input for accumulator PHI
-  HInstruction* last_accu_op = nullptr;
-  for (HInstructionIterator it(new_loop_back_edge->GetInstructions()); !it.Done(); it.Advance()) {
-    HInstruction* cur_inst = it.Current();
-    if (cur_inst->IsReturn()) {
-      last_accu_op = cur_inst->InputAt(0);
-
-      // removing old return instruction & inserting new goto
-      new_loop_back_edge->RemoveInstruction(cur_inst);
-      new_loop_back_edge->AddInstruction(new (allocator) HGoto(kNoDexPc));
-    }
-  }
-
-
-  DCHECK(last_accu_op);
-  HInstruction* if_exit_val = nullptr;
-  if (last_accu_op != nullptr) {
-
-    // retrieving return value of exit-successor of major (i.e. recursion break) IF instruction
-    if (last_accu_op->IsPhi()) {
-      HPhi* t_phi = last_accu_op->AsPhi();
-      //unsigned int t_index = (trec.if_true_exit_ == true)? 0:1;
-      unsigned int t_index = (trec.if_true_exit_ == true)? 1:0;
-      if_exit_val = t_phi->InputAt(t_index);
-    }
-  }
-
-  // initial value for accumulator variable
-  HIntConstant* inst_accumulator_val = graph_->GetIntConstant(0);
-  DCHECK(inst_accumulator_val);
-
-  phi_accumulator->AddInput(inst_accumulator_val); //imp_param);
-  phi_accumulator->AddInput(last_accu_op);
+  // removing old return instruction & inserting new goto to "new_loop_back_edge"
+  new_loop_back_edge->RemoveInstruction(ret_loop_back_edge);
+  new_loop_back_edge->AddInstruction(new (allocator) HGoto(kNoDexPc));
 
   // add new block as successor to new loop header block and make it new pre-exit block
   new_loop_exit = new (allocator) HBasicBlock(graph_);
-  DCHECK(new_loop_exit);
+  CHECK(new_loop_exit);
   graph_->AddBlock(new_loop_exit);
 
   // copy all instructions from old exit-successor of IF to new exit-successor block
@@ -412,38 +513,38 @@ bool TailRecursionElimination::TransformMethodGraph(HBasicBlock* exit_blk, HBasi
       unsigned int t_index = it1->GetIndex();
       ++it1;
 
-      if ((t_inst->GetBlock() != old_if_exit_block) && (t_inst->IsPhi())) {
+      HBasicBlock* inst_blk = t_inst->GetBlock();
+      if ((inst_blk != old_if_exit_block) && (t_inst->IsPhi())) {
         HPhi* t_phi = t_inst->AsPhi();
-        t_phi->RemoveInputAt(t_index);
+        HInstruction* other = t_phi->InputAt(1 - t_index);
+        // if last_accu_op is same as this instruction, update last_accu_op
+        if (last_accu_op == t_inst) {
+          last_accu_op = other;
+        }
+ 
+        t_phi->ReplaceWith(other);
+        inst_blk->RemovePhi(t_phi);
       }
     }
 
     // add "cur_ins" to new exit-successor block and remove from old exit-successor
-    new_loop_exit->AddInstruction(cur_ins);
     old_if_exit_block->RemoveInstruction(cur_ins);
+    cur_ins->SetId(-1);
+    first_block->InsertInstructionBefore(cur_ins, first_block->GetLastInstruction());
   }
+
+  CHECK(inst_accumulator_val);
+  phi_accumulator->AddInput(inst_accumulator_val);
+  phi_accumulator->AddInput(last_accu_op);
 
   // add new instruction for updating return value to accumulator inside new pre-exit block
   HInstruction* new_instr = nullptr;
-  if (trec.ret_op_->IsBinaryOperation() && (if_exit_val != nullptr)) {
-    const char* instr_name = trec.ret_op_->DebugName();
-    if (strncmp(instr_name, "Add", strlen("Add")) == 0) {
-       new_instr = new (allocator) HAdd(ret_type, phi_accumulator, if_exit_val);
-    }
-    else if (strncmp(instr_name, "Sub", strlen("Sub")) == 0) {
-       new_instr = new (allocator) HSub(ret_type, phi_accumulator, if_exit_val);
-    }
-    else if (strncmp(instr_name, "Mul", strlen("Mul")) == 0) {
-       new_instr = new (allocator) HMul(ret_type, phi_accumulator, if_exit_val);
-    }
-    else if (strncmp(instr_name, "Div", strlen("Div")) == 0) {
-       new_instr = new (allocator) HDiv(ret_type, phi_accumulator, if_exit_val, trec.ret_op_->GetDexPc());
-    }
+  if (trec.ret_op_ && trec.ret_op_->IsBinaryOperation() && (if_exit_val == trec.acc_param_)) {
 
-    DCHECK(new_instr);
+    new_instr = GetAccInstruction(phi_accumulator, if_exit_val, trec);
+    CHECK(new_instr);
     new_loop_exit->AddInstruction(new_instr);
   }
-
 
   // add new instruction for "return accumulator" inside new pre-exit block
   // new pre-exit block which contains return, doesn't contains Goto
@@ -454,10 +555,10 @@ bool TailRecursionElimination::TransformMethodGraph(HBasicBlock* exit_blk, HBasi
   else {
     new_ret_input = new_instr;
   }
-  DCHECK(new_ret_input);
+  CHECK(new_ret_input);
 
   HInstruction* new_ret = new (allocator) HReturn(new_ret_input);
-  DCHECK(new_ret);
+  CHECK(new_ret);
   new_loop_exit->AddInstruction(new_ret);
 
   // Set up  predecessor & successor information for new_loop_exit.
@@ -509,7 +610,7 @@ bool TailRecursionElimination::TransformMethodGraph(HBasicBlock* exit_blk, HBasi
         inst->ReplaceInput(phi_acc_param, input_index);
       }
     }
-    DCHECK(acc_par_input);
+    CHECK(acc_par_input);
     phi_acc_param->AddInput(acc_par_input);
   }
 
@@ -524,7 +625,6 @@ bool TailRecursionElimination::TransformMethodGraph(HBasicBlock* exit_blk, HBasi
       ++it3;  // increment before replacing
 
       HBasicBlock* inst_blk = inst->GetBlock();
-      //if (loop_info->Contains(*inst_blk)) {
       if (new_loop_header->Dominates(inst_blk)) {
         inst->ReplaceInput(phi_accumulator, input_index);
       }
@@ -611,7 +711,7 @@ bool TailRecursionElimination::TransformMethodGraph(HBasicBlock* exit_blk, HBasi
         if ((induction_flag == true) && (ind_inst_list.size() > 0)) {
           // add new PHI for induction variable use values in predecessors of current block
           HPhi* phi_ind_use = new (allocator) HPhi(allocator, kNoRegNumber, 0, HPhi::ToPhiType(ret_type));
-          DCHECK(phi_ind_use);
+          CHECK(phi_ind_use);
           cur_blk->AddPhi(phi_ind_use);
 
           for (std::vector<HInstruction*>::iterator iter2 = ind_inst_list.begin(); iter2 != ind_inst_list.end(); ++iter2) {
@@ -639,7 +739,6 @@ bool TailRecursionElimination::TransformMethodGraph(HBasicBlock* exit_blk, HBasi
   if (last_induction_op != nullptr) {
     phi_induction->AddInput(last_induction_op);
   }
-
 
   return true;
 }
@@ -684,10 +783,10 @@ void TailRecursionElimination::Run() {
 
   // get the first block of graph and it's successor
   HBasicBlock* first_block = graph_->GetEntryBlock();
-  DCHECK(first_block);
+  CHECK(first_block);
 
   HBasicBlock* first_successor = first_block->GetSingleSuccessor();
-  DCHECK(first_successor);
+  CHECK(first_successor);
   if (!(first_successor->GetLastInstruction()->IsIf())) {
     return;
   }
@@ -695,7 +794,7 @@ void TailRecursionElimination::Run() {
 
   // checking whether return statement contain self-call
   HBasicBlock* exit_predecessor = exit->GetSinglePredecessor();
-  DCHECK(exit_predecessor);
+  CHECK(exit_predecessor);
   HInstruction* last = exit_predecessor->GetLastInstruction();
 
   bool tre_success_flag = false;
