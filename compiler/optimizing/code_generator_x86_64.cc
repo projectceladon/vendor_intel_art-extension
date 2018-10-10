@@ -3581,7 +3581,6 @@ void InstructionCodeGeneratorX86_64::DivByPowerOfTwo(HDiv* instruction) {
 
   CpuRegister output_register = locations->Out().AsRegister<CpuRegister>();
   CpuRegister numerator = locations->InAt(0).AsRegister<CpuRegister>();
-
   int64_t imm = Int64FromConstant(second.GetConstant());
   DCHECK(IsPowerOfTwo(AbsOrMin(imm)));
   uint64_t abs_imm = AbsOrMin(imm);
@@ -3589,10 +3588,23 @@ void InstructionCodeGeneratorX86_64::DivByPowerOfTwo(HDiv* instruction) {
   CpuRegister tmp = locations->GetTemp(0).AsRegister<CpuRegister>();
 
   if (instruction->GetResultType() == DataType::Type::kInt32) {
-    __ leal(tmp, Address(numerator, abs_imm - 1));
-    __ testl(numerator, numerator);
-    __ cmov(kGreaterEqual, tmp, numerator);
-    int shift = CTZ(imm);
+    /*
+    When denominator is equal to 2. we added signed bit and numerator to tmp.
+    For example, a/2 can be lowered to add+asr.
+   */ 
+    if(abs_imm == 2)
+    {
+     __ leal(tmp, Address(numerator, 0));
+     __ shrl(tmp, Immediate(31));
+     __ addl(tmp, numerator);
+    }
+    else
+    {
+     __ leal(tmp, Address(numerator, abs_imm - 1));
+     __ testl(numerator, numerator);
+     __ cmov(kGreaterEqual, tmp, numerator);
+    }
+   int shift = CTZ(imm);
     __ sarl(tmp, Immediate(shift));
 
     if (imm < 0) {
@@ -3604,17 +3616,25 @@ void InstructionCodeGeneratorX86_64::DivByPowerOfTwo(HDiv* instruction) {
     DCHECK_EQ(instruction->GetResultType(), DataType::Type::kInt64);
     CpuRegister rdx = locations->GetTemp(0).AsRegister<CpuRegister>();
 
-    codegen_->Load64BitValue(rdx, abs_imm - 1);
-    __ addq(rdx, numerator);
-    __ testq(numerator, numerator);
-    __ cmov(kGreaterEqual, rdx, numerator);
-    int shift = CTZ(imm);
-    __ sarq(rdx, Immediate(shift));
+    if(abs_imm == 2)
+    {
+      __ movq(rdx, numerator);
+      __ shrq(rdx, Immediate(63));
+      __ addq(rdx, numerator);
+    }
+    else
+    {
+      codegen_->Load64BitValue(rdx, abs_imm - 1);
+      __ addq(rdx, numerator);
+      __ testq(numerator, numerator);
+      __ cmov(kGreaterEqual, rdx, numerator);
+    }
+   int shift = CTZ(imm);
+   __ sarq(rdx, Immediate(shift));
 
-    if (imm < 0) {
+   if (imm < 0) {
       __ negq(rdx);
     }
-
     __ movq(output_register, rdx);
   }
 }
