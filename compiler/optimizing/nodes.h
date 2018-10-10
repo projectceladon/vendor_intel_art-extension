@@ -2231,9 +2231,6 @@ class HInstruction : public ArenaObject<kArenaAllocInstruction> {
   // Move `this` instruction before `cursor`
   void MoveBefore(HInstruction* cursor, bool do_checks = true);
 
-  // Move `this` instruction and append to the end of new_block
-  void MoveToBlock(HBasicBlock* new_block, bool do_checks = true);
-
   // Move `this` before its first user and out of any loops. If there is no
   // out-of-loop user that dominates all other users, move the instruction
   // to the end of the out-of-loop common dominator of the user's blocks.
