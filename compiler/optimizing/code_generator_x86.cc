@@ -3523,6 +3523,34 @@ void InstructionCodeGeneratorX86::DivRemOneOrMinusOne(HBinaryOperation* instruct
   }
 }
 
+void InstructionCodeGeneratorX86::RemByPowerOfTwo(HRem* instruction) {
+  LocationSummary* locations = instruction->GetLocations();
+  Location second = locations->InAt(1);
+
+  Register out = locations->Out().AsRegister<Register>();
+  Register numerator = locations->InAt(0).AsRegister<Register>();
+
+  int32_t imm = Int64FromConstant(second.GetConstant());
+  DCHECK(IsPowerOfTwo(AbsOrMin(imm)));
+  uint32_t abs_imm = static_cast<uint32_t>(AbsOrMin(imm));
+
+  Register tmp = locations->GetTemp(0).AsRegister<Register>();
+  NearLabel jmp_loc, done;
+  __ movl(out, numerator);
+  __ andl(out, Immediate(abs_imm-1));
+  __ testl(numerator, numerator);
+  __ j(Condition::kLess, &jmp_loc);
+  __ jmp(&done);
+
+  __ Bind(&jmp_loc);
+  __ movl(tmp, Immediate(static_cast<int32_t>(abs_imm-1)));
+  __ notl (tmp);
+  __ orl(tmp, out);
+  __ testl(out, out);
+  __ cmovl(Condition::kNotEqual, out, tmp);
+
+  __ Bind(&done);
+}
 
 void InstructionCodeGeneratorX86::DivByPowerOfTwo(HDiv* instruction) {
   LocationSummary* locations = instruction->GetLocations();
@@ -3636,8 +3664,9 @@ void InstructionCodeGeneratorX86::GenerateDivRemIntegral(HBinaryOperation* instr
           // Do not generate anything for 0. DivZeroCheck would forbid any generated code.
         } else if (imm == 1 || imm == -1) {
           DivRemOneOrMinusOne(instruction);
-        } else if (is_div && IsPowerOfTwo(AbsOrMin(imm))) {
-          DivByPowerOfTwo(instruction->AsDiv());
+        } else if (IsPowerOfTwo(AbsOrMin(imm))) {
+          is_div? DivByPowerOfTwo(instruction->AsDiv()) : RemByPowerOfTwo(instruction->AsRem());
+          //DivByPowerOfTwo(instruction->AsDiv());
         } else {
           DCHECK(imm <= -2 || imm >= 2);
           GenerateDivRemWithAnyConstant(instruction);

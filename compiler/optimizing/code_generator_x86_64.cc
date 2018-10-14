@@ -3527,7 +3527,54 @@ void InstructionCodeGeneratorX86_64::DivRemOneOrMinusOne(HBinaryOperation* instr
       LOG(FATAL) << "Unexpected type for div by (-)1 " << instruction->GetResultType();
   }
 }
+void InstructionCodeGeneratorX86_64::RemByPowerOfTwo(HRem* instruction) {
+  LocationSummary* locations = instruction->GetLocations();
+  Location second = locations->InAt(1);
+  CpuRegister out = locations->Out().AsRegister<CpuRegister>();
+  CpuRegister numerator = locations->InAt(0).AsRegister<CpuRegister>();
+  int64_t imm = Int64FromConstant(second.GetConstant());
+  DCHECK(IsPowerOfTwo(AbsOrMin(imm)));
+  uint64_t abs_imm = AbsOrMin(imm);
+  CpuRegister tmp = locations->GetTemp(0).AsRegister<CpuRegister>();
+  if (instruction->GetResultType() == DataType::Type::kInt32) {
+    NearLabel jmp_loc, done;
+    __ movl(out, numerator);
+    __ andl(out, Immediate(abs_imm-1));
+    __ testl(numerator, numerator);
+    __ j(Condition::kLess, &jmp_loc);
+    __ jmp(&done);
 
+    __ Bind(&jmp_loc);
+    __ movl(tmp, Immediate(static_cast<int32_t>(abs_imm-1)));
+    __ notl (tmp);
+    __ orl(tmp, out);
+    __ testl(out, out);
+    __ cmov(Condition::kNotEqual, out, tmp, false);
+
+    __ Bind(&done);
+
+ } else {
+   DCHECK_EQ(instruction->GetResultType(), DataType::Type::kInt64);
+
+    codegen_->Load64BitValue(tmp, abs_imm - 1);
+    //std::cout << "in 64 bit" << std::endl;
+    NearLabel jmp_loc, done;
+    __ movq(out, numerator);
+    __ andq(out, tmp);
+    __ testq(numerator, numerator);
+    __ j(Condition::kLess, &jmp_loc);
+    __ jmp(&done);
+
+    __ Bind(&jmp_loc);
+    __ notq(tmp);
+    __ orq(tmp, out);
+    __ testq(out,out);
+    __ cmov(Condition::kNotEqual, out, tmp, true);
+
+    __ Bind(&done);
+ }
+  
+}
 void InstructionCodeGeneratorX86_64::DivByPowerOfTwo(HDiv* instruction) {
   LocationSummary* locations = instruction->GetLocations();
   Location second = locations->InAt(1);
@@ -3704,8 +3751,8 @@ void InstructionCodeGeneratorX86_64::GenerateDivRemIntegral(HBinaryOperation* in
       // Do not generate anything. DivZeroCheck would prevent any code to be executed.
     } else if (imm == 1 || imm == -1) {
       DivRemOneOrMinusOne(instruction);
-    } else if (instruction->IsDiv() && IsPowerOfTwo(AbsOrMin(imm))) {
-      DivByPowerOfTwo(instruction->AsDiv());
+    } else if (IsPowerOfTwo(AbsOrMin(imm))) {
+      is_div ? DivByPowerOfTwo(instruction->AsDiv()) : RemByPowerOfTwo(instruction->AsRem());
     } else {
       DCHECK(imm <= -2 || imm >= 2);
       GenerateDivRemWithAnyConstant(instruction);
