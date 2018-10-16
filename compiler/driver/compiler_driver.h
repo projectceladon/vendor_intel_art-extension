@@ -28,6 +28,7 @@
 #include "arch/instruction_set.h"
 #include "base/array_ref.h"
 #include "base/bit_utils.h"
+#include "base/bit_vector-inl.h"
 #include "base/mutex.h"
 #include "base/os.h"
 #include "base/quasi_atomic.h"
@@ -159,6 +160,8 @@ class CompilerDriver {
 
   ClassStatus GetClassStatus(const ClassReference& ref) const;
   bool GetCompiledClass(const ClassReference& ref, ClassStatus* status) const;
+
+  BitVector* GetMethodVerificationBitmap(ClassReference ref) const;
 
   CompiledMethod* GetCompiledMethod(MethodReference ref) const;
   size_t GetNonRelativeLinkerPatchCount() const;
@@ -329,6 +332,8 @@ class CompilerDriver {
 
   void RecordClassStatus(const ClassReference& ref, ClassStatus status);
 
+  void RecordClassMethodVerificationBitmap(ClassReference ref, BitVector* methods_verification_bitmap);
+
   // Checks if the specified method has been verified without failures. Returns
   // false if the method is not in the verification results (GetVerificationResults).
   bool IsMethodVerifiedWithoutFailures(uint32_t method_idx,
@@ -487,6 +492,9 @@ class CompilerDriver {
   ClassStateTable classpath_classes_;
 
   typedef AtomicDexRefMap<MethodReference, CompiledMethod*> MethodTable;
+
+  using ClassMethodVerificationBitmapTable = AtomicDexRefMap<ClassReference, BitVector*>;
+  ClassMethodVerificationBitmapTable method_verification_bitmap_table_;
 
  private:
   // All method references that this compiler has compiled.

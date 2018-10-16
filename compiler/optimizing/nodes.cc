@@ -1739,42 +1739,6 @@ void HInstruction::MoveBefore(HInstruction* cursor, bool do_checks) {
   }
 }
 
-void HInstruction::MoveToBlock(HBasicBlock* new_block, bool do_checks) {
-  if (do_checks) {
-   DCHECK(CanBeMoved() || IsShouldDeoptimizeFlag());
-  }
-
-  if (previous_ != nullptr) {
-    previous_->next_ = next_;
-  }
-  if (next_ != nullptr) {
-    next_->previous_ = previous_;
-  }
-  if (block_->instructions_.first_instruction_ == this) {
-    block_->instructions_.first_instruction_ = next_;
-  }
-  if (block_->instructions_.last_instruction_ == this){
-    block_->instructions_.last_instruction_ = previous_;
-  }
-  DCHECK(new_block != nullptr);
-  if (new_block->GetFirstInstruction() == nullptr) {
-    new_block->instructions_.first_instruction_ = this;
-    DCHECK(new_block->GetLastInstruction() == nullptr);
-    new_block->instructions_.last_instruction_ = this;
-    previous_ = nullptr;
-    next_ = nullptr;
-    block_ = new_block;
-  } else {
-    // Add `this` instruction at the end of new_block
-    HInstruction* cursor = new_block->GetLastInstruction();
-    cursor->next_ = this;
-    previous_ = cursor;
-    next_ = nullptr;
-    block_ = new_block;
-    new_block->instructions_.last_instruction_ = this;
-  }
-}
-
 void HInstruction::MoveBeforeFirstUserAndOutOfLoops() {
   DCHECK(!CanThrow());
   DCHECK(!HasSideEffects());

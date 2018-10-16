@@ -23,6 +23,7 @@
 #include "art_field-inl.h"
 #include "art_method-inl.h"
 #include "base/aborting.h"
+#include "base/bit_vector-inl.h"
 #include "base/enums.h"
 #include "base/leb128.h"
 #include "base/logging.h"  // For VLOG.
@@ -51,6 +52,7 @@
 #include "mirror/object-inl.h"
 #include "mirror/object_array-inl.h"
 #include "mirror/var_handle.h"
+#include "oat_file.h"
 #include "reg_type-inl.h"
 #include "register_line-inl.h"
 #include "runtime.h"
@@ -218,15 +220,35 @@ MethodVerifier::FailureData MethodVerifier::VerifyMethods(Thread* self,
                                                           bool allow_soft_failures,
                                                           HardFailLogMode log_level,
                                                           bool need_precise_constants,
-                                                          std::string* error_string) {
+                                                          std::string* error_string,
+                                                          BitVector* unverified_bitmap,
+                                                          const uint32_t* oat_file_unverified_method_bitmap) {
   DCHECK(it != nullptr);
 
+  uint32_t idx;
   MethodVerifier::FailureData failure_data;
+
+  if (kDirect) {
+    idx = 0;
+  } else {
+    idx = it->NumDirectMethods();
+  }
 
   int64_t previous_method_idx = -1;
   while (HasNextMethod<kDirect>(it)) {
     self->AllowThreadSuspension();
     uint32_t method_idx = it->GetMemberIndex();
+
+    if (oat_file_unverified_method_bitmap != nullptr) {
+      if (!BitVector::IsBitSet(oat_file_unverified_method_bitmap, idx)) {
+        MethodVerifier::FailureData tmp_result;
+        failure_data.Merge(tmp_result);
+        idx++;
+        it->Next();
+        continue;
+      }
+    }
+
     if (method_idx == previous_method_idx) {
       // smali can create dex files with two encoded_methods sharing the same method_idx
       // http://code.google.com/p/smali/issues/detail?id=119
@@ -274,6 +296,16 @@ MethodVerifier::FailureData MethodVerifier::VerifyMethods(Thread* self,
       *error_string += hard_failure_msg;
     }
     failure_data.Merge(result);
+
+    // clear the bit for verified methods during compilation
+    if (Runtime::Current()->IsAotCompiler()) {
+      if (result.kind == FailureKind::kNoFailure) {
+        if (unverified_bitmap != nullptr) {
+          unverified_bitmap->ClearBit(idx);
+        }
+      }
+    }
+    idx++;
     it->Next();
   }
 
@@ -307,6 +339,26 @@ FailureKind MethodVerifier::VerifyClass(Thread* self,
   ClassDataItemIterator it(*dex_file, class_data);
   it.SkipAllFields();
   ClassLinker* linker = Runtime::Current()->GetClassLinker();
+
+  const uint32_t* oat_file_unverified_method_bitmap = nullptr;
+  BitVector* unverified_bitmap = nullptr;
+  // check if a oat file is available, because during compile time oat dex file is not yet generated.
+  const OatFile::OatDexFile* oat_dex_file = dex_file->GetOatDexFile();
+  if (oat_dex_file != nullptr && oat_dex_file->GetOatFile() != nullptr) {
+    uint16_t class_def_index = dex_file->GetIndexForClassDef(class_def);
+    oat_file_unverified_method_bitmap = oat_dex_file->GetOatClass(class_def_index).GetVerificationBitmap();
+    uint32_t verification_bitmap_size = oat_dex_file->GetOatClass(class_def_index).GetVerificationBitmapSize();
+    if (oat_file_unverified_method_bitmap != nullptr) {
+      if (BitVector::NumSetBits(oat_file_unverified_method_bitmap, (verification_bitmap_size * 8u)) == 0) {
+        return FailureKind::kNoFailure;
+      }
+    }
+  } else if (Runtime::Current()->IsAotCompiler() && callbacks != nullptr) {
+    unverified_bitmap = new BitVector(it.NumDirectMethods()+it.NumVirtualMethods(),
+                        false, Allocator::GetMallocAllocator());
+    unverified_bitmap->SetInitialBits(it.NumDirectMethods()+it.NumVirtualMethods());
+  }
+
   // Direct methods.
   MethodVerifier::FailureData data1 = VerifyMethods<true>(self,
                                                           linker,
@@ -319,7 +371,9 @@ FailureKind MethodVerifier::VerifyClass(Thread* self,
                                                           allow_soft_failures,
                                                           log_level,
                                                           false /* need precise constants */,
-                                                          error);
+                                                          error,
+                                                          unverified_bitmap,
+                                                          oat_file_unverified_method_bitmap);
   // Virtual methods.
   MethodVerifier::FailureData data2 = VerifyMethods<false>(self,
                                                            linker,
@@ -332,9 +386,18 @@ FailureKind MethodVerifier::VerifyClass(Thread* self,
                                                            allow_soft_failures,
                                                            log_level,
                                                            false /* need precise constants */,
-                                                           error);
+                                                           error,
+                                                           unverified_bitmap,
+                                                           oat_file_unverified_method_bitmap);
 
   data1.Merge(data2);
+
+  if (Runtime::Current()->IsAotCompiler() && callbacks != nullptr) {
+    if (unverified_bitmap != nullptr) {
+      ClassReference ref(dex_file, dex_file->GetIndexForClassDef(class_def));
+      callbacks->RecordVerificationBitmap(ref, unverified_bitmap);
+    }
+  }
 
   if (data1.kind == FailureKind::kNoFailure) {
     return FailureKind::kNoFailure;

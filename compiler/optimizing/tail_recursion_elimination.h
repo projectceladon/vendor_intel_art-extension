@@ -35,8 +35,8 @@ public:
   HInstruction* ret_op_;
 
   // vector which contains recursive invoke instructions
-  std::vector<HInvoke*> recursive_invoke_instr_;
   std::map<HBasicBlock*,std::vector<HInvoke*>> recursive_invoke_map_;
+  std::vector<HInvoke*> recursive_invoke_instr_;
 
   // vector which keeps checked instructions during identification of tail-recursive method (avoid deadlock)
   std::vector<HInstruction*> checked_instr_for_name_;
@@ -46,7 +46,7 @@ public:
 
   TREContext(): ret_type_(DataType::Type::kLast), if_true_exit_(false),
       imp_param_(nullptr), acc_param_(nullptr), inst_if_exit_(nullptr),
-      ret_op_(nullptr)  {}
+      ret_op_(nullptr), recursive_invoke_map_()  {}
 };
 
 /*
@@ -77,6 +77,7 @@ class TailRecursionElimination : public HOptimization {
   bool IdentifyTailRecursion(HInstruction* intsr, const char* method_name, TREContext& trec);
   bool TransformMethodGraph(HBasicBlock* exit_blk, HBasicBlock* first_blk, TREContext& trec);
   bool IdentifyIfRetBlkMainParam(HBasicBlock* exit_blk, HBasicBlock* first_blk, TREContext& trec);
+  HInstruction* GetAccInstruction(HInstruction* val1, HInstruction* val2, TREContext& trec);
 
   DISALLOW_COPY_AND_ASSIGN(TailRecursionElimination);
 };
