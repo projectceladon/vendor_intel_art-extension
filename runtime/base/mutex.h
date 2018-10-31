@@ -85,7 +85,6 @@ enum LockLevel {
   kReferenceProcessorLock,
   kJitDebugInterfaceLock,
   kAllocSpaceLock,
-  kBumpPointerSpaceBlockLock,
   kArenaPoolLock,
   kInternTableLock,
   kOatFileSecondaryLookupLock,

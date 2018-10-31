@@ -982,7 +982,8 @@ class Dex2Oat FINAL {
   static bool SupportsDeterministicCompilation() {
     return (kUseReadBarrier ||
             gc::kCollectorTypeDefault == gc::kCollectorTypeCMS ||
-            gc::kCollectorTypeDefault == gc::kCollectorTypeMS);
+            gc::kCollectorTypeDefault == gc::kCollectorTypeMS ||
+            gc::kCollectorTypeDefault == gc::kCollectorTypeGenCopying);
   }
 
   void ExpandOatAndImageFilenames() {

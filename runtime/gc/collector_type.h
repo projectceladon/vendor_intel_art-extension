@@ -38,6 +38,9 @@ enum CollectorType {
   kCollectorTypeMC,
   // Heap trimming collector, doesn't do any actual collecting.
   kCollectorTypeHeapTrim,
+  // Generational copying, hybrid of young GC(GSS) and
+  // partial/full GC (concurrent marking and copying).
+  kCollectorTypeGenCopying,
   // A (mostly) concurrent copying collector.
   kCollectorTypeCC,
   // The background compaction of the concurrent copying collector.
@@ -73,6 +76,10 @@ static constexpr CollectorType kCollectorTypeDefault =
     kCollectorTypeSS
 #elif ART_DEFAULT_GC_TYPE_IS_GSS
     kCollectorTypeGSS
+#elif ART_DEFAULT_GC_TYPE_IS_GENCOPYING
+    kCollectorTypeGenCopying
+#elif ART_DEFAULT_GC_TYPE_IS_CC
+    kCollectorTypeCC
 #else
     kCollectorTypeCMS
 #error "ART default GC type must be set"
