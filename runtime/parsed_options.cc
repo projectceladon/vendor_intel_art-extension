@@ -123,6 +123,18 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
       .Define("-XX:NonMovingSpaceCapacity=_")
           .WithType<MemoryKiB>()
           .IntoKey(M::NonMovingSpaceCapacity)
+      .Define("-XX:BumpSpaceCapacity=_")
+          .WithType<MemoryKiB>()
+          .IntoKey(M::BumpSpaceCapacity)
+      .Define("-XX:TenureThreshold=_")
+          .WithType<unsigned int>()
+          .IntoKey(M::TenureThreshold)
+      .Define("-XX:TLABSize=_")
+          .WithType<MemoryKiB>()
+          .IntoKey(M::TLABSize)
+      .Define("-XX:TLABAllocThreshold=_")
+          .WithType<MemoryKiB>()
+          .IntoKey(M::TLABAllocThreshold)
       .Define("-XX:HeapTargetUtilization=_")
           .WithType<double>().WithRange(0.1, 0.9)
           .IntoKey(M::HeapTargetUtilization)
@@ -533,10 +545,6 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
     args.SetIfMissing(M::ClassPath, std::string(getenv("CLASSPATH")));
   }
 
-  // Default to number of processors minus one since the main GC thread also does work.
-  args.SetIfMissing(M::ParallelGCThreads, gc::Heap::kDefaultEnableParallelGC ?
-      static_cast<unsigned int>(sysconf(_SC_NPROCESSORS_CONF) - 1u) : 0u);
-
   // -verbose:
   {
     LogVerbosity *log_verbosity = args.Get(M::Verbose);
@@ -573,6 +581,10 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
       }
     }
 
+    if (collector_type_ == gc::kCollectorTypeGenCopying) {
+      background_collector_type_ = collector_type_;
+    }
+
     if (background_collector_type_ == gc::kCollectorTypeNone) {
       if (collector_type_ != gc::kCollectorTypeGSS) {
         background_collector_type_ = low_memory_mode_ ?
@@ -583,6 +595,18 @@ bool ParsedOptions::DoParse(const RuntimeOptions& options,
     }
 
     args.Set(M::BackgroundGc, BackgroundGcOption { background_collector_type_ });
+
+    // If foregroud is SS/GSS/GenCopying, Enable Parallel GC.
+    if (collector_type_ == gc::kCollectorTypeGSS ||
+        collector_type_ == gc::kCollectorTypeSS||
+        collector_type_ == gc::kCollectorTypeGenCopying) {
+        args.SetIfMissing(M::ParallelGCThreads,
+            static_cast<unsigned int>(sysconf(_SC_NPROCESSORS_CONF) - 1u) );
+    } else {
+      // Default to number of processors minus one since the main GC thread also does work.
+      args.SetIfMissing(M::ParallelGCThreads, gc::Heap::kDefaultEnableParallelGC ?
+          static_cast<unsigned int>(sysconf(_SC_NPROCESSORS_CONF) -1u) : 0u);
+    }
   }
 
   // If a reference to the dalvik core.jar snuck in, replace it with

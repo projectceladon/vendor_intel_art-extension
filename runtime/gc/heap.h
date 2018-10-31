@@ -124,6 +124,9 @@ static constexpr bool kUseRosAlloc = true;
 
 // If true, use thread-local allocation stack.
 static constexpr bool kUseThreadLocalAllocationStack = true;
+// This is used for Generational Copying collector.
+// TODO: make this configurable.
+static constexpr size_t kTenureThreshold = 6;
 
 class Heap {
  public:
@@ -136,7 +139,10 @@ class Heap {
   static constexpr size_t kDefaultMinFree = kDefaultMaxFree / 4;
   static constexpr size_t kDefaultLongPauseLogThreshold = MsToNs(5);
   static constexpr size_t kDefaultLongGCLogThreshold = MsToNs(100);
-  static constexpr size_t kDefaultTLABSize = 32 * KB;
+  static constexpr size_t kDefaultTLABSize = 256 * KB;
+  static constexpr size_t kDefaultTLABAllocThreshold = kDefaultTLABSize / 2;
+  static constexpr size_t kDefaultTenureThreshold = 6;
+  static constexpr size_t kDefaultGSSBumpPointerSpaceCapacity = 32 * MB;
   static constexpr double kDefaultTargetUtilization = 0.5;
   static constexpr double kDefaultHeapGrowthMultiplier = 2.0;
   // Primitive arrays larger than this size are put in the large object space.
@@ -195,6 +201,10 @@ class Heap {
        bool verify_pre_sweeping_rosalloc,
        bool verify_post_gc_rosalloc,
        bool gc_stress_mode,
+       size_t tlab_size,
+       size_t tlab_alloc_threshold,
+       size_t tenure_threshold,
+       size_t bump_space_capacity,
        bool measure_gc_performance,
        bool use_homogeneous_space_compaction,
        uint64_t min_interval_homogeneous_space_compaction_by_oom);
@@ -494,11 +504,18 @@ class Heap {
 
   void AddFinalizerReference(Thread* self, ObjPtr<mirror::Object>* object);
 
-  // Returns the number of bytes currently allocated.
   size_t GetBytesAllocated() const {
     return num_bytes_allocated_.LoadSequentiallyConsistent();
   }
 
+  // Returns the number of bytes currently allocated.
+  size_t AddBytesAllocated(size_t extra_bytes) {
+    return num_bytes_allocated_.FetchAndAddSequentiallyConsistent(extra_bytes);
+  }
+
+  size_t GetRevokeBytes() const {
+    return num_bytes_freed_revoke_.LoadSequentiallyConsistent();
+  }
   // Returns the number of objects currently allocated.
   size_t GetObjectsAllocated() const
       REQUIRES(!Locks::heap_bitmap_lock_);
@@ -540,7 +557,8 @@ class Heap {
 
   // Returns approximately how much free memory we have until the next OOME happens.
   size_t GetFreeMemoryUntilOOME() const {
-    return growth_limit_ - GetBytesAllocated();
+    size_t byte_allocated = num_bytes_allocated_.LoadSequentiallyConsistent();
+    return growth_limit_ - std::min(growth_limit_, byte_allocated);
   }
 
   // Returns how much free memory we have until we need to grow the heap to perform an allocation.
@@ -579,9 +597,11 @@ class Heap {
   // Deflate monitors, ... and trim the spaces.
   void Trim(Thread* self) REQUIRES(!*gc_complete_lock_);
 
-  void RevokeThreadLocalBuffers(Thread* thread);
+  void RevokeThreadLocalBuffers(Thread* thread, bool record_free = true)
+      REQUIRES_SHARED(Locks::mutator_lock_);
   void RevokeRosAllocThreadLocalBuffers(Thread* thread);
-  void RevokeAllThreadLocalBuffers();
+  void RevokeAllThreadLocalBuffers(bool record_free = true) REQUIRES_SHARED(Locks::mutator_lock_);
+  void AssertAllThreadLocalBuffersAreRevoked();
   void AssertThreadLocalBuffersAreRevoked(Thread* thread);
   void AssertAllBumpPointerSpaceThreadLocalBuffersAreRevoked();
   void RosAllocVerification(TimingLogger* timings, const char* name)
@@ -656,6 +676,14 @@ class Heap {
     return rosalloc_space_;
   }
 
+  space::BumpPointerSpace* GetFromBumpPointerSpace() const {
+    return bump_pointer_space_;
+  }
+
+  space::BumpPointerSpace* GetToBumpPointerSpace() const {
+    return temp_space_;
+  }
+
   // Return the corresponding rosalloc space.
   space::RosAllocSpace* GetRosAllocSpace(gc::allocator::RosAlloc* rosalloc) const
       REQUIRES_SHARED(Locks::mutator_lock_);
@@ -703,6 +731,7 @@ class Heap {
   size_t GetConcGCThreadCount() const {
     return conc_gc_threads_;
   }
+
   accounting::ModUnionTable* FindModUnionTableFromSpace(space::Space* space);
   void AddModUnionTable(accounting::ModUnionTable* mod_union_table);
 
@@ -815,6 +844,13 @@ class Heap {
   HomogeneousSpaceCompactResult PerformHomogeneousSpaceCompact() REQUIRES(!*gc_complete_lock_);
   bool SupportHomogeneousSpaceCompactAndCollectorTransitions() const;
 
+  size_t GetThresholdAge();
+  void SetThresholdAge(size_t age);
+
+  void BlockGC(Thread* self, GcCause cause, CollectorType collector_type)
+      REQUIRES(!*gc_complete_lock_);
+  void UnblockGC(Thread* self) REQUIRES(!*gc_complete_lock_);
+
   // Install an allocation listener.
   void SetAllocationListener(AllocationListener* l);
   // Remove an allocation listener. Note: the listener must not be deleted, as for performance
@@ -848,6 +884,7 @@ class Heap {
   void StartGC(Thread* self, GcCause cause, CollectorType collector_type)
       REQUIRES(!*gc_complete_lock_);
   void FinishGC(Thread* self, collector::GcType gc_type) REQUIRES(!*gc_complete_lock_);
+  void WakeMutators() REQUIRES(!*gc_complete_lock_);
 
   // Create a mem map with a preferred base address.
   static MemMap* MapAnonymousPreferredAddress(const char* name, uint8_t* request_begin,
@@ -865,14 +902,15 @@ class Heap {
         allocator_type != kAllocatorTypeRegion &&
         allocator_type != kAllocatorTypeRegionTLAB;
   }
-  static ALWAYS_INLINE bool AllocatorMayHaveConcurrentGC(AllocatorType allocator_type) {
+  ALWAYS_INLINE bool AllocatorMayHaveConcurrentGC(AllocatorType allocator_type) {
     if (kUseReadBarrier) {
       // Read barrier may have the TLAB allocator but is always concurrent. TODO: clean this up.
       return true;
     }
     return
-        allocator_type != kAllocatorTypeBumpPointer &&
-        allocator_type != kAllocatorTypeTLAB;
+        (allocator_type != kAllocatorTypeBumpPointer &&
+        allocator_type != kAllocatorTypeTLAB) ||
+        collector_type_ == kCollectorTypeGenCopying;
   }
   static bool IsMovingGc(CollectorType collector_type) {
     return
@@ -881,7 +919,8 @@ class Heap {
         collector_type == kCollectorTypeCC ||
         collector_type == kCollectorTypeCCBackground ||
         collector_type == kCollectorTypeMC ||
-        collector_type == kCollectorTypeHomogeneousSpaceCompact;
+        collector_type == kCollectorTypeHomogeneousSpaceCompact ||
+        collector_type == kCollectorTypeGenCopying;
   }
   bool ShouldAllocLargeObject(ObjPtr<mirror::Class> c, size_t byte_count) const
       REQUIRES_SHARED(Locks::mutator_lock_);
@@ -1008,6 +1047,7 @@ class Heap {
                                                   const char* name,
                                                   bool can_move_objects);
 
+  void GrowForUtilizationGenCopying(collector::GarbageCollector* collector_ran);
   // Given the current contents of the alloc space, increase the allowed heap footprint to match
   // the target utilization ratio.  This should only be called immediately after a full garbage
   // collection. bytes_allocated_before_gc is used to measure bytes / second for the period which
@@ -1049,7 +1089,8 @@ class Heap {
   bool IsGcConcurrent() const ALWAYS_INLINE {
     return collector_type_ == kCollectorTypeCMS ||
         collector_type_ == kCollectorTypeCC ||
-        collector_type_ == kCollectorTypeCCBackground;
+        collector_type_ == kCollectorTypeCCBackground ||
+        collector_type_ == kCollectorTypeGenCopying;
   }
 
   // Trim the managed and native spaces by releasing unused memory back to the OS.
@@ -1204,6 +1245,7 @@ class Heap {
 
   // Last Gc type we ran. Used by WaitForConcurrentGc to know which Gc was waited on.
   volatile collector::GcType last_gc_type_ GUARDED_BY(gc_complete_lock_);
+  bool gc_is_finished_ GUARDED_BY(gc_complete_lock_);
   collector::GcType next_gc_type_;
 
   // Maximum size that the heap can reach.
@@ -1347,6 +1389,15 @@ class Heap {
   // Compacting GC disable count, prevents compacting GC from running iff > 0.
   size_t disable_moving_gc_count_ GUARDED_BY(gc_complete_lock_);
 
+  // Size of TLAB
+  const size_t tlab_size_;
+
+  // If object size is greater then threshold and there is no space in tlab, allocate w/o tlab.
+  const size_t tlab_alloc_threshold_;
+
+  // Bump Pointer Space Capacity.
+  size_t bump_space_capacity_;
+
   std::vector<collector::GarbageCollector*> garbage_collectors_;
   collector::SemiSpace* semi_space_collector_;
   collector::MarkCompact* mark_compact_collector_;
@@ -1384,6 +1435,9 @@ class Heap {
   CollectorTransitionTask* pending_collector_transition_ GUARDED_BY(pending_task_lock_);
   HeapTrimTask* pending_heap_trim_ GUARDED_BY(pending_task_lock_);
 
+  // Threshold for promoting old enough objects to old generation space.
+  // This is for Generational Copying collector.
+  Atomic<size_t> threshold_age_;
   // Whether or not we use homogeneous space compaction to avoid OOM errors.
   bool use_homogeneous_space_compaction_for_oom_;
 

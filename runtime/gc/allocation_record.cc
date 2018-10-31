@@ -131,8 +131,8 @@ static inline void SweepClassObject(AllocRecord* record, IsMarkedVisitor* visito
     // The class object can become null if we implement class unloading.
     // In that case we might still want to keep the class name string (not implemented).
     mirror::Object* new_object = visitor->IsMarked(old_object);
-    DCHECK(new_object != nullptr);
-    if (UNLIKELY(old_object != new_object)) {
+    // For the above reason, the new_object may be null.
+    if (UNLIKELY(old_object != new_object && new_object != nullptr)) {
       klass = GcRoot<mirror::Class>(new_object->AsClass());
     }
   }

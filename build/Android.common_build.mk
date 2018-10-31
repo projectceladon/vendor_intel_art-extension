@@ -17,7 +17,7 @@
 ifndef ART_ANDROID_COMMON_BUILD_MK
 ART_ANDROID_COMMON_BUILD_MK = true
 
-include art/build/Android.common.mk
+include $(VENDOR_ART_PATH)/build/Android.common.mk
 
 # These can be overridden via the environment or by editing to
 # enable/disable certain build configuration.
@@ -55,6 +55,8 @@ ART_DEFAULT_COMPACT_DEX_LEVEL := none
 endif
 
 ART_CPP_EXTENSION := .cc
+
+ART_USE_TLAB := true
 
 ifndef LIBART_IMG_HOST_BASE_ADDRESS
   $(error LIBART_IMG_HOST_BASE_ADDRESS unset)

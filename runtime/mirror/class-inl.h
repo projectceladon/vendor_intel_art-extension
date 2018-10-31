@@ -940,11 +940,11 @@ inline void Class::SetSlowPath(bool enabled) {
   SetFieldBoolean<false, false>(GetSlowPathFlagOffset(), enabled);
 }
 
-inline void Class::InitializeClassVisitor::operator()(ObjPtr<Object> obj,
+inline void Class::InitializeClassVisitor::operator()(ObjPtr<Object>* obj,
                                                       size_t usable_size) const {
   DCHECK_LE(class_size_, usable_size);
   // Avoid AsClass as object is not yet in live bitmap or allocation stack.
-  ObjPtr<Class> klass = ObjPtr<Class>::DownCast(obj);
+  ObjPtr<Class> klass = ObjPtr<Class>::DownCast(*obj);
   klass->SetClassSize(class_size_);
   klass->SetPrimitiveType(Primitive::kPrimNot);  // Default to not being primitive.
   klass->SetDexClassDefIndex(DexFile::kDexNoIndex16);  // Default to no valid class def index.

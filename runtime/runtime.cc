@@ -1306,6 +1306,10 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
                        xgc_option.verify_pre_sweeping_rosalloc_,
                        xgc_option.verify_post_gc_rosalloc_,
                        xgc_option.gcstress_,
+                       runtime_options.GetOrDefault(Opt::TLABSize),
+                       runtime_options.GetOrDefault(Opt::TLABAllocThreshold),
+                       runtime_options.GetOrDefault(Opt::TenureThreshold),
+                       runtime_options.GetOrDefault(Opt::BumpSpaceCapacity),
                        xgc_option.measure_,
                        runtime_options.GetOrDefault(Opt::EnableHSpaceCompactForOOM),
                        runtime_options.GetOrDefault(Opt::HSpaceCompactForOOMMinIntervalsMs));

@@ -79,9 +79,8 @@ inline mirror::Object* Heap::AllocObjectWithAllocator(Thread* self,
   size_t bytes_allocated;
   size_t usable_size;
   size_t new_num_bytes_allocated = 0;
-  if (IsTLABAllocator(allocator)) {
+  if (IsTLABAllocator(allocator))
     byte_count = RoundUp(byte_count, space::BumpPointerSpace::kAlignment);
-  }
   // If we have a thread local allocation we don't need to update bytes allocated.
   if (IsTLABAllocator(allocator) && byte_count <= self->TlabSize()) {
     obj = self->AllocTlab(byte_count);
@@ -92,7 +91,10 @@ inline mirror::Object* Heap::AllocObjectWithAllocator(Thread* self,
     }
     bytes_allocated = byte_count;
     usable_size = bytes_allocated;
-    pre_fence_visitor(obj, usable_size);
+    if (AllocatorHasAllocationStack(allocator)) {
+      PushOnAllocationStack(self, &obj);
+    }
+    pre_fence_visitor(&obj, usable_size);
     QuasiAtomic::ThreadFenceForConstructor();
   } else if (
       !kInstrumented && allocator == kAllocatorTypeRosAlloc &&
@@ -104,7 +106,10 @@ inline mirror::Object* Heap::AllocObjectWithAllocator(Thread* self,
       obj->AssertReadBarrierState();
     }
     usable_size = bytes_allocated;
-    pre_fence_visitor(obj, usable_size);
+    if (AllocatorHasAllocationStack(allocator)) {
+      PushOnAllocationStack(self, &obj);
+    }
+    pre_fence_visitor(&obj, usable_size);
     QuasiAtomic::ThreadFenceForConstructor();
   } else {
     // Bytes allocated that takes bulk thread-local buffer allocations into account.
@@ -153,7 +158,10 @@ inline mirror::Object* Heap::AllocObjectWithAllocator(Thread* self,
       // space (besides promotions) under the SS/GSS collector.
       WriteBarrierField(obj, mirror::Object::ClassOffset(), klass);
     }
-    pre_fence_visitor(obj, usable_size);
+    if (AllocatorHasAllocationStack(allocator)) {
+      PushOnAllocationStack(self, &obj);
+    }
+    pre_fence_visitor(&obj, usable_size);
     QuasiAtomic::ThreadFenceForConstructor();
     size_t num_bytes_allocated_before =
         num_bytes_allocated_.FetchAndAddRelaxed(bytes_tl_bulk_allocated);
@@ -195,9 +203,6 @@ inline mirror::Object* Heap::AllocObjectWithAllocator(Thread* self,
     }
   } else {
     DCHECK(!IsAllocTrackingEnabled());
-  }
-  if (AllocatorHasAllocationStack(allocator)) {
-    PushOnAllocationStack(self, &obj);
   }
   if (kInstrumented) {
     if (gc_stress_mode_) {
@@ -262,12 +267,8 @@ inline mirror::Object* Heap::TryToAllocate(Thread* self,
     case kAllocatorTypeBumpPointer: {
       DCHECK(bump_pointer_space_ != nullptr);
       alloc_size = RoundUp(alloc_size, space::BumpPointerSpace::kAlignment);
-      ret = bump_pointer_space_->AllocNonvirtual(alloc_size);
-      if (LIKELY(ret != nullptr)) {
-        *bytes_allocated = alloc_size;
-        *usable_size = alloc_size;
-        *bytes_tl_bulk_allocated = alloc_size;
-      }
+      ret = bump_pointer_space_->AllocNonvirtual(alloc_size, bytes_allocated, usable_size,
+                                                 bytes_tl_bulk_allocated);
       break;
     }
     case kAllocatorTypeRosAlloc: {
@@ -404,7 +405,8 @@ inline bool Heap::IsOutOfMemoryOnAllocation(AllocatorType allocator_type,
       }
       // TODO: Grow for allocation is racy, fix it.
       VlogHeapGrowth(max_allowed_footprint_, new_footprint, alloc_size);
-      max_allowed_footprint_ = new_footprint;
+      //max_allowed_footprint_ = new_footprint;
+      SetIdealFootprint(new_footprint);
     }
   }
   return false;

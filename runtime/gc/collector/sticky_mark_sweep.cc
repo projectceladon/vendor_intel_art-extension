@@ -28,8 +28,10 @@ namespace art {
 namespace gc {
 namespace collector {
 
-StickyMarkSweep::StickyMarkSweep(Heap* heap, bool is_concurrent, const std::string& name_prefix)
-    : PartialMarkSweep(heap, is_concurrent, name_prefix.empty() ? "sticky " : name_prefix) {
+StickyMarkSweep::StickyMarkSweep(Heap* heap, bool is_concurrent, bool is_copying,
+                                 const std::string& name_prefix)
+    : PartialMarkSweep(heap, is_concurrent, is_copying, /* sticky doesn't support coying*/
+                       name_prefix.empty() ? "sticky " : name_prefix) {
   cumulative_timings_.SetName(GetName());
 }
 

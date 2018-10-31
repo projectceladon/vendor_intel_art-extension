@@ -78,6 +78,7 @@ cc_defaults {
         "gc/allocation_record.cc",
         "gc/allocator/dlmalloc.cc",
         "gc/allocator/rosalloc.cc",
+        "gc/accounting/aging_table.cc",
         "gc/accounting/bitmap.cc",
         "gc/accounting/card_table.cc",
         "gc/accounting/heap_bitmap.cc",

@@ -1179,10 +1179,10 @@ class CopyClassVisitor {
         copy_bytes_(copy_bytes), imt_(imt), pointer_size_(pointer_size) {
   }
 
-  void operator()(ObjPtr<Object> obj, size_t usable_size ATTRIBUTE_UNUSED) const
+  void operator()(ObjPtr<Object>* obj, size_t usable_size ATTRIBUTE_UNUSED) const
       REQUIRES_SHARED(Locks::mutator_lock_) {
     StackHandleScope<1> hs(self_);
-    Handle<mirror::Class> h_new_class_obj(hs.NewHandle(obj->AsClass()));
+    Handle<mirror::Class> h_new_class_obj(hs.NewHandle((*obj)->AsClass()));
     Object::CopyObject(h_new_class_obj.Get(), orig_->Get(), copy_bytes_);
     Class::SetStatus(h_new_class_obj, ClassStatus::kResolving, self_);
     h_new_class_obj->PopulateEmbeddedVTable(pointer_size_);
