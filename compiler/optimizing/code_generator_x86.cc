@@ -3644,7 +3644,7 @@ void InstructionCodeGeneratorX86::GenerateDivRemWithAnyConstant(HBinaryOperation
 }
 
 void InstructionCodeGeneratorX86::GenerateDivRemIntegral(HBinaryOperation* instruction) {
-  DCHECK(instruction->IsDiv() || instruction->IsRem());
+  CHECK(instruction->IsDiv() || instruction->IsRem());
 
   LocationSummary* locations = instruction->GetLocations();
   Location out = locations->Out();

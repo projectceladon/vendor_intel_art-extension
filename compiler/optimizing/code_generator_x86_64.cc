@@ -3751,7 +3751,7 @@ void InstructionCodeGeneratorX86_64::GenerateDivRemWithAnyConstant(HBinaryOperat
 }
 
 void InstructionCodeGeneratorX86_64::GenerateDivRemIntegral(HBinaryOperation* instruction) {
-  DCHECK(instruction->IsDiv() || instruction->IsRem());
+  CHECK(instruction->IsDiv() || instruction->IsRem());
   DataType::Type type = instruction->GetResultType();
   DCHECK(type == DataType::Type::kInt32 || type == DataType::Type::kInt64);
 
