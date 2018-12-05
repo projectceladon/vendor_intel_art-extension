@@ -1493,6 +1493,9 @@ class HLoopInformationOutwardIterator : public ValueObject {
 
 #if defined(ART_ENABLE_CODEGEN_x86) || defined(ART_ENABLE_CODEGEN_x86_64)
 #define FOR_EACH_CONCRETE_INSTRUCTION_X86_COMMON(M)                     \
+  M(AndNot, Instruction)                                                \
+  M(AndNeg, Instruction)                                                \
+  M(BitwiseAddRight, Instruction)                                       \
   M(X86BoundsCheckMemory, Instruction)
 #else
 #define FOR_EACH_CONCRETE_INSTRUCTION_X86_COMMON(M)
