@@ -1,0 +1,7 @@
+#!/bin/bash
+
+
+declare -a testMethodsCounts=('testLoopAddInt:1' 'testLoopSubInt:2' 'testLoopSubLong:4' 'testLoopSubLongModifiedInOuterLoop:3' 'testLoopSubLongReadInOuterLoopAndNonConstBound:3'  'testLoopMulIntNested:1' 'testLoopMulLongNested:0' 'testLoopDivNested1:4' 'testLoopRemIntNested:3' 'testLoopAddLongSeveralLoops:3' 'testLoopDivNested2:1' 'testLoopDivNested3:4' 'testLoopDivNested4:0')
+
+fi
+

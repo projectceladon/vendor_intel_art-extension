@@ -1,0 +1,12 @@
+Test Main; Subtest test1; Result: 179138.0
+Test Main; Subtest test10; Result: 1085.2920652134003
+Test Main; Subtest test11; Result: -76035.68295812607
+Test Main; Subtest test12; Result: -3.065156740625E7
+Test Main; Subtest test2; Result: 2659.594555955077
+Test Main; Subtest test3; Result: 30.0
+Test Main; Subtest test4; Result: 7.001309817036285E37
+Test Main; Subtest test5; Result: 334401.0
+Test Main; Subtest test6; Result: 104513.0
+Test Main; Subtest test7; Result: Infinity
+Test Main; Subtest test8; Result: 313510.0
+Test Main; Subtest test9; Result: 0.0

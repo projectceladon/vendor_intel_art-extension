@@ -952,6 +952,11 @@ bool HInstructionBuilder::BuildInvoke(const Instruction& instruction,
                         true /* is_unresolved */);
   }
 
+  // identifying recursive method
+  if (resolved_method == graph_->GetArtMethod()) {
+    graph_->SetMethodRecursive(true);
+  }
+
   // Replace calls to String.<init> with StringFactory.
   if (IsStringConstructor(resolved_method)) {
     uint32_t string_init_entry_point = WellKnownClasses::StringInitToEntryPoint(resolved_method);

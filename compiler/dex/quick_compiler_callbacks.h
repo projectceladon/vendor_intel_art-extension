@@ -19,6 +19,7 @@
 
 #include "compiler_callbacks.h"
 #include "verifier/verifier_deps.h"
+#include "base/bit_vector-inl.h"
 
 namespace art {
 
@@ -72,6 +73,10 @@ class QuickCompilerCallbacks FINAL : public CompilerCallbacks {
   void SetDexFiles(const std::vector<const DexFile*>* dex_files) {
     dex_files_ = dex_files;
   }
+
+  void RecordVerificationBitmap(ClassReference ref, BitVector* verification_bitmap) OVERRIDE;
+
+  BitVector* GetVerificationBitmap(ClassReference ref) OVERRIDE;
 
  private:
   VerificationResults* verification_results_ = nullptr;

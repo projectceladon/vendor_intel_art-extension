@@ -1772,17 +1772,38 @@ OatFile::OatClass OatFile::OatDexFile::GetOatClass(uint16_t class_def_index) con
   const uint8_t* after_type_pointer = type_pointer + sizeof(int16_t);
   CHECK_LE(after_type_pointer, oat_file_->End()) << oat_file_->GetLocation();
 
+  uint32_t verification_bitmap_size = 0;
+  const uint8_t* verification_bitmap_pointer = nullptr;
+  const uint8_t* after_verification_bitmap_pointer = nullptr;
+  if (status == ClassStatus::kRetryVerificationAtRuntime ||
+      status == ClassStatus::kResolved) {
+    verification_bitmap_size =
+        static_cast<uint32_t>(*reinterpret_cast<const uint32_t*>(after_type_pointer));
+    verification_bitmap_pointer = after_type_pointer + sizeof(verification_bitmap_size);
+    CHECK_LE(verification_bitmap_pointer, oat_file_->End()) << oat_file_->GetLocation();
+    after_verification_bitmap_pointer = verification_bitmap_pointer
+                                        + verification_bitmap_size;
+    // bitmap pointer is invalid if the size is 0
+    if (verification_bitmap_size == 0) {
+      verification_bitmap_pointer = nullptr;
+    }
+  } else {
+    after_verification_bitmap_pointer = after_type_pointer;
+  }
+  CHECK_LE(after_verification_bitmap_pointer, oat_file_->End()) << oat_file_->GetLocation();
+
   uint32_t bitmap_size = 0;
   const uint8_t* bitmap_pointer = nullptr;
   const uint8_t* methods_pointer = nullptr;
   if (type != kOatClassNoneCompiled) {
     if (type == kOatClassSomeCompiled) {
-      bitmap_size = static_cast<uint32_t>(*reinterpret_cast<const uint32_t*>(after_type_pointer));
-      bitmap_pointer = after_type_pointer + sizeof(bitmap_size);
+      bitmap_size =
+        static_cast<uint32_t>(*reinterpret_cast<const uint32_t*>(after_verification_bitmap_pointer));
+      bitmap_pointer = after_verification_bitmap_pointer + sizeof(bitmap_size);
       CHECK_LE(bitmap_pointer, oat_file_->End()) << oat_file_->GetLocation();
       methods_pointer = bitmap_pointer + bitmap_size;
     } else {
-      methods_pointer = after_type_pointer;
+      methods_pointer = after_verification_bitmap_pointer;
     }
     CHECK_LE(methods_pointer, oat_file_->End()) << oat_file_->GetLocation();
   }
@@ -1792,7 +1813,9 @@ OatFile::OatClass OatFile::OatDexFile::GetOatClass(uint16_t class_def_index) con
                            type,
                            bitmap_size,
                            reinterpret_cast<const uint32_t*>(bitmap_pointer),
-                           reinterpret_cast<const OatMethodOffsets*>(methods_pointer));
+                           reinterpret_cast<const OatMethodOffsets*>(methods_pointer),
+                           verification_bitmap_size,
+                           reinterpret_cast<const uint32_t*>(verification_bitmap_pointer));
 }
 
 const DexFile::ClassDef* OatFile::OatDexFile::FindClassDef(const DexFile& dex_file,
@@ -1859,9 +1882,13 @@ OatFile::OatClass::OatClass(const OatFile* oat_file,
                             OatClassType type,
                             uint32_t bitmap_size,
                             const uint32_t* bitmap_pointer,
-                            const OatMethodOffsets* methods_pointer)
+                            const OatMethodOffsets* methods_pointer,
+                            uint32_t verif_bitmap_size,
+                            const uint32_t* verification_bitmap_pointer)
     : oat_file_(oat_file), status_(status), type_(type),
-      bitmap_(bitmap_pointer), methods_pointer_(methods_pointer) {
+      bitmap_(bitmap_pointer), methods_pointer_(methods_pointer),
+      verification_bitmap_size_(verif_bitmap_size),
+      verification_bitmap_(verification_bitmap_pointer) {
     switch (type_) {
       case kOatClassAllCompiled: {
         CHECK_EQ(0U, bitmap_size);

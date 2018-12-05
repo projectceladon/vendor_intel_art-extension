@@ -20,8 +20,10 @@
 #include "base/scoped_arena_allocator.h"
 #include "base/scoped_arena_containers.h"
 #include "induction_var_range.h"
+#include "loop_analysis.h"
 #include "nodes.h"
 #include "optimization.h"
+#include "superblock_cloner.h"
 
 namespace art {
 
@@ -137,6 +139,10 @@ class HLoopOptimization : public HOptimization {
   // Performs optimizations specific to inner loop (empty loop removal,
   // unrolling, vectorization). Returns true if anything changed.
   bool OptimizeInnerLoop(LoopNode* node);
+  
+  bool TryOptimizeInnerLoopFinite(LoopNode* node);
+  
+  bool TryFullUnrolling(LoopNode* node);
 
   //
   // Vectorization analysis and synthesis.

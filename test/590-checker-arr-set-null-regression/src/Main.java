@@ -45,16 +45,14 @@ public class Main {
   /// CHECK-DAG:     <<Class:l\d+>>         LoadClass
   /// CHECK-DAG:     <<CheckedValue:l\d+>>  BoundType [<<Null>>]
   /// CHECK-DAG:     <<CheckedArray:l\d+>>  NullCheck [<<Array>>]
-  /// CHECK-DAG:     <<Length:i\d+>>        ArrayLength [<<CheckedArray>>]
-  /// CHECK-DAG:     <<CheckedIndex:i\d+>>  BoundsCheck [<<Index>>,<<Length>>]
-  /// CHECK-DAG:     <<ArraySet:v\d+>>      ArraySet [<<CheckedArray>>,<<CheckedIndex>>,<<CheckedValue>>] needs_type_check:true
+  /// CHECK-DAG:     <<X86CheckedArray:i\d+>> X86BoundsCheckMemory [<<Index>>,<<CheckedArray>>]  
+  /// CHECK-DAG:     <<ArraySet:v\d+>>      ArraySet [<<CheckedArray>>,<<X86CheckedArray>>,<<CheckedValue>>] needs_type_check:true
 
   /// CHECK-START: void Main.testArraySetCheckCastNull(Main$Element[]) prepare_for_register_allocation (after)
   /// CHECK:         <<Array:l\d+>>         ParameterValue
   /// CHECK-DAG:     <<Index:i\d+>>         IntConstant 42
   /// CHECK-DAG:     <<Null:l\d+>>          NullConstant
   /// CHECK-DAG:     <<Class:l\d+>>         LoadClass
-  /// CHECK-DAG:     <<Length:i\d+>>        ArrayLength [<<Array>>]
   /// CHECK-DAG:     <<ArraySet:v\d+>>      ArraySet [<<Array>>,<<Index>>,<<Null>>] needs_type_check:false
 
   static void testArraySetCheckCastNull(Element[] elements) {

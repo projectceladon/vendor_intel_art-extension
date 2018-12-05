@@ -822,7 +822,7 @@ void StackVisitor::WalkStack(bool include_transitions) {
       }
       while (method != nullptr) {
         if (!header_retrieved) {
-          cur_oat_quick_method_header_ = method->GetOatQuickMethodHeader(cur_quick_frame_pc_);
+          cur_oat_quick_method_header_ = method->GetOatQuickMethodHeader(cur_quick_frame_pc_, true);
         }
         header_retrieved = false;  // Force header retrieval in next iteration.
 

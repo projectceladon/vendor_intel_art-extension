@@ -1,0 +1,4 @@
+java.lang.ArrayIndexOutOfBoundsException: length=10; index=10
+	at Test.setThingies(Test.java:17)
+	at Test.hereyouare(Test.java:25)
+	at Main.main(Main.java:25)
