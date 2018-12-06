@@ -125,6 +125,11 @@ ifneq ($(ART_BUILD_TARGET_DEBUG),false)
 ART_TARGET_EXECUTABLES += $(foreach name,$(ART_CORE_DEBUGGABLE_EXECUTABLES),$(name)d-target)
 endif
 
+CAPSTONE_EXT_LIBRARY := $(strip $(wildcard $$(ANDROID_BUILD_TOP)/external/capstone/Android.bp))
+ifneq ($$(CAPSTONE_EXT_LIBRARY),)
+  ART_CAPSTONE_INCLUDES := true
+endif
+
 ART_HOST_EXECUTABLES :=
 ifneq ($(ART_BUILD_HOST_NDEBUG),false)
 ART_HOST_EXECUTABLES += $(foreach name,$(ART_CORE_EXECUTABLES) $(ART_CORE_DEBUGGABLE_EXECUTABLES),$(name)-host)

@@ -58,6 +58,7 @@ struct LogVerbosity {
   bool systrace_lock_logging;  // Enabled with "-verbose:sys-locks".
   bool agents;
   bool dex;  // Some dex access output etc.
+  bool autofast_jni;
 };
 
 // Global log verbosity setting, initialized by InitLogging.
