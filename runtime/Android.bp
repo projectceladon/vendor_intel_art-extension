@@ -24,6 +24,27 @@ JIT_DEBUG_REGISTER_CODE_LDFLAGS = [
 ]
 
 cc_defaults {
+     name: "libart-pgo-defaults",
+     pgo: {
+         instrumentation: true,
+         benchmarks: ["art_runtime", "dex2oat",],
+     },
+     target: {
+         android_x86_64: {
+	    pgo: {
+                  profile_file: "art/art-runtime_x86.profdata",
+            },
+         },
+	 android_x86: {
+	    pgo: {
+                  profile_file: "art/art-runtime_x86.profdata",
+            },
+         },
+     },
+}
+
+
+cc_defaults {
     name: "libart_defaults",
     defaults: ["libcapstone-defaults","art_defaults"],
     host_supported: true,
@@ -466,7 +487,8 @@ gensrcs {
 
 art_cc_library {
     name: "libart",
-    defaults: ["libart_defaults"],
+    defaults: ["libart_defaults",
+		"libart-pgo-defaults",],
     // Leave the symbols in the shared library so that stack unwinders can
     // produce meaningful name resolution.
     strip: {
@@ -481,6 +503,14 @@ art_cc_library {
     export_shared_lib_headers: [
         "libdexfile",
     ],
+    pgo: {
+         // Additional cflags just for dex2oat during PGO instrumentation
+	 cflags: [
+	       // Ignore frame-size increase resulting from instrumentation.
+	       "-Wno-frame-larger-than=",
+	       "-DART_PGO_INSTRUMENTATION",
+	 ],
+    },
     target: {
         android: {
             lto: {
