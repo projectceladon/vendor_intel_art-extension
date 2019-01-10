@@ -243,7 +243,8 @@ class HBitwiseAddRight FINAL : public HUnaryOperation {
  const InstructionKind op_kind_;
 
   DEFAULT_COPY_CONSTRUCTOR(BitwiseAddRight);
-  
+ };
+
 // X86/X86-64 version of HBoundsCheck that checks length in array descriptor.
 class HX86BoundsCheckMemory : public HExpression<2> {
  public:
