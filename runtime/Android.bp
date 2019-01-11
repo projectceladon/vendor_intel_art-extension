@@ -24,8 +24,29 @@ JIT_DEBUG_REGISTER_CODE_LDFLAGS = [
 ]
 
 cc_defaults {
+     name: "libart-pgo-defaults",
+     pgo: {
+         instrumentation: true,
+         benchmarks: ["art_runtime", "dex2oat",],
+     },
+     target: {
+         android_x86_64: {
+	    pgo: {
+                  profile_file: "art/art-runtime_x86.profdata",
+            },
+         },
+	 android_x86: {
+	    pgo: {
+                  profile_file: "art/art-runtime_x86.profdata",
+            },
+         },
+     },
+}
+
+
+cc_defaults {
     name: "libart_defaults",
-    defaults: ["art_defaults"],
+    defaults: ["libcapstone-defaults","art_defaults"],
     host_supported: true,
     srcs: [
         "aot_class_linker.cc",
@@ -466,7 +487,8 @@ gensrcs {
 
 art_cc_library {
     name: "libart",
-    defaults: ["libart_defaults"],
+    defaults: ["libart_defaults",
+		"libart-pgo-defaults",],
     // Leave the symbols in the shared library so that stack unwinders can
     // produce meaningful name resolution.
     strip: {
@@ -481,6 +503,14 @@ art_cc_library {
     export_shared_lib_headers: [
         "libdexfile",
     ],
+    pgo: {
+         // Additional cflags just for dex2oat during PGO instrumentation
+	 cflags: [
+	       // Ignore frame-size increase resulting from instrumentation.
+	       "-Wno-frame-larger-than=",
+	       "-DART_PGO_INSTRUMENTATION",
+	 ],
+    },
     target: {
         android: {
             lto: {
@@ -526,6 +556,28 @@ art_cc_library {
         "external/icu/icu4c/source/common",
     ],
 }
+
+art_capstone_dependancies {
+    name: "libcapstone-defaults",
+    host_supported: true,
+    clang: true,
+
+    product_variables: {
+       autoFastJni: {
+             srcs: [
+                "binary_analyzer/binary_analyzer_x86.cc",
+                "binary_analyzer/disassembler.cc",
+             ],
+             include_dirs: [
+                 "external/capstone/include",
+                 "external/capstone",
+             ],
+             shared_libs: ["libcapstone"],
+        },
+    },
+
+}
+
 
 art_cc_test {
     name: "art_runtime_tests",

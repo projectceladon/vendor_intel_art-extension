@@ -728,6 +728,19 @@ class Runtime {
     return env_snapshot_.GetSnapshot();
   }
 
+#ifdef CAPSTONE
+  // Should Auto fast Detection be done.
+  bool IsAutoFastDetect() const {
+    return auto_fast_detect_;
+  }
+
+  // Set Auto Fast Detection.
+  void SetAutoFastDetect(bool value) {
+    auto_fast_detect_ = value;
+  }
+#endif
+
+
   void AddSystemWeakHolder(gc::AbstractSystemWeakHolder* holder);
   void RemoveSystemWeakHolder(gc::AbstractSystemWeakHolder* holder);
 
@@ -1095,6 +1108,11 @@ class Runtime {
       static_cast<uint32_t>(DeoptimizationKind::kLast) + 1];
 
   std::unique_ptr<MemMap> protected_fault_page_;
+#ifdef CAPSTONE
+  // Auto Fast JNI detection gate.
+  bool auto_fast_detect_;
+#endif
+
 
   DISALLOW_COPY_AND_ASSIGN(Runtime);
 };

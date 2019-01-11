@@ -1,0 +1,1 @@
+Test for bit manipulation instructions those with bmi1 flag on x86 and x86_64
