@@ -32,6 +32,8 @@ bool TryCombineAndNot(HNot* instruction) {
    // and thus can be safely removed.
    if (instruction->HasOnlyOneNonEnvironmentUse()) {
      HInstruction* use = instruction->GetUses().front().GetUser();
+     if (!use->IsAnd())
+       return false;
      HAnd* and_ins = use->AsAnd();
      HInstruction* left = and_ins->GetLeft();
      HInstruction* right = and_ins->GetRight();
