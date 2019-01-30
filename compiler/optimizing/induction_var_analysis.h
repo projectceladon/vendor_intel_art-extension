@@ -278,6 +278,7 @@ class HInductionVarAnalysis : public HOptimization {
 
   friend class InductionVarAnalysisTest;
   friend class InductionVarRange;
+  friend class InductionVarSimplification;
   friend class InductionVarRangeTest;
 
   DISALLOW_COPY_AND_ASSIGN(HInductionVarAnalysis);
