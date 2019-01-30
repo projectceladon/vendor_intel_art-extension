@@ -27,6 +27,7 @@
 #include "linear_order.h"
 #include "mirror/array-inl.h"
 #include "mirror/string.h"
+#include <iostream>
 
 namespace art {
 
@@ -413,6 +414,7 @@ HLoopOptimization::HLoopOptimization(HGraph* graph,
     : HOptimization(graph, name, stats),
       compiler_driver_(compiler_driver),
       induction_range_(induction_analysis),
+      induction_var_sim_(induction_analysis),
       loop_allocator_(nullptr),
       global_allocator_(graph_->GetAllocator()),
       top_loop_(nullptr),
@@ -716,7 +718,15 @@ bool HLoopOptimization::TryOptimizeInnerLoopFinite(LoopNode* node) {
 
 bool HLoopOptimization::OptimizeInnerLoop(LoopNode* node) {
   return (TryOptimizeInnerLoopFinite(node) ||
-          TryFullUnrolling(node));
+          TryFullUnrolling(node) || TryInductionVarSimplification(node));
+
+}
+
+bool HLoopOptimization::TryInductionVarSimplification(LoopNode* node) {
+  HLoopInformation* loop_info = node->loop_info;
+  if (!induction_var_sim_.SimplifyLoop(loop_info))
+    return false;
+ return true;
 
 }
 
