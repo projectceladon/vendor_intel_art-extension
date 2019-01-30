@@ -1,0 +1,1 @@
+Test for Strength Reduction in Induction Variables 
