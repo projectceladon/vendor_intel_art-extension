@@ -35,7 +35,6 @@ art_global_defaults {
         "-Wshadow",
         "-Wunused",
         "-fvisibility=protected",
-
         // Warn about thread safety violations with clang.
         "-Wthread-safety",
         "-Wthread-safety-negative",
@@ -67,6 +66,7 @@ art_global_defaults {
         "-D_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS",
     ],
 
+
     target: {
         android: {
             cflags: [
@@ -77,6 +77,7 @@ art_global_defaults {
                 // "-fno-omit-frame-pointer",
                 // "-marm",
                 // "-mapcs",
+                   "-march=haswell",
             ],
             include_dirs: [
                 // We optimize Thread::Current() with a direct TLS access. This requires access to a
