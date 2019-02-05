@@ -3654,7 +3654,7 @@ double Heap::HeapGrowthMultiplier() const {
 void Heap::GrowForUtilization(collector::GarbageCollector* collector_ran,
                               uint64_t bytes_allocated_before_gc) {
   //Re-direct the call for GenCopying collector
-  if (foreground_collector_type_ == kCollectorTypeGenCopying) {
+  if (!Runtime::Current()->IsZygote() && foreground_collector_type_ == kCollectorTypeGenCopying) {
     GrowForUtilizationGenCopying(collector_ran);
     return;
   }
@@ -3903,8 +3903,17 @@ void Heap::ConcurrentGC(Thread* self, GcCause cause, bool force_full) {
       // that instead. E.g. can't do partial, so do full instead.
       collector::GcType next_gc_type = next_gc_type_;
       // If forcing full and next gc type is sticky, override with a non-sticky type.
-      if (force_full && next_gc_type == collector::kGcTypeSticky) {
-        next_gc_type = NonStickyGcType();
+      if (foreground_collector_type_ != kCollectorTypeGenCopying) {
+        if (force_full && next_gc_type == collector::kGcTypeSticky) {
+          next_gc_type = NonStickyGcType();
+        }
+      } else {
+        // For Gencopying, when NativeAlloc GC is scheduled, and we use a partial GC which isn't sticky
+        // we end up not using a NonStickyGcType and dont clear new_native_bytes_allocated_ and are in a loop of NativeAlloc GCs
+        // Irrespective of the next_gc_type if we have to force full, lets use a non-sticky type
+        if (force_full) {
+          next_gc_type = NonStickyGcType();
+        }
       }
       if (CollectGarbageInternal(next_gc_type, cause, false) == collector::kGcTypeNone) {
         for (collector::GcType gc_type : gc_plan_) {
