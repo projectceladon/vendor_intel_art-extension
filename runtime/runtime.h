@@ -123,7 +123,8 @@ class Runtime {
   bool IsAotCompiler() const {
     return !UseJitCompilation() && IsCompiler();
   }
-
+  
+  bool IsUsingEpsilonGC() const;
   // IsCompiler is any runtime which has a running compiler, either dex2oat or JIT.
   bool IsCompiler() const {
     return compiler_callbacks_ != nullptr;
@@ -454,6 +455,7 @@ class Runtime {
       const char* isa,
       bool profile_system_server = false);
 
+  size_t ReadMemProperty(char* str);
   const instrumentation::Instrumentation* GetInstrumentation() const {
     return &instrumentation_;
   }
@@ -854,6 +856,7 @@ class Runtime {
   bool is_explicit_gc_disabled_;
   bool dex2oat_enabled_;
   bool image_dex2oat_enabled_;
+  bool is_using_epsilon_gc_; 
 
   std::string compiler_executable_;
   std::string patchoat_executable_;

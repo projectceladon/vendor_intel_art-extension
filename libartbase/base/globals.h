@@ -121,6 +121,12 @@ static constexpr bool kUsePlab = kUseTlab;
 static constexpr size_t kDefaultPLABSize = 64 * KB;
 static constexpr size_t kMaxGcParallelCopyTaskSize = 256;
 
+#ifdef ART_ENABLE_EPSILON_GC
+static constexpr bool kEnableEpsilonGC = true;
+#else
+static constexpr bool kEnableEpsilonGC = false;
+#endif
+
 // Kinds of tracing clocks.
 enum class TraceClockSource {
   kThreadCpu,
