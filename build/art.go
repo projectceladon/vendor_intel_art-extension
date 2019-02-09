@@ -52,7 +52,7 @@ func globalFlags(ctx android.BaseContext) ([]string, []string) {
                 } 
 	}
 
-	if envTrue(ctx, "ART_TEST_DEBUG_GC") {
+	if envTrue(ctx, "ART_TEST_DEBUG_GC") || envTrue(ctx, "ART_ENABLE_EPSILON_GC") {
 		gcType = "SS"
 		tlab = true
 	}
@@ -85,17 +85,25 @@ func globalFlags(ctx android.BaseContext) ([]string, []string) {
 	        cflags = append(cflags, "-DVTUNE_ART")
 	}
 
-        if artUseReadBarrier {
-		// Used to change the read barrier type. Valid values are BAKER, BROOKS,
-		// TABLELOOKUP. The default is BAKER.
-		barrierType := envDefault(ctx, "ART_READ_BARRIER_TYPE", "BAKER")
-		cflags = append(cflags,
-			"-DART_USE_READ_BARRIER=1",
-			"-DART_READ_BARRIER_TYPE_IS_"+barrierType+"=1")
-		asflags = append(asflags,
-			"-DART_USE_READ_BARRIER=1",
-			"-DART_READ_BARRIER_TYPE_IS_"+barrierType+"=1")
-	}
+        if !envTrue(ctx, "ART_ENABLE_EPSILON_GC") {
+                if artUseReadBarrier {
+		        // Used to change the read barrier type. Valid values are BAKER, BROOKS,
+		        // TABLELOOKUP. The default is BAKER.
+		        barrierType := envDefault(ctx, "ART_READ_BARRIER_TYPE", "BAKER")
+		        cflags = append(cflags,
+			        "-DART_USE_READ_BARRIER=1",
+			        "-DART_READ_BARRIER_TYPE_IS_"+barrierType+"=1")
+		        asflags = append(asflags,
+			        "-DART_USE_READ_BARRIER=1",
+			        "-DART_READ_BARRIER_TYPE_IS_"+barrierType+"=1")
+	        }
+        } else {
+                cflags = append(cflags,
+                       "-DART_ENABLE_EPSILON_GC=1")
+                asflags = append(asflags, "-DART_ENABLE_EPSILON_GC=1")
+                print("ART: Enabled usage of eGC at run time.\nART: adb shell setprop dalvik.vm.runtime.useepsilongc true\n");
+        }
+
 
   cdexLevel := envDefault(ctx, "ART_DEFAULT_COMPACT_DEX_LEVEL", "fast")
   cflags = append(cflags, "-DART_DEFAULT_COMPACT_DEX_LEVEL="+cdexLevel)

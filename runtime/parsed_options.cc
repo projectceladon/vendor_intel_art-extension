@@ -255,6 +255,8 @@ std::unique_ptr<RuntimeParser> ParsedOptions::MakeParser(bool ignore_unrecognize
           .IntoKey(M::BackgroundGc)
       .Define("-XX:+DisableExplicitGC")
           .IntoKey(M::DisableExplicitGC)
+      .Define("-XX:+UseEpsilonGC")
+          .IntoKey(M::UseEpsilonGC)
       .Define("-verbose:_")
           .WithType<LogVerbosity>()
           .IntoKey(M::Verbose)
@@ -746,6 +748,7 @@ void ParsedOptions::Usage(const char* fmt, ...) {
   UsageMessage(stream, "  -Xbootclasspath-locations:bootclasspath\n"
                        "     (override the dex locations of the -Xbootclasspath files)\n");
   UsageMessage(stream, "  -XX:+DisableExplicitGC\n");
+  UsageMessage(stream, "  -XX:+UseEpsilonGC\n");//For Epsilon GC
   UsageMessage(stream, "  -XX:ParallelGCThreads=integervalue\n");
   UsageMessage(stream, "  -XX:ConcGCThreads=integervalue\n");
   UsageMessage(stream, "  -XX:MaxSpinsBeforeThinLockInflation=integervalue\n");
