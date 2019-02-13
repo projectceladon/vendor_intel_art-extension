@@ -4269,13 +4269,14 @@ movswl %ax, %eax
 .L_op_add_float: /* 0xa6 */
 /* File: x86_64/op_add_float.S */
 /* File: x86_64/sseBinop.S */
+    %default {"instr":"","suff":""}
     movzbq  2(rPC), %rcx                    # ecx <- BB
     movzbq  3(rPC), %rax                    # eax <- CC
-    movss   VREG_ADDRESS(%rcx), %xmm0       # %xmm0 <- 1st src
-    addss VREG_ADDRESS(%rax), %xmm0
-    movss   %xmm0, VREG_ADDRESS(rINSTq)     # vAA <- %xmm0
-    pxor    %xmm0, %xmm0
-    movss   %xmm0, VREG_REF_ADDRESS(rINSTq) # clear ref
+    vmovss   VREG_ADDRESS(%rcx), %xmm1       # %xmm0 <- 1st src
+    vaddss  %xmm0, VREG_ADDRESS(%rax), %xmm1
+    vmovss   %xmm0, VREG_ADDRESS(rINSTq)     # vAA <- %xmm0
+    vpxor   %xmm0, %xmm0, %xmm0
+    vmovss   %xmm0, VREG_REF_ADDRESS(rINSTq) # clear ref
     ADVANCE_PC_FETCH_AND_GOTO_NEXT 2
 
 
@@ -4284,13 +4285,14 @@ movswl %ax, %eax
 .L_op_sub_float: /* 0xa7 */
 /* File: x86_64/op_sub_float.S */
 /* File: x86_64/sseBinop.S */
+    %default {"instr":"","suff":""}
     movzbq  2(rPC), %rcx                    # ecx <- BB
     movzbq  3(rPC), %rax                    # eax <- CC
-    movss   VREG_ADDRESS(%rcx), %xmm0       # %xmm0 <- 1st src
-    subss VREG_ADDRESS(%rax), %xmm0
-    movss   %xmm0, VREG_ADDRESS(rINSTq)     # vAA <- %xmm0
-    pxor    %xmm0, %xmm0
-    movss   %xmm0, VREG_REF_ADDRESS(rINSTq) # clear ref
+    vmovss   VREG_ADDRESS(%rcx), %xmm1       # %xmm0 <- 1st src
+    vsubss  %xmm0, VREG_ADDRESS(%rax), %xmm1
+    vmovss   %xmm0, VREG_ADDRESS(rINSTq)     # vAA <- %xmm0
+    vpxor   %xmm0, %xmm0, %xmm0
+    vmovss   %xmm0, VREG_REF_ADDRESS(rINSTq) # clear ref
     ADVANCE_PC_FETCH_AND_GOTO_NEXT 2
 
 
@@ -4299,13 +4301,14 @@ movswl %ax, %eax
 .L_op_mul_float: /* 0xa8 */
 /* File: x86_64/op_mul_float.S */
 /* File: x86_64/sseBinop.S */
+    %default {"instr":"","suff":""}
     movzbq  2(rPC), %rcx                    # ecx <- BB
     movzbq  3(rPC), %rax                    # eax <- CC
-    movss   VREG_ADDRESS(%rcx), %xmm0       # %xmm0 <- 1st src
-    mulss VREG_ADDRESS(%rax), %xmm0
-    movss   %xmm0, VREG_ADDRESS(rINSTq)     # vAA <- %xmm0
-    pxor    %xmm0, %xmm0
-    movss   %xmm0, VREG_REF_ADDRESS(rINSTq) # clear ref
+    vmovss   VREG_ADDRESS(%rcx), %xmm1       # %xmm0 <- 1st src
+    vmulss  %xmm0, VREG_ADDRESS(%rax), %xmm1
+    vmovss   %xmm0, VREG_ADDRESS(rINSTq)     # vAA <- %xmm0
+    vpxor   %xmm0, %xmm0, %xmm0
+    vmovss   %xmm0, VREG_REF_ADDRESS(rINSTq) # clear ref
     ADVANCE_PC_FETCH_AND_GOTO_NEXT 2
 
 
@@ -4314,13 +4317,14 @@ movswl %ax, %eax
 .L_op_div_float: /* 0xa9 */
 /* File: x86_64/op_div_float.S */
 /* File: x86_64/sseBinop.S */
+    %default {"instr":"","suff":""}
     movzbq  2(rPC), %rcx                    # ecx <- BB
     movzbq  3(rPC), %rax                    # eax <- CC
-    movss   VREG_ADDRESS(%rcx), %xmm0       # %xmm0 <- 1st src
-    divss VREG_ADDRESS(%rax), %xmm0
-    movss   %xmm0, VREG_ADDRESS(rINSTq)     # vAA <- %xmm0
-    pxor    %xmm0, %xmm0
-    movss   %xmm0, VREG_REF_ADDRESS(rINSTq) # clear ref
+    vmovss   VREG_ADDRESS(%rcx), %xmm1       # %xmm0 <- 1st src
+    vdivss  %xmm0, VREG_ADDRESS(%rax), %xmm1
+    vmovss   %xmm0, VREG_ADDRESS(rINSTq)     # vAA <- %xmm0
+    vpxor   %xmm0, %xmm0, %xmm0
+    vmovss   %xmm0, VREG_REF_ADDRESS(rINSTq) # clear ref
     ADVANCE_PC_FETCH_AND_GOTO_NEXT 2
 
 
@@ -4348,13 +4352,14 @@ movswl %ax, %eax
 .L_op_add_double: /* 0xab */
 /* File: x86_64/op_add_double.S */
 /* File: x86_64/sseBinop.S */
+    %default {"instr":"","suff":""}
     movzbq  2(rPC), %rcx                    # ecx <- BB
     movzbq  3(rPC), %rax                    # eax <- CC
-    movsd   VREG_ADDRESS(%rcx), %xmm0       # %xmm0 <- 1st src
-    addsd VREG_ADDRESS(%rax), %xmm0
-    movsd   %xmm0, VREG_ADDRESS(rINSTq)     # vAA <- %xmm0
-    pxor    %xmm0, %xmm0
-    movsd   %xmm0, VREG_REF_ADDRESS(rINSTq) # clear ref
+    vmovsd   VREG_ADDRESS(%rcx), %xmm1       # %xmm0 <- 1st src
+    vaddsd  %xmm0, VREG_ADDRESS(%rax), %xmm1
+    vmovsd   %xmm0, VREG_ADDRESS(rINSTq)     # vAA <- %xmm0
+    vpxor   %xmm0, %xmm0, %xmm0
+    vmovsd   %xmm0, VREG_REF_ADDRESS(rINSTq) # clear ref
     ADVANCE_PC_FETCH_AND_GOTO_NEXT 2
 
 
@@ -4363,13 +4368,14 @@ movswl %ax, %eax
 .L_op_sub_double: /* 0xac */
 /* File: x86_64/op_sub_double.S */
 /* File: x86_64/sseBinop.S */
+    %default {"instr":"","suff":""}
     movzbq  2(rPC), %rcx                    # ecx <- BB
     movzbq  3(rPC), %rax                    # eax <- CC
-    movsd   VREG_ADDRESS(%rcx), %xmm0       # %xmm0 <- 1st src
-    subsd VREG_ADDRESS(%rax), %xmm0
-    movsd   %xmm0, VREG_ADDRESS(rINSTq)     # vAA <- %xmm0
-    pxor    %xmm0, %xmm0
-    movsd   %xmm0, VREG_REF_ADDRESS(rINSTq) # clear ref
+    vmovsd   VREG_ADDRESS(%rcx), %xmm1       # %xmm0 <- 1st src
+    vsubsd  %xmm0, VREG_ADDRESS(%rax), %xmm1
+    vmovsd   %xmm0, VREG_ADDRESS(rINSTq)     # vAA <- %xmm0
+    vpxor   %xmm0, %xmm0, %xmm0
+    vmovsd   %xmm0, VREG_REF_ADDRESS(rINSTq) # clear ref
     ADVANCE_PC_FETCH_AND_GOTO_NEXT 2
 
 
@@ -4378,13 +4384,14 @@ movswl %ax, %eax
 .L_op_mul_double: /* 0xad */
 /* File: x86_64/op_mul_double.S */
 /* File: x86_64/sseBinop.S */
+    %default {"instr":"","suff":""}
     movzbq  2(rPC), %rcx                    # ecx <- BB
     movzbq  3(rPC), %rax                    # eax <- CC
-    movsd   VREG_ADDRESS(%rcx), %xmm0       # %xmm0 <- 1st src
-    mulsd VREG_ADDRESS(%rax), %xmm0
-    movsd   %xmm0, VREG_ADDRESS(rINSTq)     # vAA <- %xmm0
-    pxor    %xmm0, %xmm0
-    movsd   %xmm0, VREG_REF_ADDRESS(rINSTq) # clear ref
+    vmovsd   VREG_ADDRESS(%rcx), %xmm1       # %xmm0 <- 1st src
+    vmulsd  %xmm0, VREG_ADDRESS(%rax), %xmm1
+    vmovsd   %xmm0, VREG_ADDRESS(rINSTq)     # vAA <- %xmm0
+    vpxor   %xmm0, %xmm0, %xmm0
+    vmovsd   %xmm0, VREG_REF_ADDRESS(rINSTq) # clear ref
     ADVANCE_PC_FETCH_AND_GOTO_NEXT 2
 
 
@@ -4393,13 +4400,14 @@ movswl %ax, %eax
 .L_op_div_double: /* 0xae */
 /* File: x86_64/op_div_double.S */
 /* File: x86_64/sseBinop.S */
+    %default {"instr":"","suff":""}
     movzbq  2(rPC), %rcx                    # ecx <- BB
     movzbq  3(rPC), %rax                    # eax <- CC
-    movsd   VREG_ADDRESS(%rcx), %xmm0       # %xmm0 <- 1st src
-    divsd VREG_ADDRESS(%rax), %xmm0
-    movsd   %xmm0, VREG_ADDRESS(rINSTq)     # vAA <- %xmm0
-    pxor    %xmm0, %xmm0
-    movsd   %xmm0, VREG_REF_ADDRESS(rINSTq) # clear ref
+    vmovsd   VREG_ADDRESS(%rcx), %xmm1       # %xmm0 <- 1st src
+    vdivsd  %xmm0, VREG_ADDRESS(%rax), %xmm1
+    vmovsd   %xmm0, VREG_ADDRESS(rINSTq)     # vAA <- %xmm0
+    vpxor   %xmm0, %xmm0, %xmm0
+    vmovsd   %xmm0, VREG_REF_ADDRESS(rINSTq) # clear ref
     ADVANCE_PC_FETCH_AND_GOTO_NEXT 2
 
 
