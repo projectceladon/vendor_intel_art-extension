@@ -763,6 +763,7 @@ class MarkStackCopyTask : public Task {
     bool collect_from_space_only = semi_space_->IsCollectFromSpaceOnly();
     if (collect_from_space_only) {
       promo_dest_space = semi_space_->GetPromoSpace();
+      CHECK(promo_dest_space != nullptr);
       live_bitmap = promo_dest_space->GetLiveBitmap();
     }
     semi_space_->GetHeap()->AssertThreadLocalBuffersAreRevoked(self);
