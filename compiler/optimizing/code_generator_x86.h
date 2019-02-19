@@ -206,6 +206,8 @@ class InstructionCodeGeneratorX86 : public InstructionCodeGenerator {
   // table version generates 7 instructions and num_entries literals. Compare/jump sequence will
   // generates less code/data with a small num_entries.
   static constexpr uint32_t kPackedSwitchJumpTableThreshold = 5;
+  
+  bool CpuHasAVXorAVX2FeatureFlag();
 
  private:
   // Generate code for the given suspend check. If not null, `successor`
@@ -480,6 +482,20 @@ class CodeGeneratorX86 : public CodeGenerator {
 
   int32_t ConstantAreaStart() const {
     return constant_area_start_;
+  }
+
+  bool CpuHasAVX2FeatureFlag() {
+    if (GetInstructionSetFeatures().HasAVX2()){
+      return true;
+    }
+    return false;
+  }
+
+  bool CpuHasAVXFeatureFlag() {
+    if (GetInstructionSetFeatures().HasAVX()) {
+      return true;
+    }
+    return false;
   }
 
   Address LiteralDoubleAddress(double v, HX86ComputeBaseMethodAddress* method_base, Register reg);

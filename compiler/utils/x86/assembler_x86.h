@@ -31,6 +31,23 @@
 #include "offsets.h"
 #include "utils/assembler.h"
 
+#define VEX_INIT        0x00
+#define TWO_BYTE_VEX    0xC5
+#define THREE_BYTE_VEX  0xC4
+#define SET_VEX_R       0x80
+#define SET_VEX_X       0x40
+#define SET_VEX_B       0x20
+#define SET_VEX_M_0F    0x01
+#define SET_VEX_M_0F_38 0x02
+#define SET_VEX_M_0F_3A 0x03
+#define SET_VEX_W       0x80
+#define SET_VEX_L_128   0x00
+#define SET_VEL_L_256   0x04
+#define SET_VEX_PP_NONE 0x00
+#define SET_VEX_PP_66   0x01
+#define SET_VEX_PP_F3   0x02
+#define SET_VEX_PP_F2   0x03
+
 namespace art {
 namespace x86 {
 
@@ -336,12 +353,12 @@ class X86Assembler FINAL : public Assembler {
   void movl(const Address& dst, Label* lbl);
 
   void movntl(const Address& dst, Register src);
- 
+
   void blsi(Register dst, Register src); // no addr variant (for now)
   void blsmsk(Register dst, Register src); // no addr variant (for now)
   void blsr(Register dst, Register src); // no addr varianr (for now)
   void bswapl(Register dst);
-  
+
   void bsfl(Register dst, Register src);
   void bsfl(Register dst, const Address& src);
   void bsrl(Register dst, Register src);
@@ -384,12 +401,21 @@ class X86Assembler FINAL : public Assembler {
   void movaps(const Address& dst, XmmRegister src);  // store aligned
   void movups(const Address& dst, XmmRegister src);  // store unaligned
 
+	void vmovaps(XmmRegister dst, XmmRegister src);     // move
+	void vmovaps(XmmRegister dst, const Address& src);  // load aligned
+	void vmovups(XmmRegister dst, const Address& src);  // load unaligned
+	void vmovaps(const Address& dst, XmmRegister src);  // store aligned
+  void vmovups(const Address& dst, XmmRegister src);  // store unaligned
+
   void movss(XmmRegister dst, const Address& src);
   void movss(const Address& dst, XmmRegister src);
   void movss(XmmRegister dst, XmmRegister src);
 
   void movd(XmmRegister dst, Register src);
   void movd(Register dst, XmmRegister src);
+
+  void vmovd(XmmRegister dst, Register src);
+  void vmovd(Register dst, XmmRegister src);
 
   void addss(XmmRegister dst, XmmRegister src);
   void addss(XmmRegister dst, const Address& src);
@@ -410,6 +436,12 @@ class X86Assembler FINAL : public Assembler {
   void movupd(XmmRegister dst, const Address& src);  // load unaligned
   void movapd(const Address& dst, XmmRegister src);  // store aligned
   void movupd(const Address& dst, XmmRegister src);  // store unaligned
+
+	void vmovapd(XmmRegister dst, XmmRegister src);     // move
+	void vmovapd(XmmRegister dst, const Address& src);  // load aligned
+	void vmovupd(XmmRegister dst, const Address& src);  // load unaligned
+	void vmovapd(const Address& dst, XmmRegister src);  // store aligned
+  void vmovupd(const Address& dst, XmmRegister src);  // store unaligned
 
   void movsd(XmmRegister dst, const Address& src);
   void movsd(const Address& dst, XmmRegister src);
@@ -437,6 +469,12 @@ class X86Assembler FINAL : public Assembler {
   void movdqu(XmmRegister dst, const Address& src);  // load unaligned
   void movdqa(const Address& dst, XmmRegister src);  // store aligned
   void movdqu(const Address& dst, XmmRegister src);  // store unaligned
+
+  void vmovdqa(XmmRegister dst, XmmRegister src);     // move
+	void vmovdqa(XmmRegister dst, const Address& src);  // load aligned
+	void vmovdqu(XmmRegister dst, const Address& src);  // load unaligned
+	void vmovdqa(const Address& dst, XmmRegister src);  // store aligned
+  void vmovdqu(const Address& dst, XmmRegister src);  // store unaligned
 
   void paddb(XmmRegister dst, XmmRegister src);  // no addr variant (for now)
   void psubb(XmmRegister dst, XmmRegister src);
@@ -498,7 +536,7 @@ class X86Assembler FINAL : public Assembler {
   void andnpd(XmmRegister dst, XmmRegister src);  // no addr variant (for now)
   void andnps(XmmRegister dst, XmmRegister src);
   void pandn(XmmRegister dst, XmmRegister src);
-  
+
 
   void orpd(XmmRegister dst, XmmRegister src);  // no addr variant (for now)
   void orps(XmmRegister dst, XmmRegister src);
@@ -837,6 +875,12 @@ class X86Assembler FINAL : public Assembler {
   uint8_t EmitVexByteZero(bool is_two_byte);
   uint8_t EmitVexByte1(bool r, bool x, bool b, int mmmmm);
   uint8_t EmitVexByte2(bool w , int l , X86ManagedRegister operand, int pp);
+
+
+  uint8_t EmitVexPrefixByteZero(bool is_twobyte_form);
+	uint8_t EmitVexPrefixByteOne(bool R, bool X, bool B, int SET_VEX_M);
+	uint8_t EmitVexPrefixByteTwo(bool W,X86ManagedRegister operand,int SET_VEX_L, int SET_VEX_PP);
+	uint8_t EmitVexPrefixByteTwo(bool W,int SET_VEX_L, int SET_VEX_PP);
   ConstantArea constant_area_;
 
   DISALLOW_COPY_AND_ASSIGN(X86Assembler);
