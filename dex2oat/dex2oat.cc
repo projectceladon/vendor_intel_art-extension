@@ -983,7 +983,8 @@ class Dex2Oat FINAL {
     return (kUseReadBarrier ||
             gc::kCollectorTypeDefault == gc::kCollectorTypeCMS ||
             gc::kCollectorTypeDefault == gc::kCollectorTypeMS ||
-            gc::kCollectorTypeDefault == gc::kCollectorTypeGenCopying);
+            gc::kCollectorTypeDefault == gc::kCollectorTypeGenCopying ||
+            gc::kCollectorTypeDefault == gc::kCollectorTypeSS);
   }
 
   void ExpandOatAndImageFilenames() {

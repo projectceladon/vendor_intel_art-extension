@@ -170,6 +170,7 @@
 
 #ifdef ART_TARGET_ANDROID
 #include <android/set_abort_message.h>
+#include "cutils/properties.h"
 #endif
 
 namespace art {
@@ -224,6 +225,7 @@ Runtime::Runtime()
       is_explicit_gc_disabled_(false),
       dex2oat_enabled_(true),
       image_dex2oat_enabled_(true),
+      is_using_epsilon_gc_(false),
       default_stack_size_(0),
       heap_(nullptr),
       max_spins_before_thin_lock_inflation_(Monitor::kDefaultMaxSpinsBeforeThinLockInflation),
@@ -593,6 +595,10 @@ void Runtime::Abort(const char* msg) {
   // notreached
 }
 
+bool Runtime::IsUsingEpsilonGC() const {
+  return is_using_epsilon_gc_ && !kUseReadBarrier;
+}
+
 void Runtime::PreZygoteFork() {
   heap_->PreZygoteFork();
 }
@@ -875,6 +881,22 @@ void Runtime::EndThreadBirth() REQUIRES(Locks::runtime_shutdown_lock_) {
   }
 }
 
+size_t Runtime::ReadMemProperty(char* str) {
+  char* end;
+  int multiplier = 1;
+  size_t ret;
+  size_t value = strtoul(str, &end, 10);
+  switch(*end) {
+    case 'm':
+    case 'M': multiplier = MB; break;
+    case 'k':
+    case 'K': multiplier = KB; break;
+    default : LOG(ERROR)<<"Ignoring property --- invalid";
+  }
+  ret = value * multiplier;
+  return ret;
+}
+
 void Runtime::InitNonZygoteOrPostFork(
     JNIEnv* env,
     bool is_system_server,
@@ -904,6 +926,18 @@ void Runtime::InitNonZygoteOrPostFork(
   }
 #endif
 #endif
+
+  // For EpsilonGC set the IgnoreMaxFootprint flag
+  if (Runtime::Current()->IsUsingEpsilonGC()) {
+    #ifdef ART_TARGET_ANDROID
+      char allocMaxString[PROPERTY_VALUE_MAX];
+      property_get("dalvik.vm.runtime.ignoremaxfootprint", allocMaxString, "false");
+      if (strcmp(allocMaxString, "true") == 0) {
+        heap_->SetIgnoreMaxFootprint();
+      }
+    #endif
+  }
+
   if (is_native_bridge_loaded_) {
     switch (action) {
       case NativeBridgeAction::kUnload:
@@ -1192,6 +1226,11 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
   is_explicit_gc_disabled_ = runtime_options.Exists(Opt::DisableExplicitGC);
   dex2oat_enabled_ = runtime_options.GetOrDefault(Opt::Dex2Oat);
   image_dex2oat_enabled_ = runtime_options.GetOrDefault(Opt::ImageDex2Oat);
+  is_using_epsilon_gc_ = runtime_options.Exists(Opt::UseEpsilonGC);
+  if (is_using_epsilon_gc_) {
+    LOG(INFO) << "ART Runtime() Using Epsilon GC as options passed.";
+  }
+ 
   dump_native_stack_on_sig_quit_ = runtime_options.GetOrDefault(Opt::DumpNativeStackOnSigQuit);
 
   vfprintf_ = runtime_options.GetOrDefault(Opt::HookVfprintf);
@@ -1275,21 +1314,64 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
         runtime_options.GetOrDefault(Opt::ForegroundHeapGrowthMultiplier) +
             kExtraDefaultHeapGrowthMultiplier;
   }
+  #ifdef ART_TARGET_ANDROID
+    if (!kUseReadBarrier && !Runtime::Current()->IsUsingEpsilonGC()) {
+      char allocMaxString[PROPERTY_VALUE_MAX];
+      property_get("dalvik.vm.runtime.useepsilongc", allocMaxString, "false");
+      is_using_epsilon_gc_ = (strcmp(allocMaxString, "true") == 0);
+      if (Runtime::Current()->IsUsingEpsilonGC()) {
+        LOG(INFO)<<"ART Runtime() Using Epsilon GC as property dalvik.vm.runtime.useepsilongc set to true.";
+      }
+    }
+  #endif
+
   XGcOption xgc_option = runtime_options.GetOrDefault(Opt::GcOption);
+  gc::CollectorType foreground_collector;
+  gc::CollectorType background_collector;
+  bool ignore_max_footprint = runtime_options.Exists(Opt::IgnoreMaxFootprint);
+  size_t tlab_size;
+
+  // Override the collector type to CC if the read barrier config.
+  if (kUseReadBarrier) {
+    foreground_collector = gc::kCollectorTypeCC;
+    background_collector = BackgroundGcOption(gc::kCollectorTypeCCBackground);
+  } else if (Runtime::Current()->IsUsingEpsilonGC()) {
+    //We want to use SS as our last hand GC for both background and foreground for EpsilonGC
+    foreground_collector = gc::kCollectorTypeSS;
+    background_collector = runtime_options.GetOrDefault(Opt::BackgroundGc); 
+    ignore_max_footprint = true;
+  } else {
+    foreground_collector = xgc_option.collector_type_;
+    background_collector = runtime_options.GetOrDefault(Opt::BackgroundGc);
+  }
+  if (Runtime::Current()->IsUsingEpsilonGC() ||
+     foreground_collector == gc::kCollectorTypeGenCopying) {
+    tlab_size =  gc::Heap::kDefaultMaxTLABSize;
+  } else {
+    tlab_size = runtime_options.GetOrDefault(Opt::TLABSize);
+  }
+  #ifdef ART_TARGET_ANDROID
+       char tlabsize[PROPERTY_VALUE_MAX];
+       if (property_get("dalvik.vm.runtime.tlabsize", tlabsize, "") > 0) {
+         if (tlabsize[0] != '\0') {
+           tlab_size = ReadMemProperty(tlabsize);
+         }
+       }
+  #endif
+
   heap_ = new gc::Heap(runtime_options.GetOrDefault(Opt::MemoryInitialSize),
                        runtime_options.GetOrDefault(Opt::HeapGrowthLimit),
                        runtime_options.GetOrDefault(Opt::HeapMinFree),
                        runtime_options.GetOrDefault(Opt::HeapMaxFree),
                        runtime_options.GetOrDefault(Opt::HeapTargetUtilization),
                        foreground_heap_growth_multiplier,
-                       runtime_options.GetOrDefault(Opt::MemoryMaximumSize),
+                       runtime_options.GetOrDefault(Opt::MemoryMaximumSize), 
                        runtime_options.GetOrDefault(Opt::NonMovingSpaceCapacity),
                        runtime_options.GetOrDefault(Opt::Image),
                        runtime_options.GetOrDefault(Opt::ImageInstructionSet),
                        // Override the collector type to CC if the read barrier config.
-                       kUseReadBarrier ? gc::kCollectorTypeCC : xgc_option.collector_type_,
-                       kUseReadBarrier ? BackgroundGcOption(gc::kCollectorTypeCCBackground)
-                                       : runtime_options.GetOrDefault(Opt::BackgroundGc),
+                       foreground_collector,
+                       background_collector,
                        runtime_options.GetOrDefault(Opt::LargeObjectSpace),
                        runtime_options.GetOrDefault(Opt::LargeObjectThreshold),
                        runtime_options.GetOrDefault(Opt::ParallelGCThreads),
@@ -1297,7 +1379,7 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
                        runtime_options.Exists(Opt::LowMemoryMode),
                        runtime_options.GetOrDefault(Opt::LongPauseLogThreshold),
                        runtime_options.GetOrDefault(Opt::LongGCLogThreshold),
-                       runtime_options.Exists(Opt::IgnoreMaxFootprint),
+                       ignore_max_footprint,
                        runtime_options.GetOrDefault(Opt::UseTLAB),
                        xgc_option.verify_pre_gc_heap_,
                        xgc_option.verify_pre_sweeping_heap_,
@@ -1306,7 +1388,7 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
                        xgc_option.verify_pre_sweeping_rosalloc_,
                        xgc_option.verify_post_gc_rosalloc_,
                        xgc_option.gcstress_,
-                       runtime_options.GetOrDefault(Opt::TLABSize),
+                       tlab_size,
                        runtime_options.GetOrDefault(Opt::TLABAllocThreshold),
                        runtime_options.GetOrDefault(Opt::TenureThreshold),
                        runtime_options.GetOrDefault(Opt::BumpSpaceCapacity),
