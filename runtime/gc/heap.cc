@@ -141,7 +141,7 @@ static constexpr bool kDumpRosAllocStatsOnSigQuit = false;
 static const char* kRegionSpaceName = "main space (region space)";
 
 // If true, we log all GCs in the both the foreground and background. Used for debugging.
-static constexpr bool kLogAllGCs = false;
+bool kLogAllGCs = false;
 
 // How much we grow the TLAB if we can do it.
 static constexpr size_t kPartialTlabSize = 16 * KB;

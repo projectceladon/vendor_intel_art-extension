@@ -70,6 +70,7 @@ class GcPauseListener;
 class ReferenceProcessor;
 class TaskProcessor;
 class Verification;
+extern bool kLogAllGCs;
 
 namespace accounting {
 template <typename T> class AtomicStack;
