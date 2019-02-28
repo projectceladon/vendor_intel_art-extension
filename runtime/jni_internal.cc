@@ -59,6 +59,7 @@
 #include "scoped_thread_state_change-inl.h"
 #include "thread.h"
 #include "well_known_classes.h"
+#include "gc/collector/concurrent_copying.h"
 
 namespace {
 // Frees the given va_list upon destruction.
@@ -1882,11 +1883,17 @@ class JNI {
         if (!kUseReadBarrier) {
           heap->IncrementDisableMovingGC(soa.Self());
         } else {
-          // For the CC collector, we only need to wait for the thread flip rather than the whole GC
-          // to occur thanks to the to-space invariant.
-          heap->IncrementDisableThreadFlip(soa.Self());
+          //1. Check if GC FlipThreadRoot is running
+          if(heap->is_thread_flip_running(soa.Self())){
+          //2. call mark method to get the correct refrence
+          mirror::Object* to_ref = heap->ConcurrentCopyingCollector()->Mark(s.Ptr());
+          //3. Pass the information to GC not to work on refer Native regions
+          heap->GetRegionSpace()->IncCountForRegionRefByNative(to_ref);
+          }else {
+          //3. Pass the information to GC not to work on refer Native regions
+          heap->GetRegionSpace()->IncCountForRegionRefByNative(s.Ptr());
+          }
         }
-	s = soa.Decode<mirror::String>(java_string);
 	//Verify if the reference acquired is still movable, if not we will have to re-enable moving GC
 	if (!heap->IsMovableObject(s)) {
 	   LOG(WARNING) << "Reference acquired still movable. Re-enabling moving GC.";
@@ -1927,7 +1934,7 @@ class JNI {
        if (!kUseReadBarrier) {
           heap->DecrementDisableMovingGC(soa.Self());
        } else {
-          heap->DecrementDisableThreadFlip(soa.Self());
+         heap->GetRegionSpace()->DecCountForRegionRefByNative(s.Ptr());
        }
     }
     if (s->IsCompressed() ||
@@ -2089,12 +2096,17 @@ class JNI {
         if (!kUseReadBarrier) {
           heap->IncrementDisableMovingGC(soa.Self());
         } else {
-          // For the CC collector, we only need to wait for the thread flip rather than the whole GC
-          // to occur thanks to the to-space invariant.
-          heap->IncrementDisableThreadFlip(soa.Self());
+          //1. Check if GC FlipThreadRoot is running
+          if(heap->is_thread_flip_running(soa.Self())){
+          //2. call mark method to get the correct refrence
+          mirror::Object* to_ref = heap->ConcurrentCopyingCollector()->Mark(array.Ptr());
+          //3. Pass the information to GC not to work on refer Native regions
+          heap->GetRegionSpace()->IncCountForRegionRefByNative(to_ref);
+          }else {
+          //3. Pass the information to GC not to work on refer Native regions
+          heap->GetRegionSpace()->IncCountForRegionRefByNative(array.Ptr());
+          }
         }
-        // Re-decode in case the object moved since IncrementDisableGC waits for GC to complete.
-        array = soa.Decode<mirror::Array>(java_array);
 	//Verify if the reference acquired is still movable, if not we will have to re-enable moving GC
 	if (!heap->IsMovableObject(array)) {
 	  LOG(WARNING) <<"Reference acquired is still movable. Re-enabling moving GC.";
@@ -2659,7 +2671,7 @@ class JNI {
         if (!kUseReadBarrier) {
           heap->DecrementDisableMovingGC(soa.Self());
         } else {
-          heap->DecrementDisableThreadFlip(soa.Self());
+          heap->GetRegionSpace()->DecCountForRegionRefByNative(array);
         }
       }
     }

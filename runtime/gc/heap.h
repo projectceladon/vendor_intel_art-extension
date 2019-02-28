@@ -538,6 +538,9 @@ class Heap {
     return total_bytes_freed_ever_;
   }
 
+   space::RegionSpace* GetRegionSpace() const {
+    return region_space_;
+  }
   // Implements java.lang.Runtime.maxMemory, returning the maximum amount of memory a program can
   // consume. For a regular VM this would relate to the -Xmx option and would return -1 if no Xmx
   // were specified. Android apps start with a growth limit (small heap size) which is
@@ -870,6 +873,13 @@ class Heap {
   void RemoveGcPauseListener();
 
   const Verification* GetVerification() const;
+
+
+  // Return the status of threadflip running or not
+  bool is_thread_flip_running(Thread* self) REQUIRES(!*thread_flip_lock_){
+       MutexLock mu(self, *thread_flip_lock_);
+       return thread_flip_running_;
+  }
 
  private:
   class ConcurrentGCTask;
