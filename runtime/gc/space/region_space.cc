@@ -223,7 +223,7 @@ void RegionSpace::SetFromSpace(accounting::ReadBarrierTable* rb_table, bool forc
         //The logic in ClearFromSpace checks for live_bytes_ == 0,
         // to clear out any unevacFromSpaces with no live objects.
         //We expect the large objects to be cleared out that way during force_evacuate_all as well
-        bool should_evacuate = (force_evacuate_all || r->ShouldBeEvacuated()) && !r->IsLarge();
+        bool should_evacuate = (force_evacuate_all || r->ShouldBeEvacuated()) && !r->IsLarge() && !r->is_ref_by_native_;
         if (should_evacuate) {
           r->SetAsFromSpace();
           DCHECK(r->IsInFromSpace());
@@ -496,6 +496,21 @@ void RegionSpace::RecordAlloc(mirror::Object* ref) {
   CHECK(ref != nullptr);
   Region* r = RefToRegion(ref);
   r->objects_allocated_.FetchAndAddSequentiallyConsistent(1);
+}
+
+
+//Set the Region type to Native to pass the info to GC not to touch those regions.
+void  RegionSpace::IncCountForRegionRefByNative(mirror::Object* ref){
+  CHECK(ref != nullptr);
+  Region* r = RefToRegion(ref);
+  r->is_ref_by_native_++;
+}
+
+//Set the Region type to Native to pass the info to GC not to touch those regions.
+void  RegionSpace::DecCountForRegionRefByNative(mirror::Object* ref){
+  CHECK(ref != nullptr);
+  Region* r = RefToRegion(ref);
+  r->is_ref_by_native_--;
 }
 
 bool RegionSpace::AllocNewTlab(Thread* self, size_t min_bytes) {
