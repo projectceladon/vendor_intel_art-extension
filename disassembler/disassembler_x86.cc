@@ -24,6 +24,16 @@
 #include "android-base/logging.h"
 #include "android-base/stringprintf.h"
 
+#define TWO_BYTE_VEX    0xC5
+#define THREE_BYTE_VEX  0xC4
+#define VEX_M_0F        0x01
+#define VEX_M_0F_38     0x02
+#define VEX_M_0F_3A     0x03
+#define VEX_PP_NONE     0x00
+#define VEX_PP_66       0x01
+#define VEX_PP_F3       0x02
+#define VEX_PP_F2       0x03
+
 using android::base::StringPrintf;
 
 namespace art {
@@ -316,9 +326,27 @@ size_t DisassemblerX86::DumpInstruction(std::ostream& os, const uint8_t* instr) 
   if (rex != 0) {
     instr++;
   }
+  uint8_t vex = (*instr == 0xC4 || *instr== 0xC5) ? *instr : 0;
+  uint8_t vex_byte_zero = 0;
+  uint8_t vex_byte_one  = 0;
+  uint8_t vex_byte_two  = 0;
+  if (vex != 0) {
+    vex_byte_zero = *instr;
+    vex_byte_one =  *(instr+1);
+    if (vex == 0xC4)
+    vex_byte_two = *(instr+2);
+    //set the rex prefix now
+     if (vex == 0xC4)
+    rex = (0x40 | (~(vex_byte_one >> 5) & 7));
+    else
+    rex = (0x40 | (~(vex_byte_one >> 5) & 4));
+
+    //instr = instr+3;
+  } 
   const char** modrm_opcodes = nullptr;
   bool has_modrm = false;
   bool reg_is_opcode = false;
+  bool reg_is_vvvv = false;
   size_t immediate_bytes = 0;
   size_t branch_bytes = 0;
   std::string opcode_tmp;    // Storage to keep StringPrintf result alive.
@@ -340,6 +368,14 @@ size_t DisassemblerX86::DumpInstruction(std::ostream& os, const uint8_t* instr) 
   bool no_ops = false;
   RegFile src_reg_file = GPR;
   RegFile dst_reg_file = GPR;
+  bool has_vex_none;
+  bool has_vex_66;
+  bool has_vex_f3;
+  bool has_vex_f2;
+  bool has_vex_0f;
+  bool has_vex_0f_38;
+  bool has_vex_0f_3a;
+
   switch (*instr) {
 #define DISASSEMBLER_ENTRY(opname, \
                      rm8_r8, rm32_r32, \
@@ -381,11 +417,22 @@ DISASSEMBLER_ENTRY(xor,
   0x32 /* Reg8/RegMem8 */,     0x33 /* Reg32/RegMem32 */,
   0x34 /* Rax8/imm8 opcode */, 0x35 /* Rax32/imm32 */)
 DISASSEMBLER_ENTRY(cmp,
-  0x38 /* RegMem8/Reg8 */,     0x39 /* RegMem32/Reg32 */,
+  0x38 /* RegMem8/Reg8 */,     0x39 /* RegMem/Reg32 */,
   0x3A /* Reg8/RegMem8 */,     0x3B /* Reg32/RegMem32 */,
   0x3C /* Rax8/imm8 opcode */, 0x3D /* Rax32/imm32 */)
 
 #undef DISASSEMBLER_ENTRY
+  
+  /*case 0xFC:
+     DCHECK(vex!= 0); 
+     opcode1 = "vpaddb";
+     src_reg_file = dst_reg_file = SSE; 
+     has_modrm = true;
+     load = true;
+     break;
+  case 0x10:
+    DCHECK(vex != 0);*/
+    
   case 0x50: case 0x51: case 0x52: case 0x53: case 0x54: case 0x55: case 0x56: case 0x57:
     opcode1 = "push";
     reg_in_opcode = true;
@@ -1356,6 +1403,212 @@ DISASSEMBLER_ENTRY(cmp,
     byte_operand = (*instr == 0xC0);
     break;
   case 0xC3: opcode1 = "ret"; break;
+  case 0xC4:
+  case 0xC5:
+    DCHECK(vex != 0);
+     DCHECK(vex == 0xC4 || vex == 0xC5);
+    /** Encoding VEX.pp */
+    if (vex == THREE_BYTE_VEX){
+      has_vex_none = (vex_byte_two & 3) == VEX_PP_NONE ? true : false;
+    } else {
+      has_vex_none = (vex_byte_one & 3) == VEX_PP_NONE ? true : false;
+    }
+    if (vex == THREE_BYTE_VEX) {
+      has_vex_66 =  (vex_byte_two & 3) == VEX_PP_66 ? true : false;
+    } else {
+      has_vex_66 =  (vex_byte_one & 3) == VEX_PP_66 ? true : false;
+    }
+    if (vex == THREE_BYTE_VEX) {
+      has_vex_f3 = (vex_byte_two & 3) == VEX_PP_F3 ? true : false;
+    } else {
+      has_vex_f3 = (vex_byte_one & 3) == VEX_PP_F3 ? true : false;
+    }
+    if (vex == THREE_BYTE_VEX) {
+      has_vex_f2 = (vex_byte_two & 3) == VEX_PP_F2 ? true : false;
+    } else {
+      has_vex_f2 = (vex_byte_one & 3) == VEX_PP_F2 ? true : false;
+    }
+    if (vex == TWO_BYTE_VEX) {
+      has_vex_0f = true;
+    } else {
+      has_vex_0f = (vex_byte_one & 3) == VEX_M_0F ? true : false;
+    }
+    if (vex == TWO_BYTE_VEX) {
+      has_vex_0f_38 = false;
+    } else {
+      has_vex_0f_38 = (vex_byte_one & 3) == VEX_M_0F_38 ? true : false;
+    }
+    if(vex == TWO_BYTE_VEX) {
+      has_vex_0f_3a = false;
+    } else {
+      has_vex_0f_3a = (vex_byte_one & 3) == VEX_M_0F_3A ? true : false;
+    }
+        if (vex == 0xC4) {
+    instr = instr+3;
+    }  else { 
+    instr = instr+2;
+    }
+    src_reg_file = dst_reg_file = SSE;
+    if (has_vex_none && has_vex_0f) {
+      switch (*instr) {
+        case 0x10:
+          opcode1 = "vmovups";
+          has_modrm = true;
+          load = true;
+          break;
+        case 0x11:
+          opcode1 = "vmovups";
+          has_modrm = true;
+          store = true;
+          break;
+        case 0x28:
+          opcode1 = "vmovaps";
+          has_modrm = true;
+          load = true;
+          break;
+       case 0x29:
+         opcode1 = "vmovaps";
+         has_modrm = true;
+         store = true;
+         break;
+      case 0x58:
+        opcode1 = "vaddps";
+        has_modrm = true;
+        load = true;
+        reg_is_vvvv = true;
+        break;
+      case 0x5C:
+        opcode1 = "vsubps";
+        has_modrm = true;
+        load = true;
+        reg_is_vvvv = true;
+        break;
+      }
+    } else if (has_vex_66 && has_vex_0f) {
+      switch (*instr) {
+         case 0x29:
+                opcode1 = "vmovapd";
+          has_modrm = true;
+          store = true;
+          break;
+        case 0x28:
+          opcode1 = "vmovapd";
+          has_modrm = true;
+          load = true;
+          break;
+        case 0x10:
+          opcode1 = "vmovupd";
+          has_modrm = true;
+          load = true;
+          break;
+        case 0x11:
+          opcode1 = "vmovupd";
+          has_modrm = true;
+          store = true;
+          break;
+        case 0x6F:
+          opcode1 = "vmovdqa";
+          has_modrm = true;
+          load = true;
+          break;
+       case 0x7F:
+         opcode1 = "vmovdqa";
+         has_modrm = true;
+         store = true;
+        break;
+       case 0xFC:
+          opcode1 = "vpaddb";
+          has_modrm = true;
+          reg_is_vvvv = true;
+          load = true;
+          break;
+        case 0xFD:
+          opcode1 = "vpaddw";
+          has_modrm = true;
+          reg_is_vvvv = true;
+          load = true;
+          break;
+        case 0xFE:
+          opcode1 = "vpaddd";
+          has_modrm = true;
+          reg_is_vvvv = true;
+          load = true;
+          break;
+        case 0xD4:
+          opcode1 = "vpaddq";
+          has_modrm = true;
+          reg_is_vvvv = true;
+          load = true;
+          break;
+        case 0xF8:
+          opcode1 = "vpsubb";
+          has_modrm = true;
+          reg_is_vvvv = true;
+          load = true;
+          break;
+        case 0xF9:
+          opcode1 = "vpsubw";
+          has_modrm = true;
+          reg_is_vvvv = true;
+          load = true;
+          break;
+        case 0xFA:
+          opcode1 = "vpsubd";
+          has_modrm = true;
+          reg_is_vvvv = true;
+          load = true;
+          break;
+        case 0xFB:
+          opcode1 = "vpsubq";
+          has_modrm = true;
+          reg_is_vvvv = true;
+          load = true;
+          break;
+       case 0x5C:
+         opcode1 = "vsubpd";
+         has_modrm = true;
+         load = true;
+         reg_is_vvvv = true;
+         break; 
+       case 0x58:
+         opcode1 = "vaddpd";
+         has_modrm = true;
+         load = true;
+         reg_is_vvvv = true;
+         break; 
+ 
+      }
+    } else if (has_vex_none && has_vex_0f_38) {
+      switch (*instr) {
+          case 0xF2:
+            opcode1 = "andn";
+            src_reg_file = dst_reg_file = GPR;
+            has_modrm = true;
+            load = true;
+            break;
+          case 0xF3:
+            opcode1 = "blsi";
+            src_reg_file = dst_reg_file = GPR;
+            has_modrm = true;
+            load = true;
+            break; 
+      }
+    } else if (has_vex_f3 && has_vex_0f) {
+      switch(*instr) {
+        case 0x6F:
+                opcode1 = "vmovdqu";
+                has_modrm = true;
+                load = true;
+                break;
+        case 0x7F:
+                opcode1 = "vmovdqu";
+                has_modrm = true;
+                store = true;
+                break;
+
+      }
+    } else { LOG(INFO) << "Unimplemented VEX Instruction";} 
+    break;
   case 0xC6:
     static const char* c6_opcodes[] = {"mov",        "unknown-c6", "unknown-c6",
                                        "unknown-c6", "unknown-c6", "unknown-c6",
@@ -1505,6 +1758,12 @@ DISASSEMBLER_ENTRY(cmp,
         args << ", ";
       }
       DumpSegmentOverride(args, prefix[1]);
+      if (vex != 0 && reg_is_vvvv) {
+        uint8_t check_byte = (vex == 0xC4) ? vex_byte_two : vex_byte_one;
+        uint8_t vvvv_reg =  ~(check_byte >> 3) & 0x0f;
+        DumpReg(args, rex, vvvv_reg, byte_operand, prefix[2], dst_reg_file);
+        args << ", ";
+      }
       args << address;
     } else {
       DCHECK(store);
@@ -1514,6 +1773,13 @@ DISASSEMBLER_ENTRY(cmp,
         args << ", ";
         DumpReg(args, rex, reg_or_opcode, byte_operand, prefix[2], src_reg_file);
       }
+       if (vex != 0 && reg_is_vvvv) {
+         uint8_t check_byte = (vex == 0xC4) ? vex_byte_two : vex_byte_one;
+         uint8_t vvvv_reg =  ~(check_byte >> 3) & 0x0f;
+         DumpReg(args, rex, vvvv_reg, byte_operand, prefix[2], dst_reg_file);
+        args << ", ";
+       }
+
     }
   }
   if (ax) {
@@ -1579,7 +1845,7 @@ DISASSEMBLER_ENTRY(cmp,
      << StringPrintf(": %22s    \t%-7s%s%s%s%s%s ", DumpCodeHex(begin_instr, instr).c_str(),
                      prefix_str, opcode0, opcode1, opcode2, opcode3, opcode4)
      << args.str() << '\n';
-  return instr - begin_instr;
+    return instr - begin_instr;
 }  // NOLINT(readability/fn_size)
 
 }  // namespace x86

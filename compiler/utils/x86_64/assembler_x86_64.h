@@ -31,6 +31,27 @@
 #include "utils/assembler.h"
 #include "utils/jni_macro_assembler.h"
 
+
+#define VEX_INIT        0x00
+#define TWO_BYTE_VEX    0xC5
+#define THREE_BYTE_VEX  0xC4
+#define SET_VEX_R       0x80
+#define SET_VEX_X       0x40
+#define SET_VEX_B       0x20
+#define SET_VEX_M_0F    0x01
+#define SET_VEX_M_0F_38 0x02
+#define SET_VEX_M_0F_3A 0x03
+#define SET_VEX_W       0x80
+#define SET_VEX_L_128   0x00
+#define SET_VEL_L_256   0x04
+#define SET_VEX_PP_NONE 0x00
+#define SET_VEX_PP_66   0x01
+#define SET_VEX_PP_F3   0x02
+#define SET_VEX_PP_F2   0x03
+#define GET_REX_R       0x04
+#define GET_REX_X       0x02
+#define GET_REX_B       0x01
+
 namespace art {
 namespace x86_64 {
 
@@ -41,6 +62,11 @@ namespace x86_64 {
 //
 // Note: As we support cross-compilation, the value type must be int64_t. Please be aware of
 // conversion rules in expressions regarding negation, especially size_t on 32b.
+/*  enum SIMDPrefix { kNone = 0x0, k66 = 0x1, kF3 = 0x2, kF2 = 0x3 };
+  enum VectorLength { kL128 = 0x0, kL256 = 0x4, kLIG = kL128, kLZ = kL128 };
+  enum VexW { kW0 = 0x0, kW1 = 0x80, kWIG = kW0 };
+  enum LeadingOpcode { k0F = 0x1, k0F38 = 0x2, k0F3A = 0x3 };*/
+
 class Immediate : public ValueObject {
  public:
   explicit Immediate(int64_t value_in) : value_(value_in) {}
@@ -415,6 +441,12 @@ class X86_64Assembler FINAL : public Assembler {
   void movaps(const Address& dst, XmmRegister src);  // store aligned
   void movups(const Address& dst, XmmRegister src);  // store unaligned
 
+   void vmovaps(XmmRegister dst, XmmRegister src);     // move
+   void vmovaps(XmmRegister dst, const Address& src);  // load aligned
+   void vmovaps(const Address& dst, XmmRegister src);  // store aligned
+   void vmovups(XmmRegister dst, const Address& src);  // load unaligned
+   void vmovups(const Address& dst, XmmRegister src);  // store unaligned
+
   void movss(XmmRegister dst, const Address& src);
   void movss(const Address& dst, XmmRegister src);
   void movss(XmmRegister dst, XmmRegister src);
@@ -441,11 +473,22 @@ class X86_64Assembler FINAL : public Assembler {
   void mulps(XmmRegister dst, XmmRegister src);
   void divps(XmmRegister dst, XmmRegister src);
 
+  void vaddps(XmmRegister dst, XmmRegister add_left, XmmRegister add_right);
+  void vsubps(XmmRegister dst, XmmRegister add_left, XmmRegister add_right);
+  void vsubpd(XmmRegister dst, XmmRegister add_left, XmmRegister add_right);
+  void vaddpd(XmmRegister dst, XmmRegister add_left, XmmRegister add_right);
+
   void movapd(XmmRegister dst, XmmRegister src);     // move
   void movapd(XmmRegister dst, const Address& src);  // load aligned
   void movupd(XmmRegister dst, const Address& src);  // load unaligned
   void movapd(const Address& dst, XmmRegister src);  // store aligned
   void movupd(const Address& dst, XmmRegister src);  // store unaligned
+
+  void vmovapd(XmmRegister dst, XmmRegister src);     // move
+  void vmovapd(XmmRegister dst, const Address& src);  // load aligned
+  void vmovapd(const Address& dst, XmmRegister src);  // store aligned
+  void vmovupd(XmmRegister dst, const Address& src);  // load unaligned
+  void vmovupd(const Address& dst, XmmRegister src);  // store unaligned
 
   void movsd(XmmRegister dst, const Address& src);
   void movsd(const Address& dst, XmmRegister src);
@@ -471,20 +514,37 @@ class X86_64Assembler FINAL : public Assembler {
   void movdqa(const Address& dst, XmmRegister src);  // store aligned
   void movdqu(const Address& dst, XmmRegister src);  // store unaligned
 
+  void vmovdqa(XmmRegister dst, const Address& src);  // load aligned
+  void vmovdqa(const Address& dst, XmmRegister src);  // store aligned
+  void vmovdqu(XmmRegister dst, const Address& src);  // load unaligned
+  void vmovdqu(const Address& dst, XmmRegister src);  // store unaligned
+
   void paddb(XmmRegister dst, XmmRegister src);  // no addr variant (for now)
   void psubb(XmmRegister dst, XmmRegister src);
+
+  void vpaddb(XmmRegister dst, XmmRegister add_left, XmmRegister add_right); 
+  void vpaddw(XmmRegister dst, XmmRegister add_left, XmmRegister add_right); 
 
   void paddw(XmmRegister dst, XmmRegister src);
   void psubw(XmmRegister dst, XmmRegister src);
   void pmullw(XmmRegister dst, XmmRegister src);
 
+  void vpsubb(XmmRegister dst, XmmRegister src1, XmmRegister src2);
+  void vpsubw(XmmRegister dst, XmmRegister src1, XmmRegister src2);
+  void vpsubd(XmmRegister dst, XmmRegister src1, XmmRegister src2);
+
   void paddd(XmmRegister dst, XmmRegister src);
   void psubd(XmmRegister dst, XmmRegister src);
   void pmulld(XmmRegister dst, XmmRegister src);
 
+  void vpaddd(XmmRegister dst, XmmRegister src1, XmmRegister src2);
+
   void paddq(XmmRegister dst, XmmRegister src);
   void psubq(XmmRegister dst, XmmRegister src);
 
+  void vpaddq(XmmRegister dst, XmmRegister add_left, XmmRegister add_right);
+  void vpsubq(XmmRegister dst, XmmRegister add_left, XmmRegister add_right);
+ 
   void cvtsi2ss(XmmRegister dst, CpuRegister src);  // Note: this is the r/m32 version.
   void cvtsi2ss(XmmRegister dst, CpuRegister src, bool is64bit);
   void cvtsi2ss(XmmRegister dst, const Address& src, bool is64bit);
@@ -951,7 +1011,14 @@ class X86_64Assembler FINAL : public Assembler {
   uint8_t EmitVexByteZero(bool is_two_byte);
   uint8_t EmitVexByte1(bool r, bool x, bool b, int mmmmm);
   uint8_t EmitVexByte2(bool w , int l , X86_64ManagedRegister operand, int pp);
-
+  
+  uint8_t EmitVexPrefixByteZero(bool is_twobyte_form);
+  uint8_t EmitVexPrefixByteOne(bool R, bool X, bool B, int SET_VEX_M);
+  uint8_t EmitVexPrefixByteOne(bool R,X86_64ManagedRegister operand,int SET_VEX_L, int SET_VEX_PP);
+  uint8_t EmitVexPrefixByteTwo(bool W,X86_64ManagedRegister operand,int SET_VEX_L, int SET_VEX_PP);
+  uint8_t EmitVexPrefixByteTwo(bool W,int SET_VEX_L, int SET_VEX_PP);
+  uint8_t emit_vex3_byte0() { return 0xC4;}
+  uint8_t emit_vex2_byte0() { return 0xC5;}
   ConstantArea constant_area_;
 
   DISALLOW_COPY_AND_ASSIGN(X86_64Assembler);
