@@ -364,7 +364,7 @@ static bool HasReductionFormat(HInstruction* reduction, HInstruction* phi) {
 
 // Translates vector operation to reduction kind.
 static HVecReduce::ReductionKind GetReductionKind(HVecOperation* reduction) {
-  if (reduction->IsVecAdd() || reduction->IsVecSub() || reduction->IsVecSADAccumulate()) {
+  if (reduction->IsVecAdd() || reduction->IsVecAvxAdd() || reduction->IsVecAvxSub() ||  reduction->IsVecSub() || reduction->IsVecSADAccumulate()) {
     return HVecReduce::kSum;
   } else if (reduction->IsVecMin()) {
     return HVecReduce::kMin;
@@ -1819,6 +1819,8 @@ void HLoopOptimization::GenerateVecOp(HInstruction* org,
                                       HInstruction* opb,
                                       DataType::Type type,
                                       bool is_unsigned) {
+
+  const InstructionSetFeatures* isa_features = compiler_driver_->GetInstructionSetFeatures();
   uint32_t dex_pc = org->GetDexPc();
   HInstruction* vector = nullptr;
   DataType::Type org_type = org->GetType();
@@ -1844,13 +1846,25 @@ void HLoopOptimization::GenerateVecOp(HInstruction* org,
         new (global_allocator_) HVecCnv(global_allocator_, opa, type, vector_length_, dex_pc),
         new (global_allocator_) HTypeConversion(org_type, opa, dex_pc));
     case HInstruction::kAdd:
-      GENERATE_VEC(
-        new (global_allocator_) HVecAdd(global_allocator_, opa, opb, type, vector_length_, dex_pc),
-        new (global_allocator_) HAdd(org_type, opa, opb, dex_pc));
+     if (isa_features->AsX86InstructionSetFeatures()->HasAVX2()) {
+       GENERATE_VEC(
+          new (global_allocator_) HVecAvxAdd(global_allocator_, opa, opa, opb, type, vector_length_, dex_pc),
+          new (global_allocator_) HAdd(org_type, opa, opb, dex_pc)); 
+     } else {
+        GENERATE_VEC(
+          new (global_allocator_) HVecAdd(global_allocator_, opa, opb, type, vector_length_, dex_pc),
+          new (global_allocator_) HAdd(org_type, opa, opb, dex_pc));
+     }
     case HInstruction::kSub:
+      if (isa_features->AsX86InstructionSetFeatures()->HasAVX2()) {
+       GENERATE_VEC(
+          new (global_allocator_) HVecAvxSub(global_allocator_, opa, opa, opb, type, vector_length_, dex_pc),
+          new (global_allocator_) HSub(org_type, opa, opb, dex_pc));
+     } else {
       GENERATE_VEC(
         new (global_allocator_) HVecSub(global_allocator_, opa, opb, type, vector_length_, dex_pc),
         new (global_allocator_) HSub(org_type, opa, opb, dex_pc));
+    }
     case HInstruction::kMul:
       GENERATE_VEC(
         new (global_allocator_) HVecMul(global_allocator_, opa, opb, type, vector_length_, dex_pc),

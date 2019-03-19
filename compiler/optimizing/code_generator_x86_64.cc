@@ -7395,6 +7395,15 @@ void CodeGeneratorX86_64::EmitJitRootPatches(uint8_t* code, const uint8_t* roots
   }
 }
 
+bool InstructionCodeGeneratorX86_64::CpuHasAVXorAVX2FeatureFlag() {
+  if (codegen_->CpuHasAVXFeatureFlag() || codegen_->CpuHasAVX2FeatureFlag()) {
+    return true;
+  }
+  return false;
+}
+
+
+
 #undef __
 
 }  // namespace x86_64

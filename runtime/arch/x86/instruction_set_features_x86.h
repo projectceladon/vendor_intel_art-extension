@@ -63,11 +63,14 @@ class X86InstructionSetFeatures : public InstructionSetFeatures {
 
   virtual ~X86InstructionSetFeatures() {}
 
-  bool HasSSE4_1() const { return has_SSE4_1_; }
+  bool HasSSE4_1() const { return //true;
+                           has_SSE4_1_; }
 
   bool HasPopCnt() const { return has_POPCNT_; }
 
-  bool HasAVX2() const { return has_AVX2_; }
+  bool HasAVX2() const { return //true;
+                      has_AVX2_; }
+  bool HasAVX() const { return has_AVX_; }
 
  protected:
   // Parse a string of the form "ssse3" adding these to a new InstructionSetFeatures.

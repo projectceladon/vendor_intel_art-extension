@@ -446,6 +446,24 @@ static void CreateVecBinOpLocations(ArenaAllocator* allocator, HVecBinaryOperati
   }
 }
 
+void LocationsBuilderX86::VisitVecAvxAdd(HVecAvxAdd* instruction) {
+  LOG(FATAL) << "No SIMD for" << instruction->GetId();
+}
+
+void InstructionCodeGeneratorX86::VisitVecAvxAdd(HVecAvxAdd* instruction) {
+  LOG(FATAL) << "No SIMD for" << instruction->GetId(); 
+}
+
+void LocationsBuilderX86::VisitVecAvxSub(HVecAvxSub* instruction) {
+  LOG(FATAL) << "No SIMD for" << instruction->GetId();
+}
+
+void InstructionCodeGeneratorX86::VisitVecAvxSub(HVecAvxSub* instruction) {
+  LOG(FATAL) << "No SIMD for" << instruction->GetId(); 
+}
+
+
+
 void LocationsBuilderX86::VisitVecAdd(HVecAdd* instruction) {
   CreateVecBinOpLocations(GetGraph()->GetAllocator(), instruction);
 }

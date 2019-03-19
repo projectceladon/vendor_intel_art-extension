@@ -532,6 +532,39 @@ class HVecAdd FINAL : public HVecBinaryOperation {
  protected:
   DEFAULT_COPY_CONSTRUCTOR(VecAdd);
 };
+/*/ viz. [ a1, .. , an ] + [ x1, .. , xn ] * [ y1, .. , yn ] = [ a1 + x1 * y1, .. , an + xn * yn ].
+class HVecAvxAdd FINAL : public HVecOperation {
+ public:
+  HVecAvxAdd(ArenaAllocator* allocator,
+                         HInstruction* dst,
+                         HInstruction* src1,
+                         HInstruction* src2,
+                         DataType::Type packed_type,
+                         size_t vector_length,
+                         uint32_t dex_pc)
+      : HVecOperation(kVecAvxAdd,
+                      allocator,
+                      packed_type,
+                      SideEffects::None(),
+                      //  number_of_inputs  //3,
+                     // vector_length,
+                     // dex_pc){
+         
+    DCHECK(HasConsistentPackedTypes(dst, packed_type));
+    DCHECK(HasConsistentPackedTypes(src1, packed_type));
+    DCHECK(HasConsistentPackedTypes(src2, packed_type));
+    SetRawInputAt(0, dst);
+    SetRawInputAt(1, src1);
+    SetRawInputAt(2, src2);
+  }
+
+  bool CanBeMoved() const OVERRIDE { return true; }
+
+  DECLARE_INSTRUCTION(VecAvxAdd);
+
+ protected:
+  DEFAULT_COPY_CONSTRUCTOR(VecAvxAdd);
+};*/
 
 // Performs halving add on every component in the two vectors, viz.
 // rounded   [ x1, .. , xn ] hradd [ y1, .. , yn ] = [ (x1 + y1 + 1) >> 1, .. , (xn + yn + 1) >> 1 ]
