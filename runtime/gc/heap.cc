@@ -1885,6 +1885,7 @@ void Heap::SetTargetHeapUtilization(float target) {
 
 void Heap::SetIgnoreMaxFootprint() {
   ignore_max_footprint_ = true;
+  ClearGrowthLimit(); 
   SetIdealFootprint(std::numeric_limits<size_t>::max());
   concurrent_start_bytes_ = std::numeric_limits<size_t>::max();
 }
