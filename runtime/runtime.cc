@@ -933,6 +933,7 @@ void Runtime::InitNonZygoteOrPostFork(
       char allocMaxString[PROPERTY_VALUE_MAX];
       property_get("dalvik.vm.runtime.ignoremaxfootprint", allocMaxString, "false");
       if (strcmp(allocMaxString, "true") == 0) {
+        heap_->ClearGrowthLimit();
         heap_->SetIgnoreMaxFootprint();
       }
     #endif
