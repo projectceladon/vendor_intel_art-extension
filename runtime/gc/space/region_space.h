@@ -99,6 +99,10 @@ class RegionSpace FINAL : public ContinuousMemMapAllocSpace {
     return mark_bitmap_.get();
   }
 
+  //Set the Region type  as Native
+  void IncCountForRegionRefByNative(mirror::Object* ref) REQUIRES(!region_lock_);
+  void DecCountForRegionRefByNative(mirror::Object* ref) REQUIRES(!region_lock_);
+
   void Clear() OVERRIDE REQUIRES(!region_lock_);
 
   // Change the non growth limit capacity to new capacity by shrinking or expanding the map.
@@ -295,7 +299,7 @@ class RegionSpace FINAL : public ContinuousMemMapAllocSpace {
           begin_(nullptr), top_(nullptr), end_(nullptr),
           state_(RegionState::kRegionStateAllocated), type_(RegionType::kRegionTypeToSpace),
           objects_allocated_(0), alloc_time_(0), live_bytes_(static_cast<size_t>(-1)),
-          is_newly_allocated_(false), is_a_tlab_(false), thread_(nullptr) {}
+          is_newly_allocated_(false), is_ref_by_native_(0), is_a_tlab_(false), thread_(nullptr) {}
 
     void Init(size_t idx, uint8_t* begin, uint8_t* end) {
       idx_ = idx;
@@ -308,6 +312,7 @@ class RegionSpace FINAL : public ContinuousMemMapAllocSpace {
       alloc_time_ = 0;
       live_bytes_ = static_cast<size_t>(-1);
       is_newly_allocated_ = false;
+      is_ref_by_native_=0;
       is_a_tlab_ = false;
       thread_ = nullptr;
       DCHECK_LT(begin, end);
@@ -503,6 +508,7 @@ class RegionSpace FINAL : public ContinuousMemMapAllocSpace {
     // special value for `live_bytes_`.
     size_t live_bytes_;                 // The live bytes. Used to compute the live percent.
     bool is_newly_allocated_;           // True if it's allocated after the last collection.
+    uint32_t is_ref_by_native_;         // True if java array or string is used by native.
     bool is_a_tlab_;                    // True if it's a tlab.
     Thread* thread_;                    // The owning thread if it's a tlab.
 
