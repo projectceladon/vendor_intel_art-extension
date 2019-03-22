@@ -133,13 +133,14 @@ class Heap {
   // If true, measure the total allocation time.
   static constexpr size_t kDefaultStartingSize = kPageSize;
   static constexpr size_t kDefaultInitialSize = 2 * MB;
-  static constexpr size_t kDefaultMaximumSize = 256 * MB;
+  static constexpr size_t kDefaultMaximumSize = kEnableEpsilonGC ? 704 * MB : 256 * MB;
   static constexpr size_t kDefaultNonMovingSpaceCapacity = 64 * MB;
   static constexpr size_t kDefaultMaxFree = 2 * MB;
   static constexpr size_t kDefaultMinFree = kDefaultMaxFree / 4;
   static constexpr size_t kDefaultLongPauseLogThreshold = MsToNs(5);
   static constexpr size_t kDefaultLongGCLogThreshold = MsToNs(100);
-  static constexpr size_t kDefaultTLABSize = 256 * KB;
+  static constexpr size_t kDefaultTLABSize = 32 * KB;
+  static constexpr size_t kDefaultMaxTLABSize = 256 * KB;
   static constexpr size_t kDefaultTLABAllocThreshold = kDefaultTLABSize / 2;
   static constexpr size_t kDefaultTenureThreshold = 6;
   static constexpr size_t kDefaultGSSBumpPointerSpaceCapacity = 32 * MB;
@@ -410,6 +411,7 @@ class Heap {
   // dalvik.system.VMRuntime.setTargetHeapUtilization.
   void SetTargetHeapUtilization(float target);
 
+  void SetIgnoreMaxFootprint();
   // For the alloc space, sets the maximum number of bytes that the heap is allowed to allocate
   // from the system. Doesn't allow the space to exceed its growth limit.
   void SetIdealFootprint(size_t max_allowed_footprint);
@@ -1203,7 +1205,7 @@ class Heap {
 
   // If we ignore the max footprint it lets the heap grow until it hits the heap capacity, this is
   // useful for benchmarking since it reduces time spent in GC to a low %.
-  const bool ignore_max_footprint_;
+  bool ignore_max_footprint_;
 
   // Lock which guards zygote space creation.
   Mutex zygote_creation_lock_;
