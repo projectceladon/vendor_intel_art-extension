@@ -70,7 +70,6 @@ class GcPauseListener;
 class ReferenceProcessor;
 class TaskProcessor;
 class Verification;
-extern bool kLogAllGCs;
 
 namespace accounting {
 template <typename T> class AtomicStack;
@@ -212,6 +211,8 @@ class Heap {
        uint64_t min_interval_homogeneous_space_compaction_by_oom);
 
   ~Heap();
+
+  static void SetLogAllGCs(bool value);
 
   // Allocates and initializes storage for an object instance.
   template <bool kInstrumented, typename PreFenceVisitor>

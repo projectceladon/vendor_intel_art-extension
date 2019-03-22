@@ -455,7 +455,6 @@ class Runtime {
       const char* isa,
       bool profile_system_server = false);
 
-  size_t ReadMemProperty(char* str);
   const instrumentation::Instrumentation* GetInstrumentation() const {
     return &instrumentation_;
   }
