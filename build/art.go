@@ -100,8 +100,6 @@ func globalFlags(ctx android.BaseContext) ([]string, []string) {
         } else {
                 cflags = append(cflags,
                        "-DART_ENABLE_EPSILON_GC=1")
-                asflags = append(asflags, "-DART_ENABLE_EPSILON_GC=1")
-                print("ART: Enabled usage of eGC at run time.\nART: adb shell setprop dalvik.vm.runtime.useepsilongc true\n");
         }
 
 
