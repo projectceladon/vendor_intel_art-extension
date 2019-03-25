@@ -59,6 +59,10 @@ art_global_defaults {
         "-Wunreachable-code-break",
         "-Wunreachable-code-return",
 
+        //format-security build flags for string vulnerabilities
+        "-Wformat",
+        "-Wformat-security",
+
         // Enable thread annotations for std::mutex, etc.
         "-D_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS",
     ],
