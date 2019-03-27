@@ -195,6 +195,8 @@ void InductionVarSimplification::PerformReduction(HLoopInformation* loop, HInstr
     phi->GetBlock()->InsertPhiAfter(new_phi, phi);
     new_phi->AddInput(new_add);
     HConstant* biv_inc_cst = biv_increment_->GetConstantRight();
+    // Ensured in IsCandidatePhi()
+    DCHECK(biv_inc_cst != nullptr);
     HConstant* biv_cst = GetNewConstant(HInstruction::InstructionKind::kMul, biv_inc_cst, std::get<1>(val));
     DCHECK(biv_cst != nullptr);
     HAdd* biv_add = new (allocator) HAdd(biv_inc_cst->GetType(), new_phi, biv_cst);
@@ -240,14 +242,14 @@ bool InductionVarSimplification::IsCandidateForReduction (
     HInductionVarAnalysis::InductionInfo* left_ins_info = induction_analysis_->LookupInfo(loop, left_ins);
     HInductionVarAnalysis::InductionInfo* right_ins_info = induction_analysis_->LookupInfo(loop, right_ins);
     if (HInductionVarAnalysis::InductionEqual(biv_ind_info, left_ins_info)){
-      if (right_ins_info->induction_class == HInductionVarAnalysis::kInvariant) {
+      if ( right_ins_info != nullptr && right_ins_info->induction_class == HInductionVarAnalysis::kInvariant) {
         HConstant * zero = GetConstant(graph, type, 0);
         candidate->insert(std::pair<HBinaryOperation*, triple>(to_check, std::make_tuple(biv, cst, zero)));
         return true;
       }
     }
     if (HInductionVarAnalysis::InductionEqual(biv_ind_info, right_ins_info) &&
-        left_ins_info->induction_class == HInductionVarAnalysis::kInvariant) {
+         left_ins_info != nullptr && left_ins_info->induction_class == HInductionVarAnalysis::kInvariant) {
       HConstant* zero = GetConstant(graph, type, 0);
       candidate->insert(std::pair<HBinaryOperation*, triple>(to_check, std::make_tuple(biv, cst, zero)));
       return true;
@@ -269,14 +271,14 @@ bool InductionVarSimplification::IsCandidateForReduction (
       bool found = false;
       for (auto it : *candidate) {
         HInductionVarAnalysis::InductionInfo* info = induction_analysis_->LookupInfo(loop, it.first);
-        if (HInductionVarAnalysis::InductionEqual(left_ins_info, info) &&
+        if ( right_ins_info != nullptr && HInductionVarAnalysis::InductionEqual(left_ins_info, info) &&
             right_ins_info->induction_class == HInductionVarAnalysis::kInvariant) {
           HConstant * one = GetConstant(graph, type, 1);
           candidate->insert(std::pair<HBinaryOperation*, triple>(to_check, std::make_tuple( it.first,one, cst)));
           found = true;
           break;
-        } else if (HInductionVarAnalysis::InductionEqual(right_ins_info, info)
-                   && left_ins_info->induction_class == HInductionVarAnalysis::kInvariant) {
+        } else if ( left_ins_info != nullptr && HInductionVarAnalysis::InductionEqual(right_ins_info, info) && 
+                   left_ins_info->induction_class == HInductionVarAnalysis::kInvariant) {
           HConstant* one = GetConstant(graph, type, 1);
           candidate->insert(std::pair<HBinaryOperation*, triple>(to_check, std::make_tuple(it.first, one, cst)));
           found = true;
