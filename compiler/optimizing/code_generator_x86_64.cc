@@ -258,7 +258,7 @@ class BoundsCheckSlowPathMemoryX86_64 : public SlowPathCode {
 
     __ movl(locations->GetTemp(0).AsRegister<CpuRegister>(), array_length);
 
-    //Shift right the array length location 
+    //Shift right the array length location
     if(instruction_->AsX86BoundsCheckMemory()->IsStringCharAt()){
        __ shrl(locations->GetTemp(0).AsRegister<CpuRegister>(), Immediate(1));
       }
@@ -5272,7 +5272,7 @@ void InstructionCodeGeneratorX86_64::VisitX86BoundsCheckMemory(HX86BoundsCheckMe
      CpuRegister length_reg = CpuRegister(TMP);
       __ movl(length_reg, array_length);
       __ shrl(length_reg, Immediate(1));
-     codegen_->GenerateIntCompare(length_reg, index_loc);  
+     codegen_->GenerateIntCompare(length_reg, index_loc);
   }
    else {
      if (index_loc.IsConstant()) {
@@ -7393,6 +7393,13 @@ void CodeGeneratorX86_64::EmitJitRootPatches(uint8_t* code, const uint8_t* roots
     uint64_t index_in_table = GetJitClassRootIndex(type_reference);
     PatchJitRootUse(code, roots_data, info, index_in_table);
   }
+}
+
+bool InstructionCodeGeneratorX86_64::CpuHasAVXorAVX2FeatureFlag() {
+	if (codegen_->CpuHasAVXFeatureFlag() || codegen_->CpuHasAVX2FeatureFlag()) {
+    return true;
+	}
+	return false;
 }
 
 #undef __

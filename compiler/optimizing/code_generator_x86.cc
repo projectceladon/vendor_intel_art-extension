@@ -8037,6 +8037,13 @@ void InstructionCodeGeneratorX86::VisitIntermediateAddress(HIntermediateAddress*
   LOG(FATAL) << "Unreachable";
 }
 
+bool InstructionCodeGeneratorX86::CpuHasAVXorAVX2FeatureFlag() {
+  if (codegen_->CpuHasAVXFeatureFlag() || codegen_->CpuHasAVX2FeatureFlag()) {
+    return true;
+  }
+  return false;
+}
+
 #undef __
 
 }  // namespace x86

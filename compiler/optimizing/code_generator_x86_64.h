@@ -184,6 +184,8 @@ class LocationsBuilderX86_64 : public HGraphVisitor {
   DISALLOW_COPY_AND_ASSIGN(LocationsBuilderX86_64);
 };
 
+class CodeGeneratorX86_64;
+
 class InstructionCodeGeneratorX86_64 : public InstructionCodeGenerator {
  public:
   InstructionCodeGeneratorX86_64(HGraph* graph, CodeGeneratorX86_64* codegen);
@@ -203,6 +205,8 @@ class InstructionCodeGeneratorX86_64 : public InstructionCodeGenerator {
   }
 
   X86_64Assembler* GetAssembler() const { return assembler_; }
+
+ bool CpuHasAVXorAVX2FeatureFlag();
 
  private:
   // Generate code for the given suspend check. If not null, `successor`
@@ -441,6 +445,19 @@ class CodeGeneratorX86_64 : public CodeGenerator {
     return isa_features_;
   }
 
+  bool CpuHasAVX2FeatureFlag() {
+		if (GetInstructionSetFeatures().HasAVX2()){
+			return true;
+	  }
+    return false;
+	}
+
+	bool CpuHasAVXFeatureFlag() {
+		if (GetInstructionSetFeatures().HasAVX()) {
+			return true;
+		}
+	  return false;
+	}
   // Fast path implementation of ReadBarrier::Barrier for a heap
   // reference field load when Baker's read barriers are used.
   void GenerateFieldLoadWithBakerReadBarrier(HInstruction* instruction,
