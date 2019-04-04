@@ -35,6 +35,7 @@
 #include "thread-current-inl.h"
 #include "utils/x86_64/assembler_x86_64.h"
 #include "utils/x86_64/constants_x86_64.h"
+#include <iostream>
 
 namespace art {
 
@@ -921,7 +922,7 @@ void IntrinsicCodeGeneratorX86_64::VisitMathNextAfter(HInvoke* invoke) {
   GenFPToFPCall(invoke, codegen_, kQuickNextAfter);
 }
 
-void IntrinsicLocationsBuilderX86_64::VisitSystemArrayCopyChar(HInvoke* invoke) {
+static void CreateSystemArrayCopyLocations(HInvoke* invoke) {
   // Check to see if we have known failures that will cause us to have to bail out
   // to the runtime, and just generate the runtime call directly.
   HIntConstant* src_pos = invoke->InputAt(1)->AsIntConstant();
@@ -943,9 +944,9 @@ void IntrinsicLocationsBuilderX86_64::VisitSystemArrayCopyChar(HInvoke* invoke) 
       return;
     }
   }
-
   LocationSummary* locations =
-      new (allocator_) LocationSummary(invoke, LocationSummary::kCallOnSlowPath, kIntrinsified);
+      new (invoke->GetBlock()->GetGraph()->GetAllocator()) LocationSummary
+      (invoke, LocationSummary::kCallOnSlowPath, kIntrinsified);
   // arraycopy(Object src, int src_pos, Object dest, int dest_pos, int length).
   locations->SetInAt(0, Location::RequiresRegister());
   locations->SetInAt(1, Location::RegisterOrConstant(invoke->InputAt(1)));
@@ -1023,9 +1024,11 @@ static void CheckPosition(X86_64Assembler* assembler,
   }
 }
 
-void IntrinsicCodeGeneratorX86_64::VisitSystemArrayCopyChar(HInvoke* invoke) {
-  X86_64Assembler* assembler = GetAssembler();
-  LocationSummary* locations = invoke->GetLocations();
+static void SystemArrayCopyPrimitive(HInvoke* invoke,
+                                     X86_64Assembler* assembler,
+                                     LocationSummary* locations,
+                                     CodeGeneratorX86_64* codegen,
+                                     DataType::Type type) {
 
   CpuRegister src = locations->InAt(0).AsRegister<CpuRegister>();
   Location src_pos = locations->InAt(1);
@@ -1033,7 +1036,7 @@ void IntrinsicCodeGeneratorX86_64::VisitSystemArrayCopyChar(HInvoke* invoke) {
   Location dest_pos = locations->InAt(3);
   Location length = locations->InAt(4);
 
-  // Temporaries that we need for MOVSW.
+  // Temporaries that we need for MOVSB/D/W.
   CpuRegister src_base = locations->GetTemp(0).AsRegister<CpuRegister>();
   DCHECK_EQ(src_base.AsRegister(), RSI);
   CpuRegister dest_base = locations->GetTemp(1).AsRegister<CpuRegister>();
@@ -1041,8 +1044,8 @@ void IntrinsicCodeGeneratorX86_64::VisitSystemArrayCopyChar(HInvoke* invoke) {
   CpuRegister count = locations->GetTemp(2).AsRegister<CpuRegister>();
   DCHECK_EQ(count.AsRegister(), RCX);
 
-  SlowPathCode* slow_path = new (codegen_->GetScopedAllocator()) IntrinsicSlowPathX86_64(invoke);
-  codegen_->AddSlowPath(slow_path);
+  SlowPathCode* slow_path = new (codegen->GetScopedAllocator()) IntrinsicSlowPathX86_64(invoke);
+  codegen->AddSlowPath(slow_path);
 
   // Bail out if the source and destination are the same.
   __ cmpl(src, dest);
@@ -1078,37 +1081,88 @@ void IntrinsicCodeGeneratorX86_64::VisitSystemArrayCopyChar(HInvoke* invoke) {
 
   // Okay, everything checks out.  Finally time to do the copy.
   // Check assumption that sizeof(Char) is 2 (used in scaling below).
-  const size_t char_size = DataType::Size(DataType::Type::kUint16);
-  DCHECK_EQ(char_size, 2u);
-
-  const uint32_t data_offset = mirror::Array::DataOffset(char_size).Uint32Value();
-
+  const size_t data_size = DataType::Size(type);
+  const ScaleFactor scale_factor = static_cast<ScaleFactor>(DataType::SizeShift(type));
+  switch (type) {
+    case DataType::Type::kInt8:
+      DCHECK_EQ(data_size, 1u);
+      break;
+    case DataType::Type::kUint16:
+      DCHECK_EQ(data_size, 2u);
+      break;
+    case DataType::Type::kInt32:
+      DCHECK_EQ(data_size, 4u);
+      break;
+    default:
+     LOG(FATAL) << "Unexpected data type for intrinsic";
+  }
+  const uint32_t data_offset = mirror::Array::DataOffset(data_size).Uint32Value();
   if (src_pos.IsConstant()) {
     int32_t src_pos_const = src_pos.GetConstant()->AsIntConstant()->GetValue();
-    __ leal(src_base, Address(src, char_size * src_pos_const + data_offset));
+    __ leal(src_base, Address(src, data_size * src_pos_const + data_offset));
   } else {
     __ leal(src_base, Address(src, src_pos.AsRegister<CpuRegister>(),
-                              ScaleFactor::TIMES_2, data_offset));
+                              scale_factor, data_offset));
   }
   if (dest_pos.IsConstant()) {
     int32_t dest_pos_const = dest_pos.GetConstant()->AsIntConstant()->GetValue();
-    __ leal(dest_base, Address(dest, char_size * dest_pos_const + data_offset));
+    __ leal(dest_base, Address(dest, data_size * dest_pos_const + data_offset));
   } else {
     __ leal(dest_base, Address(dest, dest_pos.AsRegister<CpuRegister>(),
-                               ScaleFactor::TIMES_2, data_offset));
+                               scale_factor, data_offset));
   }
 
   // Do the move.
-  __ rep_movsw();
-
+  switch (type) {
+    case DataType::Type::kInt8:
+       __ rep_movsb();
+       break;
+   case DataType::Type::kUint16:
+     __ rep_movsw();
+     break;
+   case DataType::Type::kInt32:
+     __ rep_movsd();
+     break;
+   default:
+     LOG(FATAL) << "Unexpected data type for intrinsic";
+  }
   __ Bind(slow_path->GetExitLabel());
 }
 
+void IntrinsicLocationsBuilderX86_64::VisitSystemArrayCopyChar(HInvoke* invoke) {
+ CreateSystemArrayCopyLocations(invoke);
+}
+void IntrinsicCodeGeneratorX86_64::VisitSystemArrayCopyChar(HInvoke* invoke) {
+  X86_64Assembler* assembler = GetAssembler();
+  LocationSummary* locations = invoke->GetLocations();
+  SystemArrayCopyPrimitive(invoke, assembler, locations, codegen_, DataType::Type::kUint16);
+}
+
+void IntrinsicCodeGeneratorX86_64::VisitSystemArrayCopyByte(HInvoke* invoke) {
+  X86_64Assembler* assembler = GetAssembler();
+  LocationSummary* locations = invoke->GetLocations();
+  SystemArrayCopyPrimitive(invoke, assembler, locations, codegen_,DataType::Type::kInt8);
+}
+
+void IntrinsicLocationsBuilderX86_64::VisitSystemArrayCopyByte(HInvoke* invoke) {
+  CreateSystemArrayCopyLocations(invoke);
+}
+
+void IntrinsicCodeGeneratorX86_64::VisitSystemArrayCopyInt(HInvoke* invoke) {
+  X86_64Assembler* assembler = GetAssembler();
+  LocationSummary* locations = invoke->GetLocations();
+  SystemArrayCopyPrimitive(invoke, assembler, locations, codegen_,DataType::Type::kInt32);
+}
+
+void IntrinsicLocationsBuilderX86_64::VisitSystemArrayCopyInt(HInvoke* invoke) {
+  CreateSystemArrayCopyLocations(invoke);
+}
 
 void IntrinsicLocationsBuilderX86_64::VisitSystemArrayCopy(HInvoke* invoke) {
   // The only read barrier implementation supporting the
   // SystemArrayCopy intrinsic is the Baker-style read barriers.
   if (kEmitCompilerReadBarrier && !kUseBakerReadBarrier) {
+    std::cout << "does not use baker read barrier" << std::endl;
     return;
   }
 

@@ -388,7 +388,9 @@ inline HiddenApiAccessFlags::ApiList ArtMethod::GetHiddenApiAccessFlags()
     REQUIRES_SHARED(Locks::mutator_lock_) {
   if (UNLIKELY(IsIntrinsic())) {
     switch (static_cast<Intrinsics>(GetIntrinsic())) {
+      case Intrinsics::kSystemArrayCopyByte:
       case Intrinsics::kSystemArrayCopyChar:
+      case Intrinsics::kSystemArrayCopyInt:
       case Intrinsics::kStringGetCharsNoCheck:
       case Intrinsics::kReferenceGetReferent:
         // These intrinsics are on the light greylist and will fail a DCHECK in

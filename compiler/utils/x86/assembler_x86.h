@@ -721,6 +721,7 @@ class X86Assembler FINAL : public Assembler {
   void repe_cmpsw();
   void repe_cmpsl();
   void rep_movsb();
+  void rep_movsd();
   void rep_movsw();
 
   X86Assembler* lock();

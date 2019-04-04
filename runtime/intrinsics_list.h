@@ -154,7 +154,9 @@
   V(MathRint, kStatic, kNeedsEnvironmentOrCache, kNoSideEffects, kNoThrow, "Ljava/lang/Math;", "rint", "(D)D") \
   V(MathRoundDouble, kStatic, kNeedsEnvironmentOrCache, kNoSideEffects, kNoThrow, "Ljava/lang/Math;", "round", "(D)J") \
   V(MathRoundFloat, kStatic, kNeedsEnvironmentOrCache, kNoSideEffects, kNoThrow, "Ljava/lang/Math;", "round", "(F)I") \
+  V(SystemArrayCopyByte, kStatic, kNeedsEnvironmentOrCache, kAllSideEffects, kCanThrow, "Ljava/lang/System;", "arraycopy", "([BI[BII)V") \
   V(SystemArrayCopyChar, kStatic, kNeedsEnvironmentOrCache, kAllSideEffects, kCanThrow, "Ljava/lang/System;", "arraycopy", "([CI[CII)V") \
+  V(SystemArrayCopyInt, kStatic, kNeedsEnvironmentOrCache, kAllSideEffects, kCanThrow, "Ljava/lang/System;", "arraycopy", "([II[III)V") \
   V(SystemArrayCopy, kStatic, kNeedsEnvironmentOrCache, kAllSideEffects, kCanThrow, "Ljava/lang/System;", "arraycopy", "(Ljava/lang/Object;ILjava/lang/Object;II)V") \
   V(ThreadCurrentThread, kStatic, kNeedsEnvironmentOrCache, kNoSideEffects, kNoThrow, "Ljava/lang/Thread;", "currentThread", "()Ljava/lang/Thread;") \
   V(MemoryPeekByte, kStatic, kNeedsEnvironmentOrCache, kReadSideEffects, kCanThrow, "Llibcore/io/Memory;", "peekByte", "(J)B") \
