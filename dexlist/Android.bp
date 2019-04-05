@@ -16,7 +16,7 @@ art_cc_binary {
     name: "dexlist",
     host_supported: true,
     srcs: ["dexlist.cc"],
-    cflags: ["-Wall", "-Werror"],
+    cflags: ["-Wall", "-Werror", "-Wformat", "-Wformat-security"],
     shared_libs: ["libdexfile", "libbase"],
     // TODO: fix b/72216369 and remove the need for this.
     include_dirs: [
