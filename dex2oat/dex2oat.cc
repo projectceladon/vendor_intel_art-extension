@@ -108,6 +108,8 @@ using android::base::StringPrintf;
 static constexpr size_t kDefaultMinDexFilesForSwap = 2;
 static constexpr size_t kDefaultMinDexFileCumulativeSizeForSwap = 20 * MB;
 
+ //Test patch
+
 // Compiler filter override for very large apps.
 static constexpr CompilerFilter::Filter kLargeAppFilter = CompilerFilter::kVerify;
 
