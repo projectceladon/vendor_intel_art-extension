@@ -29,7 +29,26 @@ art_cc_defaults {
     shared_libs: [
         "libbase",
     ],
-    static_libs: ["libz"],
+    target: {
+      android_x86: {
+            static_libs: [
+                // ZipArchive support, the order matters here to get all symbols.
+                "libziparchive",
+                "libz", //static version of libz as a part of inflate
+            ],
+        },
+     android_x86_64: {
+            static_libs: [
+                // ZipArchive support, the order matters here to get all symbols.
+                "libziparchive",
+                "libz_ipp",
+                "zlib-ipp",
+            ],
+        },
+     host: {
+         static_libs: ["libz"],
+     },
+   },
 }
 
 art_cc_library {

@@ -37,12 +37,23 @@ cc_defaults {
 
     target: {
         android: {
-            static_libs: [
-                "libziparchive",
-                "libz",
-            ],
             shared_libs: [
                 "libutils",
+            ],
+        },
+        android_x86: {
+	    static_libs: [
+                // ZipArchive support, the order matters here to get all symbols.
+                "libziparchive",
+                "libz", //static version of libz as a part of inflate
+            ],
+        },
+        android_x86_64: {
+	    static_libs: [
+                // ZipArchive support, the order matters here to get all symbols.
+                "libziparchive",
+                "libz_ipp",
+                "zlib-ipp",
             ],
         },
         host: {
