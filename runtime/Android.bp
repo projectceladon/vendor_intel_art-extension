@@ -373,11 +373,7 @@ cc_defaults {
                 "libutils",
                 "libtombstoned_client",
             ],
-            static_libs: [
-                // ZipArchive support, the order matters here to get all symbols.
-                "libziparchive",
-                "libz",
-            ],
+
         },
         android_arm: {
             ldflags: JIT_DEBUG_REGISTER_CODE_LDFLAGS,
@@ -387,9 +383,20 @@ cc_defaults {
         },
         android_x86: {
             ldflags: JIT_DEBUG_REGISTER_CODE_LDFLAGS,
+	    static_libs: [
+                // ZipArchive support, the order matters here to get all symbols.
+                "libziparchive",
+                "libz", //static version of libz as a part of inflate
+            ],
         },
         android_x86_64: {
             ldflags: JIT_DEBUG_REGISTER_CODE_LDFLAGS,
+	    static_libs: [
+                // ZipArchive support, the order matters here to get all symbols.
+                "libziparchive",
+                "libz_ipp",
+                "zlib-ipp",
+            ],
         },
         host: {
             srcs: [
