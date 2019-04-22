@@ -196,9 +196,9 @@ void InductionVarSimplification::PerformReduction(HLoopInformation* loop, HInstr
     new_phi->AddInput(new_add);
     HConstant* biv_inc_cst = biv_increment_->GetConstantRight();
     // Ensured in IsCandidatePhi()
-    DCHECK(biv_inc_cst != nullptr);
+    CHECK(biv_inc_cst != nullptr);
     HConstant* biv_cst = GetNewConstant(HInstruction::InstructionKind::kMul, biv_inc_cst, std::get<1>(val));
-    DCHECK(biv_cst != nullptr);
+    CHECK(biv_cst != nullptr);
     HAdd* biv_add = new (allocator) HAdd(biv_inc_cst->GetType(), new_phi, biv_cst);
     biv_increment_->GetBlock()->InsertInstructionAfter(biv_add, biv_increment_);
     new_phi->AddInput(biv_add);
