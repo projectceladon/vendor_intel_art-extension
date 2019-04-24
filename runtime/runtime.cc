@@ -901,8 +901,10 @@ void Runtime::InitNonZygoteOrPostFork(
         gLogVerbosity = res.GetValue();
       }
     }
-    property_get("dalvik.vm.runtime.logallgcs", logString, "false");
-    gc::Heap::SetLogAllGCs(strcmp(logString, "true") == 0);
+    property_get("dalvik.vm.runtime.logallgcs", logString, "");
+    if (strcmp(logString, "") != 0) {
+      gc::Heap::SetLogAllGCs(strcmp(logString, "true") == 0);
+    }
 
     if (Runtime::Current()->IsUsingEpsilonGC()) {
       char allocMaxString[PROPERTY_VALUE_MAX];
