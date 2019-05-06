@@ -1368,7 +1368,9 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
                        runtime_options.GetOrDefault(Opt::BumpSpaceCapacity),
                        xgc_option.measure_,
                        runtime_options.GetOrDefault(Opt::EnableHSpaceCompactForOOM),
-                       runtime_options.GetOrDefault(Opt::HSpaceCompactForOOMMinIntervalsMs));
+                       runtime_options.GetOrDefault(Opt::HSpaceCompactForOOMMinIntervalsMs),
+                       runtime_options.GetOrDefault(Opt::ConcurrentGCCycleStart),
+                       runtime_options.GetOrDefault(Opt::ConcurrentGCStartFactor));
 
   if (!heap_->HasBootImageSpace() && !allow_dex_file_fallback_) {
     LOG(ERROR) << "Dex file fallback disabled, cannot continue without image.";
