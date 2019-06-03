@@ -100,6 +100,10 @@ MarkSweep::MarkSweep(Heap* heap, bool is_concurrent, bool is_copying,
                        name_prefix +
                        (is_concurrent ? "concurrent mark sweep": "mark sweep")),
       current_space_bitmap_(nullptr),
+      self_(nullptr),
+      promo_dest_space_(nullptr),
+      from_age_table_(nullptr),
+      to_age_table_(nullptr),
       mark_bitmap_(nullptr),
       mark_stack_(nullptr),
       gc_barrier_(new Barrier(0)),
@@ -107,7 +111,9 @@ MarkSweep::MarkSweep(Heap* heap, bool is_concurrent, bool is_copying,
       is_concurrent_(is_concurrent),
       is_copying_(is_copying),
       live_stack_freeze_size_(0),
-      updating_reference_(false) {
+      updating_reference_(false),
+      threshold_age_(0),
+      enable_parallel_(false){
   std::string error_msg;
   MemMap* mem_map = MemMap::MapAnonymous(
       "mark sweep sweep array free buffer", nullptr,
