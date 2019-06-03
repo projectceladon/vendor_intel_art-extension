@@ -382,9 +382,9 @@ class SemiSpace : public GarbageCollector {
   // Used for ZygoteCompact because we don't want gaps in zygote space.
   bool support_parallel_;
 
-  accounting::AgingTable* from_age_table_;
-  accounting::AgingTable* to_age_table_;
-  size_t threshold_age_;
+  accounting::AgingTable* from_age_table_ = nullptr;
+  accounting::AgingTable* to_age_table_ = nullptr;
+  size_t threshold_age_ = 0;
   //Support parallel copy or not.
   bool support_parallel_default_;
 private:

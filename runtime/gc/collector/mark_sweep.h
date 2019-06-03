@@ -405,8 +405,6 @@ class MarkSweep : public GarbageCollector {
   space::BumpPointerSpace* from_bps_ = nullptr;
   // To bump pointer space.
   space::BumpPointerSpace* to_bps_ = nullptr;
-  // The bump pointer in To bump pointer space where the next forwarding address will be.
-  uint8_t* bump_pointer_;
   // How many objects and bytes we moved. Used for accounting.
   Atomic<size_t> bytes_moved_;
   Atomic<size_t> objects_moved_;
@@ -415,7 +413,7 @@ class MarkSweep : public GarbageCollector {
   Atomic<size_t> bytes_adjusted_;
   // How many bytes we avoided dirtying.
   Atomic<size_t> saved_bytes_;
-  Thread* self_;
+  Thread* self_ = nullptr;
 
   // Bitmap which describes which objects we have to move, need to do / 2 so that we can handle
   // objects which are only 8 bytes.
@@ -423,9 +421,9 @@ class MarkSweep : public GarbageCollector {
   std::unique_ptr<accounting::ContinuousSpaceBitmap> objects_after_forwarding_ = nullptr;
   std::unique_ptr<accounting::ContinuousSpaceBitmap> objects_for_to_bsp_ = nullptr;
   // The space which we are promoting into.
-  space::ContinuousMemMapAllocSpace* promo_dest_space_;
-  accounting::AgingTable* from_age_table_;
-  accounting::AgingTable* to_age_table_;
+  space::ContinuousMemMapAllocSpace* promo_dest_space_ = nullptr;
+  accounting::AgingTable* from_age_table_ = nullptr;
+  accounting::AgingTable* to_age_table_ = nullptr;
 
   // Cache the heap's mark bitmap to prevent having to do 2 loads during slow path marking.
   accounting::HeapBitmap* mark_bitmap_;
@@ -475,9 +473,9 @@ class MarkSweep : public GarbageCollector {
 
   bool force_copy_all_ = false;
 
-  size_t threshold_age_;
+  size_t threshold_age_ = 0;
 
-  bool enable_parallel_;
+  bool enable_parallel_ = false;
 
  private:
   class CardScanTask;
