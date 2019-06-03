@@ -176,6 +176,9 @@ SemiSpace::SemiSpace(Heap* heap, bool generational,
       thread_roots_stacks_(nullptr),
       thread_mark_stack_(nullptr),
       support_parallel_(support_parallel),
+      from_age_table_(nullptr),
+      to_age_table_(nullptr),
+      threshold_age_(0), 
       support_parallel_default_(support_parallel) {
 }
 

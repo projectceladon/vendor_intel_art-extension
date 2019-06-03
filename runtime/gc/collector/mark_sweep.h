@@ -405,8 +405,6 @@ class MarkSweep : public GarbageCollector {
   space::BumpPointerSpace* from_bps_ = nullptr;
   // To bump pointer space.
   space::BumpPointerSpace* to_bps_ = nullptr;
-  // The bump pointer in To bump pointer space where the next forwarding address will be.
-  uint8_t* bump_pointer_;
   // How many objects and bytes we moved. Used for accounting.
   Atomic<size_t> bytes_moved_;
   Atomic<size_t> objects_moved_;
