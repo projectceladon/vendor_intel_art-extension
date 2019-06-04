@@ -29,6 +29,7 @@ Disassembler::Disassembler(InstructionSet insn_set) {
   ptr_ = nullptr;
   address_ = 0;
   insn_ = nullptr;
+  handle_ = 0;
   // Instantiate a capstone handle/instance.
   switch (insn_set) {
   case InstructionSet::kX86:
