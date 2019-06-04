@@ -1112,7 +1112,7 @@ class Runtime {
   std::unique_ptr<MemMap> protected_fault_page_;
 #ifdef CAPSTONE
   // Auto Fast JNI detection gate.
-  bool auto_fast_detect_;
+  bool auto_fast_detect_ = true;
 #endif
 
 
