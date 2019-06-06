@@ -32,12 +32,12 @@ cc_defaults {
      target: {
          android_x86_64: {
 	    pgo: {
-                  profile_file: "art/art-runtime_x86.profdata",
+                  profile_file: "art/libart-x86-x86_64.profdata.2019-06-06",
             },
          },
 	 android_x86: {
 	    pgo: {
-                  profile_file: "art/art-runtime_x86.profdata",
+                  profile_file: "art/libart-x86-x86_64.profdata.2019-06-06",
             },
          },
      },
