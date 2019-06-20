@@ -23,6 +23,7 @@
 #include "induction_var_range.h"
 #include "nodes.h"
 #include "side_effects_analysis.h"
+#include <iostream>
 
 namespace art {
 
@@ -331,6 +332,7 @@ class ValueRange : public ArenaObject<kArenaAllocBoundsCheckElimination> {
         ValueBound::NarrowLowerBound(lower_, range->lower_),
         ValueBound::NarrowUpperBound(upper_, range->upper_));
   }
+  
 
   // Shift a range by a constant.
   ValueRange* Add(int32_t constant) const {
@@ -537,12 +539,14 @@ class BCEVisitor : public HGraphVisitor {
     // against deleting the current instruction during iteration. However, it
     // must advance next_ if that instruction is deleted during iteration.
     for (HInstruction* instruction = block->GetFirstPhi(); instruction != nullptr;) {
+      //std::cout << "phi=" << instruction->GetId() << instruction->DebugName() << std::endl;
       DCHECK(instruction->IsInBlock());
       next_ = instruction->GetNext();
       instruction->Accept(this);
       instruction = next_;
     }
     for (HInstruction* instruction = block->GetFirstInstruction(); instruction != nullptr;) {
+      //std::cout << "instruction=" << instruction->GetId() << instruction->DebugName() << std::endl;
       DCHECK(instruction->IsInBlock());
       next_ = instruction->GetNext();
       instruction->Accept(this);
@@ -578,7 +582,10 @@ class BCEVisitor : public HGraphVisitor {
 
   // Traverse up the dominator tree to look for value range info.
   ValueRange* LookupValueRange(HInstruction* instruction, HBasicBlock* basic_block) {
+    //std::cout << "dominator based analysis of index range" << std::endl;
+    //std::cout << "HInstruction=" << instruction->GetId() << "::" << instruction->DebugName() << "::" << instruction->GetBlock()->GetBlockId() << std::endl;
     while (basic_block != nullptr) {
+      //std::cout << "basic_block=" << basic_block->GetBlockId() << std::endl;
       ScopedArenaSafeMap<int, ValueRange*>* map = GetValueRangeMap(basic_block);
       if (map != nullptr) {
         if (map->find(instruction->GetId()) != map->end()) {
@@ -588,6 +595,7 @@ class BCEVisitor : public HGraphVisitor {
         DCHECK(IsAddedBlock(basic_block));
       }
       basic_block = basic_block->GetDominator();
+        //std::cout << "dominator=" << basic_block->GetBlockId() << std::endl;
     }
     // Didn't find any.
     return nullptr;
@@ -819,11 +827,93 @@ class BCEVisitor : public HGraphVisitor {
       }
     }
   }
+  static void PrintValueRange(ValueRange* input) {
+   ValueBound lower = input->GetLower();
+   ValueBound upper = input->GetUpper();
+   HInstruction* lower_instr = lower.GetInstruction();
+   int32_t lower_const = lower.GetConstant();
+   std::cout << "lower=" << std::endl;
+   if (lower_instr != nullptr) {
+    std::cout << "(" << lower_instr->GetId() << "::" << lower_instr->DebugName() << "::" 
+    << lower_instr->GetBlock()->GetBlockId() <<"," << lower_const << ")" << std::endl;
+   } else {
+     std::cout << "(nullptr," << lower_const << ")" << std::endl;
+   }
+   HInstruction* upper_instr = upper.GetInstruction();
+   int32_t upper_const = upper.GetConstant();
+   std::cout << "upper=" << std::endl;
+   if (upper_instr != nullptr) {
+     std::cout << "(" << upper_instr->GetId() << "::" << upper_instr->DebugName() << "::"
+      << upper_instr->GetBlock()->GetBlockId() <<"," << upper_const << ")" << std::endl;
+    } else {
+       std::cout << "(nullptr," << upper_const << ")" << std::endl;
+    }
+
+  }
+  static int32_t IsArrayLengthKnown(HInstruction* instruction) {
+    // Hunt for NewArrayDeclaration for this array_length
+    if (instruction->IsIntConstant()) {
+      return instruction->AsIntConstant()->GetValue();
+    }
+
+    int32_t index= 0;
+    while (instruction->IsArrayLength() ||
+           instruction->IsNullCheck() || 
+           instruction->IsArrayGet()) {
+      instruction = instruction->InputAt(0);
+      if (instruction->IsArrayGet()) {
+        index++;
+      } 
+    }
+    while (instruction->IsBoundType() || instruction->IsInvokeStaticOrDirect()
+           || instruction->IsNewArray()) { // May be add IsInvokeVirtual() ?
+      if (instruction->IsNewArray()) {
+        HInstruction* length = instruction->AsNewArray()->GetLength();
+        if (length->IsIntConstant()) {
+          //int32_t dimensions = length->AsIntConstant()->GetValue();
+          //DCHECK_LT(index, dimensions);
+          /*if (indirection == 0 ) 
+            return dimensions;*/
+          for (const HUseListNode<HInstruction*>& use : instruction->GetUses()) { 
+            HInstruction* user = use.GetUser();
+            if (user->IsArraySet()) {
+              HInstruction * array_index = user->AsArraySet()->InputAt(1);
+              if (array_index->IsIntConstant()) {
+                int32_t cur_index = array_index->AsIntConstant()->GetValue();
+                if (index == cur_index) {
+                  HInstruction* value = user->AsArraySet()->InputAt(2);
+                  if (value->IsIntConstant()) {
+                    return value->AsIntConstant()->GetValue();
+                  }
+                }
+              }
+            }
+          }
+        }
+        // We donot know the length of the array. 
+        break;
+      }
+      else if (instruction->IsBoundType()) {
+        instruction = instruction->InputAt(0);
+      } else { 
+        if (instruction->GetInputs().size() > 1)
+          instruction = instruction->InputAt(1); 
+        else
+        break;
+      }
+    }
+    return -1;
+  }
 
   void VisitBoundsCheck(HBoundsCheck* bounds_check) OVERRIDE {
+    //std::cout << "In Visit BoundsCheck" << std::endl;
+    //LOG(INFO) << "bounds_check=" << bounds_check->GetId() << "::" <<bounds_check->DebugName()
+    //<< "::" << bounds_check->GetBlock()->GetBlockId() << "\n";
     HBasicBlock* block = bounds_check->GetBlock();
     HInstruction* index = bounds_check->InputAt(0);
+    //std::cout << "index=" << index->GetId() << "::" << index->DebugName() << "::" << index->GetBlock()->GetBlockId() << std::endl;
     HInstruction* array_length = bounds_check->InputAt(1);
+    //std::cout << "array_length=" << array_length->GetId() << "::" << array_length->DebugName() << "::" << array_length->GetBlock()->GetBlockId() << std::endl;
     DCHECK(array_length->IsIntConstant() ||
            array_length->IsArrayLength() ||
            array_length->IsPhi());
@@ -831,13 +921,19 @@ class BCEVisitor : public HGraphVisitor {
     // Analyze index range.
     if (!index->IsIntConstant()) {
       // Non-constant index.
+      //std::cout << "index is not int constant" << std::endl;
       ValueBound lower = ValueBound(nullptr, 0);        // constant 0
       ValueBound upper = ValueBound(array_length, -1);  // array_length - 1
       ValueRange array_range(&allocator_, lower, upper);
+      //std::cout << "array_range" << std::endl;
+      //PrintValueRange(&array_range);
       // Try index range obtained by dominator-based analysis.
       ValueRange* index_range = LookupValueRange(index, block);
+      //std::cout << "index_range =" << std::endl;
       if (index_range != nullptr) {
+        //PrintValueRange(index_range);
         if (index_range->FitsIn(&array_range)) {
+          //std::cout << "index_range fits in array range" << std::endl;
           ReplaceInstruction(bounds_check, index);
           return;
         } else if (index_range->IsConstantValueRange()) {
@@ -854,20 +950,25 @@ class BCEVisitor : public HGraphVisitor {
           }
         }
       }
+      //std::cout << "index range is nulptr" << std::endl;
       // Try index range obtained by induction variable analysis.
       // Disables dynamic bce if OOB is certain.
+      
       if (InductionRangeFitsIn(&array_range, bounds_check, &try_dynamic_bce)) {
+        //std::cout << "index range fits in array range" << std::endl;
         ReplaceInstruction(bounds_check, index);
         return;
       }
     } else {
       // Constant index.
+      //std::cout << "constant index case" << std::endl;
       int32_t constant = index->AsIntConstant()->GetValue();
       if (constant < 0) {
         // Will always throw exception.
         return;
       } else if (array_length->IsIntConstant()) {
         if (constant < array_length->AsIntConstant()->GetValue()) {
+          //std::cout << "removing bounds check from here" << std::endl;
           ReplaceInstruction(bounds_check, index);
         }
         return;
@@ -903,20 +1004,41 @@ class BCEVisitor : public HGraphVisitor {
 
     // If static analysis fails, and OOB is not certain, try dynamic elimination.
     if (try_dynamic_bce) {
+       //std::cout << " static analysis failed; trying dynamic bce " << std::endl;
       // Try loop-based dynamic elimination.
       HLoopInformation* loop = bounds_check->GetBlock()->GetLoopInformation();
       bool needs_finite_test = false;
       bool needs_taken_test = false;
-      if (DynamicBCESeemsProfitable(loop, bounds_check->GetBlock()) &&
-          induction_range_.CanGenerateRange(
-              bounds_check, index, &needs_finite_test, &needs_taken_test) &&
-          CanHandleInfiniteLoop(loop, index, needs_finite_test) &&
+      if (DynamicBCESeemsProfitable(loop, bounds_check->GetBlock()) && //) {
+          induction_range_.CanGenerateRange (
+              bounds_check, index, &needs_finite_test, &needs_taken_test) && //) {
+           //std::cout << "can generate range" << std::endl;
+          CanHandleInfiniteLoop(loop, index, needs_finite_test) && //) {
           // Do this test last, since it may generate code.
+          //std::cout << "can handle infinite loop" << std::endl;
           CanHandleLength(loop, array_length, needs_taken_test)) {
+        //std::cout << "calling transform loop for deoptimization and dynamic bce" << std::endl;
         TransformLoopForDeoptimizationIfNeeded(loop, needs_taken_test);
         TransformLoopForDynamicBCE(loop, bounds_check);
         return;
       }
+      // Try if ArrayLength is known 
+      int32_t size = IsArrayLengthKnown(array_length); 
+      if (size != -1) {
+        // Replace this bounds check with index
+        //int32_t valid_access = size - 1;
+        ValueBound lower = ValueBound(nullptr, 0);        // constant 0
+        ValueBound upper = ValueBound(nullptr, size -1);  // array_length - 1
+        ValueRange array_range(&allocator_, lower, upper);
+        if (InductionRangeFitsIn(&array_range, bounds_check, &try_dynamic_bce)) {
+          //std::cout << "index range fits in array range" << std::endl;
+          //std::cout << "replacing bounds_check" << bounds_check->GetId() << "::" <<bounds_check->GetBlock()->GetBlockId() << std::endl;
+          ReplaceInstruction(bounds_check, index);
+          return;
+        }
+      }
+
+      //std::cout << "prepare for dominator based dynamic elimination" << std::endl;
       // Otherwise, prepare dominator-based dynamic elimination.
       if (first_index_bounds_check_map_.find(array_length->GetId()) ==
           first_index_bounds_check_map_.end()) {
@@ -946,14 +1068,17 @@ class BCEVisitor : public HGraphVisitor {
   }
 
   void VisitPhi(HPhi* phi) OVERRIDE {
+    //std::cout << "In Visit Phi" << std::endl; 
     if (phi->IsLoopHeaderPhi()
         && (phi->GetType() == DataType::Type::kInt32)
         && HasSameInputAtBackEdges(phi)) {
       HInstruction* instruction = phi->InputAt(1);
+      //std::cout << "instruction =" << instruction->GetId() << "::" << instruction->DebugName() << "::" << instruction->GetBlock()->GetBlockId() << std::endl;
       HInstruction *left;
       int32_t increment;
       if (ValueBound::IsAddOrSubAConstant(instruction, &left, &increment)) {
         if (left == phi) {
+          //std::cout << "left=phi" << std::endl;
           HInstruction* initial_value = phi->InputAt(0);
           ValueRange* range = nullptr;
           if (increment == 0) {
@@ -986,6 +1111,8 @@ class BCEVisitor : public HGraphVisitor {
                 increment,
                 bound);
           }
+          //PrintValueRange(range);
+          //std::cout << "assign range" << std::endl;
           AssignRange(phi->GetBlock(), phi, range);
         }
       }
@@ -1387,25 +1514,33 @@ class BCEVisitor : public HGraphVisitor {
   bool InductionRangeFitsIn(ValueRange* array_range,
                             HBoundsCheck* context,
                             bool* try_dynamic_bce) {
+    //std::cout << "In InductionRangeFitsIn" << std::endl;
+    //std::cout << "context (bounds_check) =" << context->GetId() <<"::" << context->GetBlock()->GetBlockId() <<  std::endl;
     InductionVarRange::Value v1;
     InductionVarRange::Value v2;
     bool needs_finite_test = false;
     HInstruction* index = context->InputAt(0);
     HInstruction* hint = HuntForDeclaration(context->InputAt(1));
+    //std::cout << "hint =" << hint->GetId() << "::" << hint->DebugName() << "::" << hint->GetBlock()->GetBlockId() << std::endl;
     if (induction_range_.GetInductionRange(context, index, hint, &v1, &v2, &needs_finite_test)) {
       if (v1.is_known && (v1.a_constant == 0 || v1.a_constant == 1) &&
           v2.is_known && (v2.a_constant == 0 || v2.a_constant == 1)) {
         DCHECK(v1.a_constant == 1 || v1.instruction == nullptr);
         DCHECK(v2.a_constant == 1 || v2.instruction == nullptr);
+        //std::cout << "v1.b_constant=" << v1.b_constant << std::endl;
+        //std::cout << "v2.b_constant=" << v2.b_constant << std::endl;
         ValueRange index_range(&allocator_,
                                ValueBound(v1.instruction, v1.b_constant),
                                ValueBound(v2.instruction, v2.b_constant));
+        //PrintValueRange(array_range);
+        //PrintValueRange(&index_range);
         // If analysis reveals a certain OOB, disable dynamic BCE. Otherwise,
         // use analysis for static bce only if loop is finite.
         if (index_range.GetLower().LessThan(array_range->GetLower()) ||
             index_range.GetUpper().GreaterThan(array_range->GetUpper())) {
           *try_dynamic_bce = false;
         } else if (!needs_finite_test && index_range.FitsIn(array_range)) {
+          //std::cout << "InductionRange Fits In return true" << std::endl;
           return true;
         }
       }
@@ -1939,10 +2074,20 @@ class BCEVisitor : public HGraphVisitor {
 };
 
 void BoundsCheckElimination::Run() {
+  std::string method_name = graph_->GetDexFile().PrettyMethod(graph_->GetMethodIdx());
+  /*std::string debug_method = "java.lang.Package[] java.lang.Package.getSystemPackages()";
+  std::cout << "**********method =**************" << method_name << std::endl;
+  int stop=0;
+  if (method_name == debug_method) {
+    stop = 1;
+    std::cout << "break=" << stop << std::endl;
+  }*/
+  //LOG(INFO) << "**************method=**********************" << method_name << "\n";
   if (!graph_->HasBoundsChecks()) {
     return;
   }
-
+  
+  //std::cout << "In BCE" << std::endl;
   // Reverse post order guarantees a node's dominators are visited first.
   // We want to visit in the dominator-based order since if a value is known to
   // be bounded by a range at one instruction, it must be true that all uses of
@@ -1952,6 +2097,7 @@ void BoundsCheckElimination::Run() {
   for (size_t i = 0, size = graph_->GetReversePostOrder().size(); i != size; ++i) {
     HBasicBlock* current = graph_->GetReversePostOrder()[i];
     if (visitor.IsAddedBlock(current)) {
+      //std::cout << "block already addded " << std::endl;
       // Skip added blocks. Their effects are already taken care of.
       continue;
     }
