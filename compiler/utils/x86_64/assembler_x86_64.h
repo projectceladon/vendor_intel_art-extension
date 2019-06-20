@@ -19,6 +19,7 @@
 
 #include <vector>
 
+#include "arch/x86_64/instruction_set_features_x86_64.h"
 #include "base/arena_containers.h"
 #include "base/array_ref.h"
 #include "base/bit_utils.h"
@@ -351,10 +352,14 @@ class NearLabel : private Label {
 };
 
 
-class X86_64Assembler FINAL : public Assembler {
+class X86_64Assembler final : public Assembler {
  public:
-  explicit X86_64Assembler(ArenaAllocator* allocator)
-      : Assembler(allocator), constant_area_(allocator) {}
+  explicit X86_64Assembler(ArenaAllocator* allocator,
+                           const X86_64InstructionSetFeatures* instruction_set_features = nullptr)
+      : Assembler(allocator),
+        constant_area_(allocator),
+        has_AVX_(instruction_set_features != nullptr ? instruction_set_features->HasAVX(): false),
+        has_AVX2_(instruction_set_features != nullptr ? instruction_set_features->HasAVX2() : false) {}
   virtual ~X86_64Assembler() {}
 
   /*
@@ -415,6 +420,12 @@ class X86_64Assembler FINAL : public Assembler {
   void movaps(const Address& dst, XmmRegister src);  // store aligned
   void movups(const Address& dst, XmmRegister src);  // store unaligned
 
+  void vmovaps(XmmRegister dst, XmmRegister src);     // move
+  void vmovaps(XmmRegister dst, const Address& src);  // load aligned
+  void vmovaps(const Address& dst, XmmRegister src);  // store aligned
+  void vmovups(XmmRegister dst, const Address& src);  // load unaligned
+  void vmovups(const Address& dst, XmmRegister src);  // store unaligned
+
   void movss(XmmRegister dst, const Address& src);
   void movss(const Address& dst, XmmRegister src);
   void movss(XmmRegister dst, XmmRegister src);
@@ -440,12 +451,29 @@ class X86_64Assembler FINAL : public Assembler {
   void subps(XmmRegister dst, XmmRegister src);
   void mulps(XmmRegister dst, XmmRegister src);
   void divps(XmmRegister dst, XmmRegister src);
+ 
+  void vmulps(XmmRegister dst, XmmRegister src1, XmmRegister src2);
+  void vmulpd(XmmRegister dst, XmmRegister src1, XmmRegister src2);
+  void vdivps(XmmRegister dst, XmmRegister src1, XmmRegister src2);
+  void vdivpd(XmmRegister dst, XmmRegister src1, XmmRegister src2);
+ 
+  void vaddps(XmmRegister dst, XmmRegister add_left, XmmRegister add_right);
+  void vsubps(XmmRegister dst, XmmRegister add_left, XmmRegister add_right);
+  void vsubpd(XmmRegister dst, XmmRegister add_left, XmmRegister add_right);
+  void vaddpd(XmmRegister dst, XmmRegister add_left, XmmRegister add_right);
+	
 
   void movapd(XmmRegister dst, XmmRegister src);     // move
   void movapd(XmmRegister dst, const Address& src);  // load aligned
   void movupd(XmmRegister dst, const Address& src);  // load unaligned
   void movapd(const Address& dst, XmmRegister src);  // store aligned
   void movupd(const Address& dst, XmmRegister src);  // store unaligned
+
+  void vmovapd(XmmRegister dst, XmmRegister src);     // move
+  void vmovapd(XmmRegister dst, const Address& src);  // load aligned
+  void vmovapd(const Address& dst, XmmRegister src);  // store aligned
+  void vmovupd(XmmRegister dst, const Address& src);  // load unaligned
+  void vmovupd(const Address& dst, XmmRegister src);  // store unaligned
 
   void movsd(XmmRegister dst, const Address& src);
   void movsd(const Address& dst, XmmRegister src);
@@ -471,19 +499,48 @@ class X86_64Assembler FINAL : public Assembler {
   void movdqa(const Address& dst, XmmRegister src);  // store aligned
   void movdqu(const Address& dst, XmmRegister src);  // store unaligned
 
+  void vmovdqa(XmmRegister dst, XmmRegister src);     // move
+  void vmovdqa(XmmRegister dst, const Address& src);  // load aligned
+  void vmovdqa(const Address& dst, XmmRegister src);  // store aligned
+  void vmovdqu(XmmRegister dst, const Address& src);  // load unaligned
+  void vmovdqu(const Address& dst, XmmRegister src);  // store unaligned
+
   void paddb(XmmRegister dst, XmmRegister src);  // no addr variant (for now)
   void psubb(XmmRegister dst, XmmRegister src);
+	
+  void vpaddb(XmmRegister dst, XmmRegister add_left, XmmRegister add_right);
+  void vpaddw(XmmRegister dst, XmmRegister add_left, XmmRegister add_right);
 
   void paddw(XmmRegister dst, XmmRegister src);
   void psubw(XmmRegister dst, XmmRegister src);
   void pmullw(XmmRegister dst, XmmRegister src);
+  void vpmullw(XmmRegister dst, XmmRegister src1, XmmRegister src2);
+
+  void vpsubb(XmmRegister dst, XmmRegister src1, XmmRegister src2);
+  void vpsubw(XmmRegister dst, XmmRegister src1, XmmRegister src2);
+  void vpsubd(XmmRegister dst, XmmRegister src1, XmmRegister src2);
 
   void paddd(XmmRegister dst, XmmRegister src);
   void psubd(XmmRegister dst, XmmRegister src);
   void pmulld(XmmRegister dst, XmmRegister src);
+  void vpmulld(XmmRegister dst, XmmRegister src1, XmmRegister src2);
+
+  void vpaddd(XmmRegister dst, XmmRegister src1, XmmRegister src2);
 
   void paddq(XmmRegister dst, XmmRegister src);
   void psubq(XmmRegister dst, XmmRegister src);
+
+  void vpaddq(XmmRegister dst, XmmRegister add_left, XmmRegister add_right);
+  void vpsubq(XmmRegister dst, XmmRegister add_left, XmmRegister add_right);
+
+  void paddusb(XmmRegister dst, XmmRegister src);
+  void paddsb(XmmRegister dst, XmmRegister src);
+  void paddusw(XmmRegister dst, XmmRegister src);
+  void paddsw(XmmRegister dst, XmmRegister src);
+  void psubusb(XmmRegister dst, XmmRegister src);
+  void psubsb(XmmRegister dst, XmmRegister src);
+  void psubusw(XmmRegister dst, XmmRegister src);
+  void psubsw(XmmRegister dst, XmmRegister src);
 
   void cvtsi2ss(XmmRegister dst, CpuRegister src);  // Note: this is the r/m32 version.
   void cvtsi2ss(XmmRegister dst, CpuRegister src, bool is64bit);
@@ -783,14 +840,14 @@ class X86_64Assembler FINAL : public Assembler {
   void bswapl(CpuRegister dst);
   void bswapq(CpuRegister dst);
 
-  void blsi(CpuRegister dst, CpuRegister src); // no addr variant (for now)
-  void blsmsk(CpuRegister dst, CpuRegister src); // no addr variant (for now)
-  void blsr(CpuRegister dst, CpuRegister src); // no addr variant (for now)
-
   void bsfl(CpuRegister dst, CpuRegister src);
   void bsfl(CpuRegister dst, const Address& src);
   void bsfq(CpuRegister dst, CpuRegister src);
   void bsfq(CpuRegister dst, const Address& src);
+
+  void blsi(CpuRegister dst, CpuRegister src);  // no addr variant (for now)
+  void blsmsk(CpuRegister dst, CpuRegister src);  // no addr variant (for now)
+  void blsr(CpuRegister dst, CpuRegister src);  // no addr variant (for now)
 
   void bsrl(CpuRegister dst, CpuRegister src);
   void bsrl(CpuRegister dst, const Address& src);
@@ -840,8 +897,8 @@ class X86_64Assembler FINAL : public Assembler {
   //
   int PreferredLoopAlignment() { return 16; }
   void Align(int alignment, int offset);
-  void Bind(Label* label) OVERRIDE;
-  void Jump(Label* label) OVERRIDE {
+  void Bind(Label* label) override;
+  void Jump(Label* label) override {
     jmp(label);
   }
   void Bind(NearLabel* label);
@@ -900,6 +957,8 @@ class X86_64Assembler FINAL : public Assembler {
     }
   }
 
+  bool CpuHasAVXorAVX2FeatureFlag();
+
  private:
   void EmitUint8(uint8_t value);
   void EmitInt32(int32_t value);
@@ -947,12 +1006,22 @@ class X86_64Assembler FINAL : public Assembler {
   void EmitOptionalByteRegNormalizingRex32(CpuRegister dst, CpuRegister src);
   void EmitOptionalByteRegNormalizingRex32(CpuRegister dst, const Operand& operand);
 
-  //Emit a 3 byte VEX Prefix
-  uint8_t EmitVexByteZero(bool is_two_byte);
-  uint8_t EmitVexByte1(bool r, bool x, bool b, int mmmmm);
-  uint8_t EmitVexByte2(bool w , int l , X86_64ManagedRegister operand, int pp);
-
+  uint8_t EmitVexPrefixByteZero(bool is_twobyte_form);
+  uint8_t EmitVexPrefixByteOne(bool R, bool X, bool B, int SET_VEX_M);
+  uint8_t EmitVexPrefixByteOne(bool R,
+                               X86_64ManagedRegister operand,
+                               int SET_VEX_L,
+                               int SET_VEX_PP);
+  uint8_t EmitVexPrefixByteTwo(bool W,
+                               X86_64ManagedRegister operand,
+                               int SET_VEX_L,
+                               int SET_VEX_PP);
+  uint8_t EmitVexPrefixByteTwo(bool W,
+                               int SET_VEX_L,
+                               int SET_VEX_PP);
   ConstantArea constant_area_;
+  bool has_AVX_;     // x86 256bit SIMD AVX.
+  bool has_AVX2_;    // x86 256bit SIMD AVX 2.0.
 
   DISALLOW_COPY_AND_ASSIGN(X86_64Assembler);
 };
