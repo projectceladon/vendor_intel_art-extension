@@ -649,6 +649,8 @@ void HLoopOptimization::SimplifyBlocks(LoopNode* node) {
 bool HLoopOptimization::TryOptimizeInnerLoopFinite(LoopNode* node) {
   HBasicBlock* header = node->loop_info->GetHeader();
   HBasicBlock* preheader = node->loop_info->GetPreHeader();
+  HGraph* graph = header->GetGraph();
+  std::cout << "optimizing method =" << graph->GetDexFile().PrettyMethod(graph->GetMethodIdx());
   // Ensure loop header logic is finite.
   int64_t trip_count = 0;
   if (!induction_range_.IsFinite(node->loop_info, &trip_count)) {
@@ -1513,6 +1515,7 @@ bool HLoopOptimization::TrySetVectorType(DataType::Type type, uint64_t* restrict
     case InstructionSet::kX86_64:
       // Allow vectorization for SSE4.1-enabled X86 devices only (128-bit SIMD).
       if (features->AsX86InstructionSetFeatures()->HasSSE4_1()) {
+        std::cout << "HAS SSE4_1 true" << std::endl;
         switch (type) {
           case DataType::Type::kBool:
           case DataType::Type::kUint8:

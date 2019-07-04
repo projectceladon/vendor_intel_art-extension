@@ -24,6 +24,7 @@
 #include <android-base/strings.h>
 
 #include "arch/x86_64/instruction_set_features_x86_64.h"
+#include <iostream>
 
 namespace art {
 
@@ -98,11 +99,13 @@ X86FeaturesUniquePtr X86InstructionSetFeatures::Create(bool x86_64,
 X86FeaturesUniquePtr X86InstructionSetFeatures::FromVariant(
     const std::string& variant, std::string* error_msg ATTRIBUTE_UNUSED,
     bool x86_64) {
+  std::cout << "from variant" << variant << std::endl;
   bool has_SSSE3 = FindVariantInArray(x86_variants_with_ssse3, arraysize(x86_variants_with_ssse3),
                                       variant);
   bool has_SSE4_1 = FindVariantInArray(x86_variants_with_sse4_1,
                                        arraysize(x86_variants_with_sse4_1),
                                        variant);
+  std::cout << "has_SSE4_1" << has_SSE4_1 << std::endl; 
   bool has_SSE4_2 = FindVariantInArray(x86_variants_with_sse4_2,
                                        arraysize(x86_variants_with_sse4_2),
                                        variant);
@@ -138,6 +141,7 @@ X86FeaturesUniquePtr X86InstructionSetFeatures::FromBitmap(uint32_t bitmap, bool
 }
 
 X86FeaturesUniquePtr X86InstructionSetFeatures::FromCppDefines(bool x86_64) {
+std::cout << "form cpp defines" << std::endl;
 #ifndef __SSSE3__
   const bool has_SSSE3 = false;
 #else
@@ -149,7 +153,7 @@ X86FeaturesUniquePtr X86InstructionSetFeatures::FromCppDefines(bool x86_64) {
 #else
   const bool has_SSE4_1 = true;
 #endif
-
+std::cout << "has_SSE4_1" << has_SSE4_1 << std::endl; 
 #ifndef __SSE4_2__
   const bool has_SSE4_2 = false;
 #else
@@ -180,6 +184,7 @@ X86FeaturesUniquePtr X86InstructionSetFeatures::FromCppDefines(bool x86_64) {
 X86FeaturesUniquePtr X86InstructionSetFeatures::FromCpuInfo(bool x86_64) {
   // Look in /proc/cpuinfo for features we need.  Only use this when we can guarantee that
   // the kernel puts the appropriate feature flags in here.  Sometimes it doesn't.
+  std::cout << "from cpuInfo" << std::endl;
   bool has_SSSE3 = false;
   bool has_SSE4_1 = false;
   bool has_SSE4_2 = false;
@@ -225,11 +230,13 @@ X86FeaturesUniquePtr X86InstructionSetFeatures::FromCpuInfo(bool x86_64) {
 }
 
 X86FeaturesUniquePtr X86InstructionSetFeatures::FromHwcap(bool x86_64) {
+  std::cout << "from hwcap" << std::endl;
   UNIMPLEMENTED(WARNING);
   return FromCppDefines(x86_64);
 }
 
 X86FeaturesUniquePtr X86InstructionSetFeatures::FromAssembly(bool x86_64) {
+  std::cout << "from assembly" << std::endl;
   UNIMPLEMENTED(WARNING);
   return FromCppDefines(x86_64);
 }
