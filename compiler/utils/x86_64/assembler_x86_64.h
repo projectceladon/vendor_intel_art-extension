@@ -818,6 +818,8 @@ class X86_64Assembler FINAL : public Assembler {
   void repe_cmpsl();
   void repe_cmpsq();
   void rep_movsw();
+  void rep_movsb();
+  void rep_movsd();
 
   //
   // Macros for High-level operations.
