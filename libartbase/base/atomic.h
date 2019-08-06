@@ -28,14 +28,6 @@
 
 namespace art {
 
-static inline void ThreadFenceAsmX86() {
-#if defined(__i386__)
-  __asm__ __volatile__("lock; addl $0,0(%%esp)" : : : "cc", "memory");
-#elif defined(__x86_64__)
-  __asm__ __volatile__("lock; addl $0,0(%%rsp)" : : : "cc", "memory");
-#endif
-}
-
 template<typename T>
 class PACKED(sizeof(T)) Atomic : public std::atomic<T> {
  public:
@@ -84,12 +76,7 @@ class PACKED(sizeof(T)) Atomic : public std::atomic<T> {
 
   // Store to memory with a total ordering.
   void StoreSequentiallyConsistent(T desired_value) {
-    #if defined(__i386__) || defined(__x86_64__)
-       this->store(desired_value, std::memory_order_seq_cst);
-       ThreadFenceAsmX86();
-    #else
-       this->store(desired_value, std::memory_order_seq_cst);
-    #endif
+    this->store(desired_value, std::memory_order_seq_cst);
   }
 
   // Atomically replace the value with desired_value.
