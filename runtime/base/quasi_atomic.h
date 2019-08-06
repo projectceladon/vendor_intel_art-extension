@@ -26,7 +26,6 @@
 
 #include "arch/instruction_set.h"
 #include "base/macros.h"
-#include "base/atomic.h"
 
 namespace art {
 
@@ -170,11 +169,7 @@ class QuasiAtomic {
   }
 
   static void ThreadFenceSequentiallyConsistent() {
-    #if defined(__i386__) || defined(__x86_64__)
-      ThreadFenceAsmX86();
-    #else
-      std::atomic_thread_fence(std::memory_order_seq_cst);
-    #endif
+    std::atomic_thread_fence(std::memory_order_seq_cst);
   }
 
  private:
