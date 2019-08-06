@@ -47,6 +47,7 @@
 #include "scoped_thread_state_change-inl.h"
 #include "thread-current-inl.h"
 #include "thread_list.h"
+#include "base/atomic.h"
 
 namespace art {
 namespace gc {
@@ -1593,7 +1594,11 @@ class MarkSweep::MarkStackTask : public Task {
     ALWAYS_INLINE void Mark(mirror::Object* ref) const REQUIRES_SHARED(Locks::mutator_lock_) {
       if (ref != nullptr && mark_sweep_->MarkObjectParallel(ref)) {
         if (kUseFinger) {
-          std::atomic_thread_fence(std::memory_order_seq_cst);
+          #if defined(__i386__) || defined(__x86_64__)
+	     ThreadFenceAsmX86();
+	  #else
+             std::atomic_thread_fence(std::memory_order_seq_cst);
+          #endif
           if (reinterpret_cast<uintptr_t>(ref) >=
               static_cast<uintptr_t>(mark_sweep_->atomic_finger_.LoadRelaxed())) {
             return;

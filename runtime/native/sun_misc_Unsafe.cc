@@ -33,6 +33,7 @@
 #include "mirror/object-inl.h"
 #include "native_util.h"
 #include "scoped_fast_native_object_access-inl.h"
+#include "base/atomic.h"
 
 namespace art {
 
@@ -497,7 +498,11 @@ static void Unsafe_storeFence(JNIEnv*, jobject) {
 }
 
 static void Unsafe_fullFence(JNIEnv*, jobject) {
-  std::atomic_thread_fence(std::memory_order_seq_cst);
+  #if defined(__i386__) || defined(__x86_64__)
+     ThreadFenceAsmX86();
+  #else
+     std::atomic_thread_fence(std::memory_order_seq_cst);
+  #endif
 }
 
 static JNINativeMethod gMethods[] = {
