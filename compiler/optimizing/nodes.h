@@ -411,7 +411,8 @@ class HGraph : public ArenaObject<kArenaAllocGraph> {
   // Returns the new preheader.
   HBasicBlock* TransformLoopForVectorization(HBasicBlock* header,
                                              HBasicBlock* body,
-                                             HBasicBlock* exit);
+                                             HBasicBlock* exit,
+                                             bool clear_reg);
 
   // Removes `block` from the graph. Assumes `block` has been disconnected from
   // other blocks and has no instructions or phis.
@@ -1496,7 +1497,9 @@ class HLoopInformationOutwardIterator : public ValueObject {
   M(AndNot, Instruction)                                                \
   M(AndNeg, Instruction)                                                \
   M(BitwiseAddRight, Instruction)                                       \
-  M(X86BoundsCheckMemory, Instruction)
+  M(X86BoundsCheckMemory, Instruction)                                  \
+  M(X86Clear, Instruction)   
+
 #else
 #define FOR_EACH_CONCRETE_INSTRUCTION_X86_COMMON(M)
 #endif
@@ -2151,6 +2154,9 @@ class HInstruction : public ArenaObject<kArenaAllocInstruction> {
         !IsParameterValue() &&
         // If we added an explicit barrier then we should keep it.
         !IsMemoryBarrier() &&
+        #if defined(ART_ENABLE_CODEGEN_x86_64)
+          !IsX86Clear() &&
+        #endif
         !IsConstructorFence();
   }
 

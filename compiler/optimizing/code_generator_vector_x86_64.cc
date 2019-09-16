@@ -18,14 +18,22 @@
 
 #include "mirror/array-inl.h"
 #include "mirror/string.h"
+#include <iostream>
 
 namespace art {
 namespace x86_64 {
 
-// NOLINT on __ macro to suppress wrong warning/fix (misc-macro-parentheses) from clang-tidy.
+/*VectorRegister VectorRegisterFrom(Location location) {
+  DCHECK(location.IsXmmRegister());
+  return static_cast<VectorRegister>(location.AsFpuRegister<YmmRegister>());
+}*/
+
+//bool has_avx = InstructionCodeGeneratorX86_64::CpuHasAvxFeatureFlag();
+
 #define __ down_cast<X86_64Assembler*>(GetAssembler())->  // NOLINT
 
 void LocationsBuilderX86_64::VisitVecReplicateScalar(HVecReplicateScalar* instruction) {
+  bool cpu_has_avx = CpuHasAvxFeatureFlag();
   LocationSummary* locations = new (GetGraph()->GetAllocator()) LocationSummary(instruction);
   HInstruction* input = instruction->InputAt(0);
   bool is_zero = IsZeroBitPattern(input);
@@ -43,21 +51,28 @@ void LocationsBuilderX86_64::VisitVecReplicateScalar(HVecReplicateScalar* instru
       break;
     case DataType::Type::kFloat32:
     case DataType::Type::kFloat64:
+      if (cpu_has_avx) {
+        locations->SetInAt(0, Location::RequiresFpuRegister());
+        locations->SetOut(Location::RequiresFpuRegister());
+       
+      } else { // legacy sse version
       locations->SetInAt(0, is_zero ? Location::ConstantLocation(input->AsConstant())
                                     : Location::RequiresFpuRegister());
       locations->SetOut(is_zero ? Location::RequiresFpuRegister()
                                 : Location::SameAsFirstInput());
+      }
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
 
 void InstructionCodeGeneratorX86_64::VisitVecReplicateScalar(HVecReplicateScalar* instruction) {
   LocationSummary* locations = instruction->GetLocations();
+  //XmmRegister src = locations->InAt(0).AsFpuRegister<XmmRegister>();
   XmmRegister dst = locations->Out().AsFpuRegister<XmmRegister>();
-
+  bool cpu_has_avx = CpuHasAvxFeatureFlag();
   // Shorthand for any type of zero.
   if (IsZeroBitPattern(instruction->InputAt(0))) {
     __ xorps(dst, dst);
@@ -92,17 +107,32 @@ void InstructionCodeGeneratorX86_64::VisitVecReplicateScalar(HVecReplicateScalar
       __ punpcklqdq(dst, dst);
       break;
     case DataType::Type::kFloat32:
-      DCHECK_EQ(4u, instruction->GetVectorLength());
-      DCHECK(locations->InAt(0).Equals(locations->Out()));
-      __ shufps(dst, dst, Immediate(0));
+      {
+      DCHECK(instruction->GetVectorLength() == 4u || instruction->GetVectorLength() == 8u);
+      XmmRegister src = locations->InAt(0).AsFpuRegister<XmmRegister>();
+      if (cpu_has_avx) {
+          __ vbroadcastss(dst, src);
+      } else {
+        DCHECK(locations->InAt(0).Equals(locations->Out()));
+        __ shufps(dst, dst, Immediate(0));
+      }
       break;
+      }
     case DataType::Type::kFloat64:
-      DCHECK_EQ(2u, instruction->GetVectorLength());
-      DCHECK(locations->InAt(0).Equals(locations->Out()));
-      __ shufpd(dst, dst, Immediate(0));
+      {
+      DCHECK(instruction->GetVectorLength() == 2u || instruction->GetVectorLength() == 4u);
+      //DCHECK(locations->InAt(0).Equals(locations->Out()));
+      XmmRegister src = locations->InAt(0).AsFpuRegister<XmmRegister>();
+       if (cpu_has_avx) {
+        __ vbroadcastsd(dst, src);
+      } else {
+        DCHECK(locations->InAt(0).Equals(locations->Out()));
+       __ shufpd(dst, dst, Immediate(0));
+      }
       break;
+      }
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -126,7 +156,7 @@ void LocationsBuilderX86_64::VisitVecExtractScalar(HVecExtractScalar* instructio
       locations->SetOut(Location::SameAsFirstInput());
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -140,7 +170,7 @@ void InstructionCodeGeneratorX86_64::VisitVecExtractScalar(HVecExtractScalar* in
     case DataType::Type::kInt8:
     case DataType::Type::kUint16:
     case DataType::Type::kInt16:  // TODO: up to here, and?
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
     case DataType::Type::kInt32:
       DCHECK_EQ(4u, instruction->GetVectorLength());
@@ -157,7 +187,7 @@ void InstructionCodeGeneratorX86_64::VisitVecExtractScalar(HVecExtractScalar* in
       DCHECK(locations->InAt(0).Equals(locations->Out()));  // no code required
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -179,7 +209,7 @@ static void CreateVecUnOpLocations(ArenaAllocator* allocator, HVecUnaryOperation
       locations->SetOut(Location::RequiresFpuRegister());
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -198,19 +228,20 @@ void InstructionCodeGeneratorX86_64::VisitVecReduce(HVecReduce* instruction) {
   LocationSummary* locations = instruction->GetLocations();
   XmmRegister src = locations->InAt(0).AsFpuRegister<XmmRegister>();
   XmmRegister dst = locations->Out().AsFpuRegister<XmmRegister>();
+  size_t vec_len = instruction->GetVectorLength();
   switch (instruction->GetPackedType()) {
     case DataType::Type::kInt32:
       DCHECK_EQ(4u, instruction->GetVectorLength());
       switch (instruction->GetKind()) {
         case HVecReduce::kSum:
-          __ movaps(dst, src);
+          __ movaps(dst, src, vec_len);
           __ phaddd(dst, dst);
           __ phaddd(dst, dst);
           break;
         case HVecReduce::kMin: {
           XmmRegister tmp = locations->GetTemp(0).AsFpuRegister<XmmRegister>();
-          __ movaps(tmp, src);
-          __ movaps(dst, src);
+          __ movaps(tmp, src, vec_len);
+          __ movaps(dst, src, vec_len);
           __ psrldq(tmp, Immediate(8));
           __ pminsd(dst, tmp);
           __ psrldq(tmp, Immediate(4));
@@ -219,8 +250,8 @@ void InstructionCodeGeneratorX86_64::VisitVecReduce(HVecReduce* instruction) {
         }
         case HVecReduce::kMax: {
           XmmRegister tmp = locations->GetTemp(0).AsFpuRegister<XmmRegister>();
-          __ movaps(tmp, src);
-          __ movaps(dst, src);
+          __ movaps(tmp, src, vec_len);
+          __ movaps(dst, src, vec_len);
           __ psrldq(tmp, Immediate(8));
           __ pmaxsd(dst, tmp);
           __ psrldq(tmp, Immediate(4));
@@ -234,19 +265,19 @@ void InstructionCodeGeneratorX86_64::VisitVecReduce(HVecReduce* instruction) {
       XmmRegister tmp = locations->GetTemp(0).AsFpuRegister<XmmRegister>();
       switch (instruction->GetKind()) {
         case HVecReduce::kSum:
-          __ movaps(tmp, src);
-          __ movaps(dst, src);
+          __ movaps(tmp, src, vec_len);
+          __ movaps(dst, src, vec_len);
           __ punpckhqdq(tmp, tmp);
           __ paddq(dst, tmp);
           break;
         case HVecReduce::kMin:
         case HVecReduce::kMax:
-          LOG(FATAL) << "Unsupported SIMD type";
+          LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       }
       break;
     }
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -265,7 +296,7 @@ void InstructionCodeGeneratorX86_64::VisitVecCnv(HVecCnv* instruction) {
     DCHECK_EQ(4u, instruction->GetVectorLength());
     __ cvtdq2ps(dst, src);
   } else {
-    LOG(FATAL) << "Unsupported SIMD type";
+    LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
   }
 }
 
@@ -301,17 +332,18 @@ void InstructionCodeGeneratorX86_64::VisitVecNeg(HVecNeg* instruction) {
       __ psubq(dst, src);
       break;
     case DataType::Type::kFloat32:
-      DCHECK_EQ(4u, instruction->GetVectorLength());
+      DCHECK_LE(4u, instruction->GetVectorLength());
+      DCHECK_LE(instruction->GetVectorLength(), 8u);
       __ xorps(dst, dst);
       __ subps(dst, src);
       break;
     case DataType::Type::kFloat64:
-      DCHECK_EQ(2u, instruction->GetVectorLength());
+      DCHECK(instruction->GetVectorLength()== 2u || instruction->GetVectorLength() == 4u);
       __ xorpd(dst, dst);
       __ subpd(dst, src);
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -328,11 +360,12 @@ void InstructionCodeGeneratorX86_64::VisitVecAbs(HVecAbs* instruction) {
   LocationSummary* locations = instruction->GetLocations();
   XmmRegister src = locations->InAt(0).AsFpuRegister<XmmRegister>();
   XmmRegister dst = locations->Out().AsFpuRegister<XmmRegister>();
+  size_t vec_len = instruction->GetVectorLength();
   switch (instruction->GetPackedType()) {
     case DataType::Type::kInt32: {
       DCHECK_EQ(4u, instruction->GetVectorLength());
       XmmRegister tmp = locations->GetTemp(0).AsFpuRegister<XmmRegister>();
-      __ movaps(dst, src);
+      __ movaps(dst, src, vec_len);
       __ pxor(tmp, tmp);
       __ pcmpgtd(tmp, dst);
       __ pxor(dst, tmp);
@@ -340,19 +373,34 @@ void InstructionCodeGeneratorX86_64::VisitVecAbs(HVecAbs* instruction) {
       break;
     }
     case DataType::Type::kFloat32:
-      DCHECK_EQ(4u, instruction->GetVectorLength());
+      DCHECK(instruction->GetVectorLength() == 4u || instruction->GetVectorLength() == 8u);
+      if (instruction->GetVectorLength() == 8u) {
+        __ vpcmpeqb(dst, dst, dst, 32u);
+        __ vpsrld(dst, dst,Immediate(1),8u);
+        __ vandps(dst, dst, src, 8u);
+       // __ vcvttps2dq(src, src, 8u);
+       // __ vpabsd(dst, src, 8u);
+       // __ vcvtdq2ps(dst, dst, 8u);
+      } else {
       __ pcmpeqb(dst, dst);  // all ones
       __ psrld(dst, Immediate(1));
       __ andps(dst, src);
+      }
       break;
     case DataType::Type::kFloat64:
-      DCHECK_EQ(2u, instruction->GetVectorLength());
-      __ pcmpeqb(dst, dst);  // all ones
-      __ psrlq(dst, Immediate(1));
-      __ andpd(dst, src);
+      DCHECK(instruction->GetVectorLength() == 2u || instruction->GetVectorLength() == 4u);
+      if (instruction->GetVectorLength() == 4u) {
+        __ vpcmpeqb(dst, dst, dst, 32u);
+        __ vpsrlq(dst, dst, Immediate(1), 4u);
+        __ vandpd(dst, dst, src, 4u);
+      } else {
+        __ pcmpeqb(dst, dst);  // all ones
+        __ psrlq(dst, Immediate(1));
+        __ andpd(dst, src);
+      }
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -401,7 +449,7 @@ void InstructionCodeGeneratorX86_64::VisitVecNot(HVecNot* instruction) {
       __ xorpd(dst, src);
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -424,52 +472,82 @@ static void CreateVecBinOpLocations(ArenaAllocator* allocator, HVecBinaryOperati
       locations->SetOut(Location::SameAsFirstInput());
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
 
-void LocationsBuilderX86_64::VisitVecAdd(HVecAdd* instruction) {
-  CreateVecBinOpLocations(GetGraph()->GetAllocator(), instruction);
-}
-
-void InstructionCodeGeneratorX86_64::VisitVecAdd(HVecAdd* instruction) {
-  LocationSummary* locations = instruction->GetLocations();
-  DCHECK(locations->InAt(0).Equals(locations->Out()));
-  XmmRegister src = locations->InAt(1).AsFpuRegister<XmmRegister>();
-  XmmRegister dst = locations->Out().AsFpuRegister<XmmRegister>();
+static void CreateVecTerOpLocations(ArenaAllocator* allocator, HVecOperation* instruction) {
+  LocationSummary* locations = new (allocator) LocationSummary(instruction);
   switch (instruction->GetPackedType()) {
+    case DataType::Type::kBool:
     case DataType::Type::kUint8:
     case DataType::Type::kInt8:
-      DCHECK_EQ(16u, instruction->GetVectorLength());
-      __ paddb(dst, src);
-      break;
     case DataType::Type::kUint16:
     case DataType::Type::kInt16:
-      DCHECK_EQ(8u, instruction->GetVectorLength());
-      __ paddw(dst, src);
-      break;
     case DataType::Type::kInt32:
-      DCHECK_EQ(4u, instruction->GetVectorLength());
-      __ paddd(dst, src);
-      break;
     case DataType::Type::kInt64:
-      DCHECK_EQ(2u, instruction->GetVectorLength());
-      __ paddq(dst, src);
-      break;
     case DataType::Type::kFloat32:
-      DCHECK_EQ(4u, instruction->GetVectorLength());
-      __ addps(dst, src);
-      break;
     case DataType::Type::kFloat64:
-      DCHECK_EQ(2u, instruction->GetVectorLength());
-      __ addpd(dst, src);
+      locations->SetInAt(0, Location::RequiresFpuRegister());
+      locations->SetInAt(1, Location::RequiresFpuRegister());
+      locations->SetOut(Location::RequiresFpuRegister());
       break;
     default:
       LOG(FATAL) << "Unsupported SIMD type";
       UNREACHABLE();
   }
 }
+
+void LocationsBuilderX86_64::VisitVecAdd(HVecAdd* instruction) {
+  if (CpuHasAvxFeatureFlag()) {
+    CreateVecTerOpLocations(GetGraph()->GetAllocator(), instruction);
+  } else {
+    CreateVecBinOpLocations(GetGraph()->GetAllocator(), instruction);
+  }
+}
+
+void InstructionCodeGeneratorX86_64::VisitVecAdd(HVecAdd* instruction) {
+  bool cpu_has_avx = CpuHasAvxFeatureFlag();
+  LocationSummary* locations = instruction->GetLocations();
+  XmmRegister src = locations->InAt(1).AsFpuRegister<XmmRegister>();
+  XmmRegister other_src = locations->InAt(0).AsFpuRegister<XmmRegister>();
+  XmmRegister dst = locations->Out().AsFpuRegister<XmmRegister>();
+  size_t vec_len = instruction->GetVectorLength();
+  DCHECK(cpu_has_avx || other_src == dst);
+  switch (instruction->GetPackedType()) {
+    case DataType::Type::kUint8:
+    case DataType::Type::kInt8:
+      DCHECK_EQ(16u, instruction->GetVectorLength());
+      cpu_has_avx ? __ vpaddb(dst, other_src, src) : __ paddb(dst, src);
+      break;
+    case DataType::Type::kUint16:
+    case DataType::Type::kInt16:
+      DCHECK_EQ(8u, instruction->GetVectorLength());
+      cpu_has_avx ? __ vpaddw(dst, other_src, src) : __ paddw(dst, src);
+      break;
+    case DataType::Type::kInt32:
+      DCHECK_EQ(4u, instruction->GetVectorLength());
+      cpu_has_avx ? __ vpaddd(dst, other_src, src) : __ paddd(dst, src);
+      break;
+    case DataType::Type::kInt64:
+      DCHECK_EQ(2u, instruction->GetVectorLength());
+      cpu_has_avx ? __ vpaddq(dst, other_src, src) : __ paddq(dst, src);
+      break;
+    case DataType::Type::kFloat32:
+      DCHECK(instruction->GetVectorLength()== 8u || instruction->GetVectorLength() == 4u);
+      cpu_has_avx ? __ vaddps(dst, other_src, src, vec_len) : __ addps(dst, src);
+      break;
+    case DataType::Type::kFloat64:
+      DCHECK(instruction->GetVectorLength() == 4u || instruction->GetVectorLength() == 2u);
+      cpu_has_avx ? __ vaddpd(dst, other_src, src, vec_len) : __ addpd(dst, src);
+      break;
+    default:
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
+      UNREACHABLE();
+  }
+}
+
 
 void LocationsBuilderX86_64::VisitVecHalvingAdd(HVecHalvingAdd* instruction) {
   CreateVecBinOpLocations(GetGraph()->GetAllocator(), instruction);
@@ -486,113 +564,138 @@ void InstructionCodeGeneratorX86_64::VisitVecHalvingAdd(HVecHalvingAdd* instruct
   switch (instruction->GetPackedType()) {
     case DataType::Type::kUint8:
       DCHECK_EQ(16u, instruction->GetVectorLength());
-     __ pavgb(dst, src);
-     return;
+      __ pavgb(dst, src);
+      break;
     case DataType::Type::kUint16:
       DCHECK_EQ(8u, instruction->GetVectorLength());
       __ pavgw(dst, src);
-      return;
+      break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
 
 void LocationsBuilderX86_64::VisitVecSub(HVecSub* instruction) {
-  CreateVecBinOpLocations(GetGraph()->GetAllocator(), instruction);
+   if (CpuHasAvxFeatureFlag()) {
+    CreateVecTerOpLocations(GetGraph()->GetAllocator(), instruction);
+  } else {
+    CreateVecBinOpLocations(GetGraph()->GetAllocator(), instruction);
+  }
 }
 
 void InstructionCodeGeneratorX86_64::VisitVecSub(HVecSub* instruction) {
+  bool cpu_has_avx = CpuHasAvxFeatureFlag();
   LocationSummary* locations = instruction->GetLocations();
-  DCHECK(locations->InAt(0).Equals(locations->Out()));
   XmmRegister src = locations->InAt(1).AsFpuRegister<XmmRegister>();
+  XmmRegister other_src = locations->InAt(0).AsFpuRegister<XmmRegister>();
   XmmRegister dst = locations->Out().AsFpuRegister<XmmRegister>();
+  size_t vec_len = instruction->GetVectorLength();
+  DCHECK(cpu_has_avx || other_src == dst);
   switch (instruction->GetPackedType()) {
     case DataType::Type::kUint8:
     case DataType::Type::kInt8:
       DCHECK_EQ(16u, instruction->GetVectorLength());
-      __ psubb(dst, src);
+      cpu_has_avx ? __ vpsubb(dst, other_src, src) : __ psubb(dst, src);
       break;
     case DataType::Type::kUint16:
     case DataType::Type::kInt16:
       DCHECK_EQ(8u, instruction->GetVectorLength());
-      __ psubw(dst, src);
+      cpu_has_avx ? __ vpsubw(dst, other_src, src) : __ psubw(dst, src);
       break;
     case DataType::Type::kInt32:
       DCHECK_EQ(4u, instruction->GetVectorLength());
-      __ psubd(dst, src);
+      cpu_has_avx ? __ vpsubd(dst, other_src, src) : __ psubd(dst, src);
       break;
     case DataType::Type::kInt64:
       DCHECK_EQ(2u, instruction->GetVectorLength());
-      __ psubq(dst, src);
+      cpu_has_avx ? __ vpsubq(dst, other_src, src) : __ psubq(dst, src);
       break;
     case DataType::Type::kFloat32:
-      DCHECK_EQ(4u, instruction->GetVectorLength());
-      __ subps(dst, src);
+      DCHECK(instruction->GetVectorLength() == 8u || instruction->GetVectorLength() == 4u);
+      cpu_has_avx ? __ vsubps(dst, other_src, src, vec_len) : __ subps(dst, src);
       break;
     case DataType::Type::kFloat64:
-      DCHECK_EQ(2u, instruction->GetVectorLength());
-      __ subpd(dst, src);
+      DCHECK(instruction->GetVectorLength() == 4u || instruction->GetVectorLength() == 2u);
+      cpu_has_avx ? __ vsubpd(dst, other_src, src, vec_len) : __ subpd(dst, src);
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
 
+
 void LocationsBuilderX86_64::VisitVecMul(HVecMul* instruction) {
-  CreateVecBinOpLocations(GetGraph()->GetAllocator(), instruction);
+  if (CpuHasAvxFeatureFlag()) {
+    CreateVecTerOpLocations(GetGraph()->GetAllocator(), instruction);
+  } else {
+    CreateVecBinOpLocations(GetGraph()->GetAllocator(), instruction);
+  }
 }
 
 void InstructionCodeGeneratorX86_64::VisitVecMul(HVecMul* instruction) {
+  bool cpu_has_avx = CpuHasAvxFeatureFlag();
   LocationSummary* locations = instruction->GetLocations();
-  DCHECK(locations->InAt(0).Equals(locations->Out()));
   XmmRegister src = locations->InAt(1).AsFpuRegister<XmmRegister>();
+  XmmRegister other_src = locations->InAt(0).AsFpuRegister<XmmRegister>();
   XmmRegister dst = locations->Out().AsFpuRegister<XmmRegister>();
+  size_t vec_len = instruction->GetVectorLength();
+  DCHECK(cpu_has_avx || other_src == dst);
   switch (instruction->GetPackedType()) {
     case DataType::Type::kUint16:
     case DataType::Type::kInt16:
       DCHECK_EQ(8u, instruction->GetVectorLength());
-      __ pmullw(dst, src);
+      cpu_has_avx ? __ vpmullw(dst, other_src, src) : __ pmullw(dst, src);
       break;
     case DataType::Type::kInt32:
       DCHECK_EQ(4u, instruction->GetVectorLength());
-      __ pmulld(dst, src);
+      cpu_has_avx ? __ vpmulld(dst, other_src, src): __ pmulld(dst, src);
       break;
     case DataType::Type::kFloat32:
-      DCHECK_EQ(4u, instruction->GetVectorLength());
-      __ mulps(dst, src);
+      DCHECK(instruction->GetVectorLength()== 8u || instruction->GetVectorLength() == 4u );
+      cpu_has_avx ? __ vmulps(dst, other_src, src, vec_len) : __ mulps(dst, src);
       break;
     case DataType::Type::kFloat64:
-      DCHECK_EQ(2u, instruction->GetVectorLength());
-      __ mulpd(dst, src);
+      DCHECK(instruction->GetVectorLength() == 4u || instruction->GetVectorLength() == 2u);
+      cpu_has_avx ? __ vmulpd(dst, other_src, src, vec_len) : __ mulpd(dst, src);
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
 
 void LocationsBuilderX86_64::VisitVecDiv(HVecDiv* instruction) {
-  CreateVecBinOpLocations(GetGraph()->GetAllocator(), instruction);
+  if (CpuHasAvxFeatureFlag()) {
+    CreateVecTerOpLocations(GetGraph()->GetAllocator(), instruction);
+  } else {
+    CreateVecBinOpLocations(GetGraph()->GetAllocator(), instruction);
+  }
 }
 
 void InstructionCodeGeneratorX86_64::VisitVecDiv(HVecDiv* instruction) {
+  bool cpu_has_avx = CpuHasAvxFeatureFlag();
   LocationSummary* locations = instruction->GetLocations();
-  DCHECK(locations->InAt(0).Equals(locations->Out()));
   XmmRegister src = locations->InAt(1).AsFpuRegister<XmmRegister>();
+  XmmRegister other_src = locations->InAt(0).AsFpuRegister<XmmRegister>();
   XmmRegister dst = locations->Out().AsFpuRegister<XmmRegister>();
+  DCHECK(cpu_has_avx || other_src == dst);
+  size_t vec_len = instruction->GetVectorLength();
   switch (instruction->GetPackedType()) {
     case DataType::Type::kFloat32:
-      DCHECK_EQ(4u, instruction->GetVectorLength());
-      __ divps(dst, src);
+      DCHECK_LE(4u, instruction->GetVectorLength());
+      DCHECK_LE(instruction->GetVectorLength(), 8u);
+      cpu_has_avx ? __ vdivps(dst, other_src, src, vec_len /*instruction->GetVectorLength()*/) :
+                    __ divps(dst, src);
       break;
     case DataType::Type::kFloat64:
-      DCHECK_EQ(2u, instruction->GetVectorLength());
-      __ divpd(dst, src);
+      DCHECK(instruction->GetVectorLength() == 4u || instruction->GetVectorLength() == 2u);
+      cpu_has_avx ? __ vdivpd(dst, other_src, src, vec_len /*instruction->GetVectorLength()*/) :
+                    __ divpd(dst, src);
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -641,7 +744,7 @@ void InstructionCodeGeneratorX86_64::VisitVecMin(HVecMin* instruction) {
       __ minpd(dst, src);
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -690,7 +793,7 @@ void InstructionCodeGeneratorX86_64::VisitVecMax(HVecMax* instruction) {
       __ maxpd(dst, src);
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -725,7 +828,7 @@ void InstructionCodeGeneratorX86_64::VisitVecAnd(HVecAnd* instruction) {
       __ andpd(dst, src);
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -760,7 +863,7 @@ void InstructionCodeGeneratorX86_64::VisitVecAndNot(HVecAndNot* instruction) {
       __ andnpd(dst, src);
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -795,7 +898,7 @@ void InstructionCodeGeneratorX86_64::VisitVecOr(HVecOr* instruction) {
       __ orpd(dst, src);
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -822,7 +925,8 @@ void InstructionCodeGeneratorX86_64::VisitVecXor(HVecXor* instruction) {
       __ pxor(dst, src);
       break;
     case DataType::Type::kFloat32:
-      DCHECK_EQ(4u, instruction->GetVectorLength());
+      DCHECK_LE(4u, instruction->GetVectorLength());
+      DCHECK_LE(instruction->GetVectorLength(), 8u);
       __ xorps(dst, src);
       break;
     case DataType::Type::kFloat64:
@@ -830,7 +934,7 @@ void InstructionCodeGeneratorX86_64::VisitVecXor(HVecXor* instruction) {
       __ xorpd(dst, src);
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -848,7 +952,7 @@ static void CreateVecShiftLocations(ArenaAllocator* allocator, HVecBinaryOperati
       locations->SetOut(Location::SameAsFirstInput());
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -877,7 +981,7 @@ void InstructionCodeGeneratorX86_64::VisitVecShl(HVecShl* instruction) {
       __ psllq(dst, Immediate(static_cast<int8_t>(value)));
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -902,7 +1006,7 @@ void InstructionCodeGeneratorX86_64::VisitVecShr(HVecShr* instruction) {
       __ psrad(dst, Immediate(static_cast<int8_t>(value)));
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -931,7 +1035,7 @@ void InstructionCodeGeneratorX86_64::VisitVecUShr(HVecUShr* instruction) {
       __ psrlq(dst, Immediate(static_cast<int8_t>(value)));
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -963,7 +1067,7 @@ void LocationsBuilderX86_64::VisitVecSetScalars(HVecSetScalars* instruction) {
       locations->SetOut(Location::RequiresFpuRegister());
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -989,7 +1093,7 @@ void InstructionCodeGeneratorX86_64::VisitVecSetScalars(HVecSetScalars* instruct
     case DataType::Type::kInt8:
     case DataType::Type::kUint16:
     case DataType::Type::kInt16:  // TODO: up to here, and?
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
     case DataType::Type::kInt32:
       DCHECK_EQ(4u, instruction->GetVectorLength());
@@ -1008,7 +1112,7 @@ void InstructionCodeGeneratorX86_64::VisitVecSetScalars(HVecSetScalars* instruct
       __ movsd(dst, locations->InAt(0).AsFpuRegister<XmmRegister>());
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -1029,7 +1133,7 @@ static void CreateVecAccumLocations(ArenaAllocator* allocator, HVecOperation* in
       locations->SetOut(Location::SameAsFirstInput());
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -1076,7 +1180,7 @@ static void CreateVecMemLocations(ArenaAllocator* allocator,
       }
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -1096,6 +1200,8 @@ static Address VecAddress(LocationSummary* locations, size_t size, bool is_strin
   uint32_t offset = is_string_char_at
       ? mirror::String::ValueOffset().Uint32Value()
       : mirror::Array::DataOffset(size).Uint32Value();
+  //mirror::Array::print_data_offset();
+  //std::cout << "offset=" << offset << std::endl;
   return CodeGeneratorX86_64::ArrayAddress(base.AsRegister<CpuRegister>(), index, scale, offset);
 }
 
@@ -1112,8 +1218,10 @@ void InstructionCodeGeneratorX86_64::VisitVecLoad(HVecLoad* instruction) {
   size_t size = DataType::Size(instruction->GetPackedType());
   Address address = VecAddress(locations, size, instruction->IsStringCharAt());
   XmmRegister reg = locations->Out().AsFpuRegister<XmmRegister>();
-  bool is_aligned16 = instruction->GetAlignment().IsAlignedAt(16);
+  bool is_aligned16 = instruction->GetAlignment().IsAlignedAt(16);// ||
+  bool is_aligned32 = instruction->GetAlignment().IsAlignedAt(32);
   switch (instruction->GetPackedType()) {
+    case DataType::Type::kInt16:  // (short) s.charAt(.) can yield HVecLoad/Int16/StringCharAt.
     case DataType::Type::kUint16:
       DCHECK_EQ(8u, instruction->GetVectorLength());
       // Special handling of compressed/uncompressed string load.
@@ -1141,7 +1249,6 @@ void InstructionCodeGeneratorX86_64::VisitVecLoad(HVecLoad* instruction) {
     case DataType::Type::kBool:
     case DataType::Type::kUint8:
     case DataType::Type::kInt8:
-    case DataType::Type::kInt16:
     case DataType::Type::kInt32:
     case DataType::Type::kInt64:
       DCHECK_LE(2u, instruction->GetVectorLength());
@@ -1149,15 +1256,27 @@ void InstructionCodeGeneratorX86_64::VisitVecLoad(HVecLoad* instruction) {
       is_aligned16 ? __ movdqa(reg, address) : __ movdqu(reg, address);
       break;
     case DataType::Type::kFloat32:
-      DCHECK_EQ(4u, instruction->GetVectorLength());
-      is_aligned16 ? __ movaps(reg, address) : __ movups(reg, address);
+      DCHECK_LE(4u, instruction->GetVectorLength());
+      DCHECK_LE(instruction->GetVectorLength(), 8u);
+      if (instruction->GetVectorLength() == 8u) {
+        is_aligned32 ? __ movaps(reg,address, 8u) : __ movups(reg, address, 8u);
+      } else {
+        is_aligned16 ? __ movaps(reg, address, instruction->GetVectorLength()) : 
+                   __ movups(reg, address, instruction->GetVectorLength());
+      }
       break;
     case DataType::Type::kFloat64:
-      DCHECK_EQ(2u, instruction->GetVectorLength());
-      is_aligned16 ? __ movapd(reg, address) : __ movupd(reg, address);
+      DCHECK_LE(2u, instruction->GetVectorLength());
+      DCHECK_LE(instruction->GetVectorLength(), 4u);
+      if (instruction->GetVectorLength() == 4u) {
+        is_aligned32 ? __ movapd(reg, address, 4u) : __ movupd(reg, address, 4u);
+      } else {
+        is_aligned16 ? __ movapd(reg, address, 2u) :
+                       __ movupd(reg, address, 2u);
+      }
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }
@@ -1172,6 +1291,7 @@ void InstructionCodeGeneratorX86_64::VisitVecStore(HVecStore* instruction) {
   Address address = VecAddress(locations, size, /*is_string_char_at*/ false);
   XmmRegister reg = locations->InAt(2).AsFpuRegister<XmmRegister>();
   bool is_aligned16 = instruction->GetAlignment().IsAlignedAt(16);
+  bool is_aligned32 = instruction->GetAlignment().IsAlignedAt(32);
   switch (instruction->GetPackedType()) {
     case DataType::Type::kBool:
     case DataType::Type::kUint8:
@@ -1185,15 +1305,26 @@ void InstructionCodeGeneratorX86_64::VisitVecStore(HVecStore* instruction) {
       is_aligned16 ? __ movdqa(address, reg) : __ movdqu(address, reg);
       break;
     case DataType::Type::kFloat32:
-      DCHECK_EQ(4u, instruction->GetVectorLength());
-      is_aligned16 ? __ movaps(address, reg) : __ movups(address, reg);
+      DCHECK_LE(4u, instruction->GetVectorLength());
+      DCHECK_LE(instruction->GetVectorLength(), 8u);
+      if (instruction->GetVectorLength() == 8u) {
+        is_aligned32 ? __ vmovaps (address, reg, 8u) : __ vmovups(address, reg, 8u);
+      } else {
+      is_aligned16 ? __ movaps(address, reg, instruction->GetVectorLength()) :
+                   __ movups(address, reg, instruction->GetVectorLength());     
+      } 
       break;
     case DataType::Type::kFloat64:
-      DCHECK_EQ(2u, instruction->GetVectorLength());
-      is_aligned16 ? __ movapd(address, reg) : __ movupd(address, reg);
+      DCHECK_LE(2u, instruction->GetVectorLength());
+      DCHECK_LE(instruction->GetVectorLength(), 4u);
+      if (instruction->GetVectorLength() == 4u) {
+        is_aligned32 ? __ movapd(address, reg, 4u) : __ movupd(address, reg, 4u);
+      } else {
+        is_aligned16 ? __ movapd(address, reg, 2u) : __ movupd(address, reg, 2u);
+      }
       break;
     default:
-      LOG(FATAL) << "Unsupported SIMD type";
+      LOG(FATAL) << "Unsupported SIMD type: " << instruction->GetPackedType();
       UNREACHABLE();
   }
 }

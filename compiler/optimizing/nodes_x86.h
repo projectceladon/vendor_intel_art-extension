@@ -291,6 +291,18 @@ static constexpr size_t kFlagIsStringCharAt = kNumberOfExpressionPackedBits;
 };
 
 
+class HX86Clear FINAL : public HExpression<0> {
+  public:
+  HX86Clear()
+      : HExpression(kX86Clear, DataType::Type::kInt32, SideEffects::None(), kNoDexPc) {
+  }
+
+  DECLARE_INSTRUCTION(X86Clear);
+
+ protected:
+  DEFAULT_COPY_CONSTRUCTOR(X86Clear);
+};
+
 }  // namespace art
 
 #endif  // ART_COMPILER_OPTIMIZING_NODES_X86_H_

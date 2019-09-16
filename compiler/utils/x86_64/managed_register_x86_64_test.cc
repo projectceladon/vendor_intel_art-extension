@@ -32,6 +32,7 @@ TEST(X86_64ManagedRegister, CpuRegister) {
   EXPECT_TRUE(!reg.IsNoRegister());
   EXPECT_TRUE(reg.IsCpuRegister());
   EXPECT_TRUE(!reg.IsXmmRegister());
+  EXPECT_TRUE(!reg.IsYmmRegister());
   EXPECT_TRUE(!reg.IsX87Register());
   EXPECT_TRUE(!reg.IsRegisterPair());
   EXPECT_EQ(RAX, reg.AsCpuRegister());
@@ -40,6 +41,7 @@ TEST(X86_64ManagedRegister, CpuRegister) {
   EXPECT_TRUE(!reg.IsNoRegister());
   EXPECT_TRUE(reg.IsCpuRegister());
   EXPECT_TRUE(!reg.IsXmmRegister());
+  EXPECT_TRUE(!reg.IsYmmRegister());
   EXPECT_TRUE(!reg.IsX87Register());
   EXPECT_TRUE(!reg.IsRegisterPair());
   EXPECT_EQ(RBX, reg.AsCpuRegister());
@@ -48,6 +50,7 @@ TEST(X86_64ManagedRegister, CpuRegister) {
   EXPECT_TRUE(!reg.IsNoRegister());
   EXPECT_TRUE(reg.IsCpuRegister());
   EXPECT_TRUE(!reg.IsXmmRegister());
+  EXPECT_TRUE(!reg.IsYmmRegister());
   EXPECT_TRUE(!reg.IsX87Register());
   EXPECT_TRUE(!reg.IsRegisterPair());
   EXPECT_EQ(RCX, reg.AsCpuRegister());
@@ -56,6 +59,7 @@ TEST(X86_64ManagedRegister, CpuRegister) {
   EXPECT_TRUE(!reg.IsNoRegister());
   EXPECT_TRUE(reg.IsCpuRegister());
   EXPECT_TRUE(!reg.IsXmmRegister());
+  EXPECT_TRUE(!reg.IsYmmRegister());
   EXPECT_TRUE(!reg.IsX87Register());
   EXPECT_TRUE(!reg.IsRegisterPair());
   EXPECT_EQ(RDI, reg.AsCpuRegister());
@@ -66,6 +70,7 @@ TEST(X86_64ManagedRegister, XmmRegister) {
   EXPECT_TRUE(!reg.IsNoRegister());
   EXPECT_TRUE(!reg.IsCpuRegister());
   EXPECT_TRUE(reg.IsXmmRegister());
+  EXPECT_TRUE(!reg.IsYmmRegister());
   EXPECT_TRUE(!reg.IsX87Register());
   EXPECT_TRUE(!reg.IsRegisterPair());
   EXPECT_EQ(XMM0, reg.AsXmmRegister());
@@ -74,6 +79,7 @@ TEST(X86_64ManagedRegister, XmmRegister) {
   EXPECT_TRUE(!reg.IsNoRegister());
   EXPECT_TRUE(!reg.IsCpuRegister());
   EXPECT_TRUE(reg.IsXmmRegister());
+  EXPECT_TRUE(!reg.IsYmmRegister());
   EXPECT_TRUE(!reg.IsX87Register());
   EXPECT_TRUE(!reg.IsRegisterPair());
   EXPECT_EQ(XMM1, reg.AsXmmRegister());
@@ -82,9 +88,39 @@ TEST(X86_64ManagedRegister, XmmRegister) {
   EXPECT_TRUE(!reg.IsNoRegister());
   EXPECT_TRUE(!reg.IsCpuRegister());
   EXPECT_TRUE(reg.IsXmmRegister());
+  EXPECT_TRUE(!reg.IsYmmRegister());
   EXPECT_TRUE(!reg.IsX87Register());
   EXPECT_TRUE(!reg.IsRegisterPair());
   EXPECT_EQ(XMM7, reg.AsXmmRegister());
+}
+
+TEST(X86_64ManagedRegister, YmmRegister) {
+  X86_64ManagedRegister reg = X86_64ManagedRegister::FromYmmRegister(YMM0);
+  EXPECT_TRUE(!reg.IsNoRegister());
+  EXPECT_TRUE(!reg.IsCpuRegister());
+  EXPECT_TRUE(!reg.IsXmmRegister());
+  EXPECT_TRUE(reg.IsYmmRegister());
+  EXPECT_TRUE(!reg.IsX87Register());
+  EXPECT_TRUE(!reg.IsRegisterPair());
+  EXPECT_EQ(YMM0, reg.AsYmmRegister());
+
+  reg = X86_64ManagedRegister::FromYmmRegister(YMM1);
+  EXPECT_TRUE(!reg.IsNoRegister());
+  EXPECT_TRUE(!reg.IsCpuRegister());
+  EXPECT_TRUE(!reg.IsXmmRegister());
+  EXPECT_TRUE(reg.IsYmmRegister());
+  EXPECT_TRUE(!reg.IsX87Register());
+  EXPECT_TRUE(!reg.IsRegisterPair());
+  EXPECT_EQ(YMM1, reg.AsYmmRegister());
+
+  reg = X86_64ManagedRegister::FromYmmRegister(YMM7);
+  EXPECT_TRUE(!reg.IsNoRegister());
+  EXPECT_TRUE(!reg.IsCpuRegister());
+  EXPECT_TRUE(!reg.IsXmmRegister());
+  EXPECT_TRUE(reg.IsYmmRegister());
+  EXPECT_TRUE(!reg.IsX87Register());
+  EXPECT_TRUE(!reg.IsRegisterPair());
+  EXPECT_EQ(YMM7, reg.AsYmmRegister());
 }
 
 TEST(X86_64ManagedRegister, X87Register) {
@@ -92,6 +128,7 @@ TEST(X86_64ManagedRegister, X87Register) {
   EXPECT_TRUE(!reg.IsNoRegister());
   EXPECT_TRUE(!reg.IsCpuRegister());
   EXPECT_TRUE(!reg.IsXmmRegister());
+  EXPECT_TRUE(!reg.IsYmmRegister());
   EXPECT_TRUE(reg.IsX87Register());
   EXPECT_TRUE(!reg.IsRegisterPair());
   EXPECT_EQ(ST0, reg.AsX87Register());
@@ -100,6 +137,7 @@ TEST(X86_64ManagedRegister, X87Register) {
   EXPECT_TRUE(!reg.IsNoRegister());
   EXPECT_TRUE(!reg.IsCpuRegister());
   EXPECT_TRUE(!reg.IsXmmRegister());
+  EXPECT_TRUE(!reg.IsYmmRegister());
   EXPECT_TRUE(reg.IsX87Register());
   EXPECT_TRUE(!reg.IsRegisterPair());
   EXPECT_EQ(ST1, reg.AsX87Register());
@@ -108,6 +146,7 @@ TEST(X86_64ManagedRegister, X87Register) {
   EXPECT_TRUE(!reg.IsNoRegister());
   EXPECT_TRUE(!reg.IsCpuRegister());
   EXPECT_TRUE(!reg.IsXmmRegister());
+  EXPECT_TRUE(!reg.IsYmmRegister());
   EXPECT_TRUE(reg.IsX87Register());
   EXPECT_TRUE(!reg.IsRegisterPair());
   EXPECT_EQ(ST7, reg.AsX87Register());
@@ -118,6 +157,7 @@ TEST(X86_64ManagedRegister, RegisterPair) {
   EXPECT_TRUE(!reg.IsNoRegister());
   EXPECT_TRUE(!reg.IsCpuRegister());
   EXPECT_TRUE(!reg.IsXmmRegister());
+  EXPECT_TRUE(!reg.IsYmmRegister());
   EXPECT_TRUE(!reg.IsX87Register());
   EXPECT_TRUE(reg.IsRegisterPair());
   EXPECT_EQ(RAX, reg.AsRegisterPairLow());
@@ -127,6 +167,7 @@ TEST(X86_64ManagedRegister, RegisterPair) {
   EXPECT_TRUE(!reg.IsNoRegister());
   EXPECT_TRUE(!reg.IsCpuRegister());
   EXPECT_TRUE(!reg.IsXmmRegister());
+  EXPECT_TRUE(!reg.IsYmmRegister());
   EXPECT_TRUE(!reg.IsX87Register());
   EXPECT_TRUE(reg.IsRegisterPair());
   EXPECT_EQ(RAX, reg.AsRegisterPairLow());
@@ -136,6 +177,7 @@ TEST(X86_64ManagedRegister, RegisterPair) {
   EXPECT_TRUE(!reg.IsNoRegister());
   EXPECT_TRUE(!reg.IsCpuRegister());
   EXPECT_TRUE(!reg.IsXmmRegister());
+  EXPECT_TRUE(!reg.IsYmmRegister());
   EXPECT_TRUE(!reg.IsX87Register());
   EXPECT_TRUE(reg.IsRegisterPair());
   EXPECT_EQ(RAX, reg.AsRegisterPairLow());
@@ -145,6 +187,7 @@ TEST(X86_64ManagedRegister, RegisterPair) {
   EXPECT_TRUE(!reg.IsNoRegister());
   EXPECT_TRUE(!reg.IsCpuRegister());
   EXPECT_TRUE(!reg.IsXmmRegister());
+  EXPECT_TRUE(!reg.IsYmmRegister());
   EXPECT_TRUE(!reg.IsX87Register());
   EXPECT_TRUE(reg.IsRegisterPair());
   EXPECT_EQ(RAX, reg.AsRegisterPairLow());
@@ -154,6 +197,7 @@ TEST(X86_64ManagedRegister, RegisterPair) {
   EXPECT_TRUE(!reg.IsNoRegister());
   EXPECT_TRUE(!reg.IsCpuRegister());
   EXPECT_TRUE(!reg.IsXmmRegister());
+  EXPECT_TRUE(!reg.IsYmmRegister());
   EXPECT_TRUE(!reg.IsX87Register());
   EXPECT_TRUE(reg.IsRegisterPair());
   EXPECT_EQ(RDX, reg.AsRegisterPairLow());
@@ -163,6 +207,7 @@ TEST(X86_64ManagedRegister, RegisterPair) {
   EXPECT_TRUE(!reg.IsNoRegister());
   EXPECT_TRUE(!reg.IsCpuRegister());
   EXPECT_TRUE(!reg.IsXmmRegister());
+  EXPECT_TRUE(!reg.IsYmmRegister());
   EXPECT_TRUE(!reg.IsX87Register());
   EXPECT_TRUE(reg.IsRegisterPair());
   EXPECT_EQ(RDX, reg.AsRegisterPairLow());
@@ -172,6 +217,7 @@ TEST(X86_64ManagedRegister, RegisterPair) {
   EXPECT_TRUE(!reg.IsNoRegister());
   EXPECT_TRUE(!reg.IsCpuRegister());
   EXPECT_TRUE(!reg.IsXmmRegister());
+  EXPECT_TRUE(!reg.IsYmmRegister());
   EXPECT_TRUE(!reg.IsX87Register());
   EXPECT_TRUE(reg.IsRegisterPair());
   EXPECT_EQ(RDX, reg.AsRegisterPairLow());
@@ -181,6 +227,7 @@ TEST(X86_64ManagedRegister, RegisterPair) {
   EXPECT_TRUE(!reg.IsNoRegister());
   EXPECT_TRUE(!reg.IsCpuRegister());
   EXPECT_TRUE(!reg.IsXmmRegister());
+  EXPECT_TRUE(!reg.IsYmmRegister());
   EXPECT_TRUE(!reg.IsX87Register());
   EXPECT_TRUE(reg.IsRegisterPair());
   EXPECT_EQ(RCX, reg.AsRegisterPairLow());
@@ -190,6 +237,7 @@ TEST(X86_64ManagedRegister, RegisterPair) {
   EXPECT_TRUE(!reg.IsNoRegister());
   EXPECT_TRUE(!reg.IsCpuRegister());
   EXPECT_TRUE(!reg.IsXmmRegister());
+  EXPECT_TRUE(!reg.IsYmmRegister());
   EXPECT_TRUE(!reg.IsX87Register());
   EXPECT_TRUE(reg.IsRegisterPair());
   EXPECT_EQ(RCX, reg.AsRegisterPairLow());
@@ -199,6 +247,7 @@ TEST(X86_64ManagedRegister, RegisterPair) {
   EXPECT_TRUE(!reg.IsNoRegister());
   EXPECT_TRUE(!reg.IsCpuRegister());
   EXPECT_TRUE(!reg.IsXmmRegister());
+  EXPECT_TRUE(!reg.IsYmmRegister());
   EXPECT_TRUE(!reg.IsX87Register());
   EXPECT_TRUE(reg.IsRegisterPair());
   EXPECT_EQ(RBX, reg.AsRegisterPairLow());

@@ -22,6 +22,7 @@
 #include "gc_root.h"
 #include "obj_ptr.h"
 #include "object.h"
+#include <iostream>
 
 namespace art {
 

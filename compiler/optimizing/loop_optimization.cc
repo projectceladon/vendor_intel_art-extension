@@ -364,7 +364,9 @@ static bool HasReductionFormat(HInstruction* reduction, HInstruction* phi) {
 
 // Translates vector operation to reduction kind.
 static HVecReduce::ReductionKind GetReductionKind(HVecOperation* reduction) {
-  if (reduction->IsVecAdd() || reduction->IsVecSub() || reduction->IsVecSADAccumulate()) {
+  if (reduction->IsVecAdd()  ||
+      reduction->IsVecSub() ||
+      reduction->IsVecSADAccumulate()) {
     return HVecReduce::kSum;
   } else if (reduction->IsVecMin()) {
     return HVecReduce::kMin;
@@ -458,6 +460,7 @@ void HLoopOptimization::Run() {
   // Detach.
   loop_allocator_ = nullptr;
   last_loop_ = top_loop_ = nullptr;
+
 }
 
 //
@@ -704,6 +707,7 @@ bool HLoopOptimization::TryOptimizeInnerLoopFinite(LoopNode* node) {
     }
   }
   // Vectorize loop, if possible and valid.
+  //std::cout << "trip_count=" << trip_count << std::endl;
   if (kEnableVectorization &&
       TrySetSimpleLoopHeader(header, &main_phi) &&
       ShouldVectorize(node, body, trip_count) &&
@@ -820,7 +824,7 @@ bool HLoopOptimization::ShouldVectorize(LoopNode* node, HBasicBlock* block, int6
   // (3) variable to record how many references share same alignment.
   // (4) variable to record suitable candidate for dynamic loop peeling.
   uint32_t desired_alignment = GetVectorSizeInBytes();
-  DCHECK_LE(desired_alignment, 16u);
+  DCHECK(desired_alignment == 16u || desired_alignment == 32u);
   uint32_t peeling_votes[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
   uint32_t max_num_same_alignment = 0;
   const ArrayReference* peeling_candidate = nullptr;
@@ -918,6 +922,7 @@ void HLoopOptimization::Vectorize(LoopNode* node,
   uint32_t unroll = GetUnrollingFactor(block, trip_count);
   uint32_t chunk = vector_length_ * unroll;
 
+  bool clear_reg = false;
   DCHECK(trip_count == 0 || (trip_count >= MaxNumberPeeled() + chunk));
 
   // A cleanup loop is needed, at least, for any unknown trip count or
@@ -976,6 +981,7 @@ void HLoopOptimization::Vectorize(LoopNode* node,
   HInstruction* stc = induction_range_.GenerateTripCount(node->loop_info, graph_, preheader);
   HInstruction* vtc = stc;
   if (needs_cleanup) {
+    //std::cout << "needs cleanup=" << needs_cleanup << std::endl;
     DCHECK(IsPowerOfTwo(chunk));
     HInstruction* diff = stc;
     if (ptc != nullptr) {
@@ -1012,11 +1018,13 @@ void HLoopOptimization::Vectorize(LoopNode* node,
   // NOTE: The alignment forced by the peeling loop is preserved even if data is
   //       moved around during suspend checks, since all analysis was based on
   //       nothing more than the Android runtime alignment conventions.
+  //std::cout << "exit=" << exit->GetBlockId() << std::endl; 
   if (ptc != nullptr) {
+    //std::cout << "calling TLV ptc not null" << std::endl;
     vector_mode_ = kSequential;
     GenerateNewLoop(node,
                     block,
-                    graph_->TransformLoopForVectorization(vector_header_, vector_body_, exit),
+                    graph_->TransformLoopForVectorization(vector_header_, vector_body_, exit,/*claer_reg*/ false),
                     vector_index_,
                     ptc,
                     graph_->GetConstant(induc_type, 1),
@@ -1026,10 +1034,15 @@ void HLoopOptimization::Vectorize(LoopNode* node,
   // Generate vector loop, possibly further unrolled:
   // for ( ; i < vtc; i += chunk)
   //    <vectorized-loop-body>
+  #if defined (ART_ENABLE_CODEGEN_x86_64) 
+   clear_reg = !needs_cleanup;
+  #endif
   vector_mode_ = kVector;
+  //std::cout << "clear_reg=" << clear_reg << std::endl;
+  //std::cout << "calling TLV" << std::endl;
   GenerateNewLoop(node,
                   block,
-                  graph_->TransformLoopForVectorization(vector_header_, vector_body_, exit),
+                  graph_->TransformLoopForVectorization(vector_header_, vector_body_, exit, clear_reg),
                   vector_index_,
                   vtc,
                   graph_->GetConstant(induc_type, vector_length_),  // increment per unroll
@@ -1040,10 +1053,14 @@ void HLoopOptimization::Vectorize(LoopNode* node,
   // for ( ; i < stc; i += 1)
   //    <loop-body>
   if (needs_cleanup) {
+    //std::cout << "calling TLV1" << std::endl;
+    #if defined (ART_ENABLE_CODEGEN_x86_64)
+       clear_reg = true;
+    #endif
     vector_mode_ = kSequential;
     GenerateNewLoop(node,
                     block,
-                    graph_->TransformLoopForVectorization(vector_header_, vector_body_, exit),
+                    graph_->TransformLoopForVectorization(vector_header_, vector_body_, exit, clear_reg),
                     vector_index_,
                     stc,
                     graph_->GetConstant(induc_type, 1),
@@ -1513,6 +1530,7 @@ bool HLoopOptimization::TrySetVectorType(DataType::Type type, uint64_t* restrict
     case InstructionSet::kX86_64:
       // Allow vectorization for SSE4.1-enabled X86 devices only (128-bit SIMD).
       if (features->AsX86InstructionSetFeatures()->HasSSE4_1()) {
+        bool has_avx = features->AsX86InstructionSetFeatures()->HasAVX();
         switch (type) {
           case DataType::Type::kBool:
           case DataType::Type::kUint8:
@@ -1532,10 +1550,10 @@ bool HLoopOptimization::TrySetVectorType(DataType::Type type, uint64_t* restrict
             return TrySetVectorLength(2);
           case DataType::Type::kFloat32:
             *restrictions |= kNoMinMax | kNoReduction;  // minmax: -0.0 vs +0.0
-            return TrySetVectorLength(4);
+            return has_avx ? TrySetVectorLength(8) : TrySetVectorLength(4);
           case DataType::Type::kFloat64:
             *restrictions |= kNoMinMax | kNoReduction;  // minmax: -0.0 vs +0.0
-            return TrySetVectorLength(2);
+            return has_avx ? TrySetVectorLength(4) : TrySetVectorLength(2);
           default:
             break;
         }  // switch type
@@ -1844,11 +1862,11 @@ void HLoopOptimization::GenerateVecOp(HInstruction* org,
         new (global_allocator_) HVecCnv(global_allocator_, opa, type, vector_length_, dex_pc),
         new (global_allocator_) HTypeConversion(org_type, opa, dex_pc));
     case HInstruction::kAdd:
-      GENERATE_VEC(
+            GENERATE_VEC(
         new (global_allocator_) HVecAdd(global_allocator_, opa, opb, type, vector_length_, dex_pc),
         new (global_allocator_) HAdd(org_type, opa, opb, dex_pc));
     case HInstruction::kSub:
-      GENERATE_VEC(
+            GENERATE_VEC(
         new (global_allocator_) HVecSub(global_allocator_, opa, opb, type, vector_length_, dex_pc),
         new (global_allocator_) HSub(org_type, opa, opb, dex_pc));
     case HInstruction::kMul:

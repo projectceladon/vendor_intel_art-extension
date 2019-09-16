@@ -50,26 +50,31 @@ const int kNumberOfCpuAllocIds = kNumberOfCpuRegisters;
 const int kNumberOfXmmRegIds = kNumberOfFloatRegisters;
 const int kNumberOfXmmAllocIds = kNumberOfFloatRegisters;
 
+const int kNumberOfYmmRegIds = kNumberOfVectorRegisters;
+const int kNumberOfYmmAllocIds = kNumberOfVectorRegisters;
+
 const int kNumberOfX87RegIds = kNumberOfX87Registers;
 const int kNumberOfX87AllocIds = kNumberOfX87Registers;
 
 const int kNumberOfPairRegIds = kNumberOfRegisterPairs;
 
 const int kNumberOfRegIds = kNumberOfCpuRegIds + kNumberOfXmmRegIds +
-    kNumberOfX87RegIds + kNumberOfPairRegIds;
+    kNumberOfYmmRegIds + kNumberOfX87RegIds + kNumberOfPairRegIds;
 const int kNumberOfAllocIds = kNumberOfCpuAllocIds + kNumberOfXmmAllocIds +
-    kNumberOfX87RegIds;
+    kNumberOfYmmAllocIds + kNumberOfX87RegIds;
 
 // Register ids map:
 //   [0..R[  cpu registers (enum Register)
 //   [R..X[  xmm registers (enum XmmRegister)
-//   [X..S[  x87 registers (enum X87Register)
+//   [X..W[  ymm registers (enum YmmRegister)
+//   [W..S[  x87 registers (enum X87Register)
 //   [S..P[  register pairs (enum RegisterPair)
 // where
 //   R = kNumberOfCpuRegIds
 //   X = R + kNumberOfXmmRegIds
-//   S = X + kNumberOfX87RegIds
-//   P = X + kNumberOfRegisterPairs
+//   W = X + kNumberOfYmmRegIds
+//   S = W + kNumberOfX87RegIds
+//   P = S + kNumberOfRegisterPairs
 
 // Allocation ids map:
 //   [0..R[  cpu registers (enum Register)
@@ -78,11 +83,13 @@ const int kNumberOfAllocIds = kNumberOfCpuAllocIds + kNumberOfXmmAllocIds +
 // where
 //   R = kNumberOfCpuRegIds
 //   X = R + kNumberOfXmmRegIds
-//   S = X + kNumberOfX87RegIds
+//   W = X + kNumberOfYmmRegIds
+//   S = W + kNumberOfX87RegIds
 
 
 // An instance of class 'ManagedRegister' represents a single cpu register (enum
-// Register), an xmm register (enum XmmRegister), or a pair of cpu registers
+// Register), an xmm register (enum XmmRegister), a ymm register (enum YmmRegister)
+// or a pair of cpu registers
 // (enum RegisterPair).
 // 'ManagedRegister::NoRegister()' provides an invalid register.
 // There is a one-to-one mapping between ManagedRegister and register id.
@@ -98,10 +105,16 @@ class X86_64ManagedRegister : public ManagedRegister {
     return XmmRegister(static_cast<FloatRegister>(id_ - kNumberOfCpuRegIds));
   }
 
+  constexpr YmmRegister AsYmmRegister() const {
+    CHECK(IsYmmRegister());
+    return YmmRegister(static_cast<VectorRegister>(id_ -  
+                                                   (kNumberOfCpuRegIds + kNumberOfXmmRegIds)));
+  }
+
   constexpr X87Register AsX87Register() const {
     CHECK(IsX87Register());
     return static_cast<X87Register>(id_ -
-                                    (kNumberOfCpuRegIds + kNumberOfXmmRegIds));
+                                    (kNumberOfCpuRegIds + kNumberOfXmmRegIds + kNumberOfYmmRegIds));
   }
 
   constexpr CpuRegister AsRegisterPairLow() const {
@@ -127,16 +140,22 @@ class X86_64ManagedRegister : public ManagedRegister {
     return (0 <= test) && (test < kNumberOfXmmRegIds);
   }
 
-  constexpr bool IsX87Register() const {
+  constexpr bool IsYmmRegister() const {
     CHECK(IsValidManagedRegister());
     const int test = id_ - (kNumberOfCpuRegIds + kNumberOfXmmRegIds);
+    return (0 <= test) && (test < kNumberOfYmmRegIds);
+  }
+
+  constexpr bool IsX87Register() const {
+    CHECK(IsValidManagedRegister());
+    const int test = id_ - (kNumberOfCpuRegIds + kNumberOfXmmRegIds + kNumberOfYmmRegIds);
     return (0 <= test) && (test < kNumberOfX87RegIds);
   }
 
   constexpr bool IsRegisterPair() const {
     CHECK(IsValidManagedRegister());
     const int test = id_ -
-        (kNumberOfCpuRegIds + kNumberOfXmmRegIds + kNumberOfX87RegIds);
+        (kNumberOfCpuRegIds + kNumberOfXmmRegIds + kNumberOfXmmRegIds + kNumberOfX87RegIds);
     return (0 <= test) && (test < kNumberOfPairRegIds);
   }
 
@@ -156,15 +175,19 @@ class X86_64ManagedRegister : public ManagedRegister {
     return FromRegId(r + kNumberOfCpuRegIds);
   }
 
+  static constexpr X86_64ManagedRegister FromYmmRegister(VectorRegister r) {
+    return FromRegId(r + kNumberOfCpuRegIds + kNumberOfXmmRegIds);
+  }
+
   static constexpr X86_64ManagedRegister FromX87Register(X87Register r) {
     CHECK_NE(r, kNoX87Register);
-    return FromRegId(r + kNumberOfCpuRegIds + kNumberOfXmmRegIds);
+    return FromRegId(r + kNumberOfCpuRegIds + kNumberOfXmmRegIds + kNumberOfYmmRegIds);
   }
 
   static constexpr X86_64ManagedRegister FromRegisterPair(RegisterPair r) {
     CHECK_NE(r, kNoRegisterPair);
     return FromRegId(r + (kNumberOfCpuRegIds + kNumberOfXmmRegIds +
-                          kNumberOfX87RegIds));
+                          kNumberOfYmmRegIds + kNumberOfX87RegIds));
   }
 
  private:

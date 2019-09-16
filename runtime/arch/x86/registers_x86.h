@@ -42,6 +42,19 @@ enum Register {
 };
 std::ostream& operator<<(std::ostream& os, const Register& rhs);
 
+enum YmmRegister {
+  YMM0 = 0,
+  YMM1 = 1,
+  YMM2 = 2,
+  YMM3 = 3,
+  YMM4 = 4,
+  YMM5 = 5,
+  YMM6 = 6,
+  YMM7 = 7,
+  kNumberOfYmmRegisters = 8,
+  kNoYmmRegister = -1  // Signals an illegal register.
+};
+std::ostream& operator<<(std::ostream& os, const YmmRegister& reg);
 }  // namespace x86
 }  // namespace art
 

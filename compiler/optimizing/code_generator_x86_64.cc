@@ -1216,7 +1216,7 @@ size_t CodeGeneratorX86_64::RestoreCoreRegister(size_t stack_index, uint32_t reg
 
 size_t CodeGeneratorX86_64::SaveFloatingPointRegister(size_t stack_index, uint32_t reg_id) {
   if (GetGraph()->HasSIMD()) {
-    __ movups(Address(CpuRegister(RSP), stack_index), XmmRegister(reg_id));
+    __ movups(Address(CpuRegister(RSP), stack_index), XmmRegister(reg_id), 4u); // 128 bit SIMD
   } else {
     __ movsd(Address(CpuRegister(RSP), stack_index), XmmRegister(reg_id));
   }
@@ -1225,7 +1225,7 @@ size_t CodeGeneratorX86_64::SaveFloatingPointRegister(size_t stack_index, uint32
 
 size_t CodeGeneratorX86_64::RestoreFloatingPointRegister(size_t stack_index, uint32_t reg_id) {
   if (GetGraph()->HasSIMD()) {
-    __ movups(XmmRegister(reg_id), Address(CpuRegister(RSP), stack_index));
+    __ movups(XmmRegister(reg_id), Address(CpuRegister(RSP), stack_index), 4u);
   } else {
     __ movsd(XmmRegister(reg_id), Address(CpuRegister(RSP), stack_index));
   }
@@ -1436,7 +1436,8 @@ void CodeGeneratorX86_64::Move(Location destination, Location source) {
     if (source.IsRegister()) {
       __ movd(dest, source.AsRegister<CpuRegister>());
     } else if (source.IsFpuRegister()) {
-      __ movaps(dest, source.AsFpuRegister<XmmRegister>());
+       size_t vec_len = GetInstructionSetFeatures().HasAVX() ? 8u : 4u;
+      __ movaps(dest, source.AsFpuRegister<XmmRegister>(), vec_len);
     } else if (source.IsConstant()) {
       HConstant* constant = source.GetConstant();
       int64_t value = CodeGenerator::GetInt64ValueOf(constant);
@@ -1532,6 +1533,14 @@ void InstructionCodeGeneratorX86_64::HandleGoto(HInstruction* got, HBasicBlock* 
   if (!codegen_->GoesToNextBlock(got->GetBlock(), successor)) {
     __ jmp(codegen_->GetLabelOf(successor));
   }
+}
+
+void LocationsBuilderX86_64::VisitX86Clear(HX86Clear* clr) {
+  clr->SetLocations(nullptr);
+}
+
+void InstructionCodeGeneratorX86_64::VisitX86Clear(HX86Clear* clr ATTRIBUTE_UNUSED) {
+  __ vzeroupper();
 }
 
 void LocationsBuilderX86_64::VisitGoto(HGoto* got) {
@@ -5421,7 +5430,7 @@ void ParallelMoveResolverX86_64::EmitMove(size_t index) {
   } else if (source.IsSIMDStackSlot()) {
     if (destination.IsFpuRegister()) {
       __ movups(destination.AsFpuRegister<XmmRegister>(),
-                Address(CpuRegister(RSP), source.GetStackIndex()));
+                Address(CpuRegister(RSP), source.GetStackIndex()), 4u);
     } else {
       DCHECK(destination.IsSIMDStackSlot());
       size_t high = kX86_64WordSize;
@@ -5476,7 +5485,8 @@ void ParallelMoveResolverX86_64::EmitMove(size_t index) {
     }
   } else if (source.IsFpuRegister()) {
     if (destination.IsFpuRegister()) {
-      __ movaps(destination.AsFpuRegister<XmmRegister>(), source.AsFpuRegister<XmmRegister>());
+     size_t vec_len = codegen_->GetInstructionSetFeatures().HasAVX() ? 8u : 4u;
+      __ movaps(destination.AsFpuRegister<XmmRegister>(), source.AsFpuRegister<XmmRegister>(), vec_len);
     } else if (destination.IsStackSlot()) {
       __ movss(Address(CpuRegister(RSP), destination.GetStackIndex()),
                source.AsFpuRegister<XmmRegister>());
@@ -5486,7 +5496,7 @@ void ParallelMoveResolverX86_64::EmitMove(size_t index) {
     } else {
        DCHECK(destination.IsSIMDStackSlot());
       __ movups(Address(CpuRegister(RSP), destination.GetStackIndex()),
-                source.AsFpuRegister<XmmRegister>());
+                source.AsFpuRegister<XmmRegister>(), 4u);
     }
   }
 }
@@ -5524,9 +5534,9 @@ void ParallelMoveResolverX86_64::Exchange64(XmmRegister reg, int mem) {
 void ParallelMoveResolverX86_64::Exchange128(XmmRegister reg, int mem) {
   size_t extra_slot = 2 * kX86_64WordSize;
   __ subq(CpuRegister(RSP), Immediate(extra_slot));
-  __ movups(Address(CpuRegister(RSP), 0), XmmRegister(reg));
+  __ movups(Address(CpuRegister(RSP), 0), XmmRegister(reg), 4u);
   ExchangeMemory64(0, mem + extra_slot, 2);
-  __ movups(XmmRegister(reg), Address(CpuRegister(RSP), 0));
+  __ movups(XmmRegister(reg), Address(CpuRegister(RSP), 0), 4u);
   __ addq(CpuRegister(RSP), Immediate(extra_slot));
 }
 
@@ -5584,7 +5594,8 @@ void ParallelMoveResolverX86_64::EmitSwap(size_t index) {
     ExchangeMemory64(destination.GetStackIndex(), source.GetStackIndex(), 1);
   } else if (source.IsFpuRegister() && destination.IsFpuRegister()) {
     __ movd(CpuRegister(TMP), source.AsFpuRegister<XmmRegister>());
-    __ movaps(source.AsFpuRegister<XmmRegister>(), destination.AsFpuRegister<XmmRegister>());
+    size_t vec_len = codegen_->GetInstructionSetFeatures().HasAVX() ? 8u : 4u;
+    __ movaps(source.AsFpuRegister<XmmRegister>(), destination.AsFpuRegister<XmmRegister>(),vec_len);
     __ movd(destination.AsFpuRegister<XmmRegister>(), CpuRegister(TMP));
   } else if (source.IsFpuRegister() && destination.IsStackSlot()) {
     Exchange32(source.AsFpuRegister<XmmRegister>(), destination.GetStackIndex());
@@ -7394,7 +7405,22 @@ void CodeGeneratorX86_64::EmitJitRootPatches(uint8_t* code, const uint8_t* roots
     PatchJitRootUse(code, roots_data, info, index_in_table);
   }
 }
-
+	
+bool LocationsBuilderX86_64::CpuHasAvxFeatureFlag() {
+  return codegen_->GetInstructionSetFeatures().HasAVX();
+}
+	
+bool LocationsBuilderX86_64::CpuHasAvx2FeatureFlag() {
+  return codegen_->GetInstructionSetFeatures().HasAVX2();
+}
+	
+bool InstructionCodeGeneratorX86_64::CpuHasAvxFeatureFlag() {
+  return codegen_->GetInstructionSetFeatures().HasAVX();
+}
+	
+bool InstructionCodeGeneratorX86_64::CpuHasAvx2FeatureFlag() {
+  return codegen_->GetInstructionSetFeatures().HasAVX2();
+}
 #undef __
 
 }  // namespace x86_64
