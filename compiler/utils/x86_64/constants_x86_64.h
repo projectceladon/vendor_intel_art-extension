@@ -59,10 +59,33 @@ class XmmRegister {
   constexpr bool NeedsRex() const {
     return reg_ > 7;
   }
+
+  bool operator==(XmmRegister& other) {
+    return reg_ == other.reg_;
+  }
+
  private:
   const FloatRegister reg_;
 };
 std::ostream& operator<<(std::ostream& os, const XmmRegister& reg);
+
+class YmmRegister {
+ public:
+  explicit constexpr YmmRegister(VectorRegister r) : reg_(r) {}
+  explicit constexpr YmmRegister(int r) : reg_(VectorRegister(r)) {}
+  constexpr VectorRegister AsVectorRegister() const {
+    return reg_;
+  }
+  constexpr uint8_t LowBits() const {
+    return reg_ & 7;
+  }
+  constexpr bool NeedsRex() const {
+    return reg_ > 7;
+  }
+ private:
+  const VectorRegister reg_;
+};
+std::ostream& operator<<(std::ostream& os, const YmmRegister& reg);
 
 enum X87Register {
   ST0 = 0,

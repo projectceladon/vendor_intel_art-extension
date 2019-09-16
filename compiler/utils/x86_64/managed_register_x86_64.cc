@@ -95,6 +95,8 @@ void X86_64ManagedRegister::Print(std::ostream& os) const {
     os << "No Register";
   } else if (IsXmmRegister()) {
     os << "XMM: " << static_cast<int>(AsXmmRegister().AsFloatRegister());
+  } else if (IsYmmRegister()) {
+    os << "YMM: " << static_cast<int>(AsYmmRegister().AsVectorRegister());
   } else if (IsX87Register()) {
     os << "X87: " << static_cast<int>(AsX87Register());
   } else if (IsCpuRegister()) {

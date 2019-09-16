@@ -2678,17 +2678,29 @@ void HGraph::TransformLoopHeaderForBCE(HBasicBlock* header) {
 
 HBasicBlock* HGraph::TransformLoopForVectorization(HBasicBlock* header,
                                                    HBasicBlock* body,
-                                                   HBasicBlock* exit) {
+                                                   HBasicBlock* exit,
+                                                   bool clear_reg) {
   DCHECK(header->IsLoopHeader());
   HLoopInformation* loop = header->GetLoopInformation();
 
+  //std::cout << "header=" << header->GetBlockId() << std::endl;
+  //std::cout << "body=" << body->GetBlockId() << std::endl;
+  //std::cout << "exit=" << exit->GetBlockId() << std::endl;
   // Add new loop blocks.
   HBasicBlock* new_pre_header = new (allocator_) HBasicBlock(this, header->GetDexPc());
   HBasicBlock* new_header = new (allocator_) HBasicBlock(this, header->GetDexPc());
   HBasicBlock* new_body = new (allocator_) HBasicBlock(this, header->GetDexPc());
+  /*std::cout << "new_pre_header=" << new_pre_header->GetBlockId() << std::endl;
+  std::cout << "new_header=" << new_header->GetBlockId() << std::endl;
+  std::cout << "new_body=" << new_body->GetBlockId() << std::endl;*/
+  
   AddBlock(new_pre_header);
   AddBlock(new_header);
   AddBlock(new_body);
+
+  //std::cout << "new_pre_header=" << new_pre_header->GetBlockId() << std::endl;
+  //std::cout << "new_header=" << new_header->GetBlockId() << std::endl;
+  //std::cout << "new_body=" << new_body->GetBlockId() << std::endl;
 
   // Set up control flow.
   header->ReplaceSuccessor(exit, new_pre_header);
@@ -2706,7 +2718,12 @@ HBasicBlock* HGraph::TransformLoopForVectorization(HBasicBlock* header,
   new_body->SetDominator(new_header);
   new_header->dominated_blocks_.push_back(exit);
   exit->SetDominator(new_header);
-
+  /*std::cout << "new_pre_header=" << new_pre_header->GetBlockId() << std::endl;
+  std::cout << "new_header=" << new_header->GetBlockId() << std::endl;
+  std::cout << "new_body=" << new_body->GetBlockId() << std::endl;*/
+  if (clear_reg) { 
+    exit->InsertInstructionBefore(new (allocator_) HX86Clear(), exit->GetLastInstruction());
+  }
   // Fix reverse post order.
   size_t index_of_header = IndexOfElement(reverse_post_order_, header);
   MakeRoomFor(&reverse_post_order_, 2, index_of_header);
@@ -2716,7 +2733,10 @@ HBasicBlock* HGraph::TransformLoopForVectorization(HBasicBlock* header,
   MakeRoomFor(&reverse_post_order_, 1, index_of_body - 1);
   reverse_post_order_[index_of_body] = new_body;
 
-  // Add gotos and suspend check (client must add conditional in header).
+  // Add gotos and suspend check (client must add conditional in header). 
+   if (clear_reg) { 
+    new_pre_header->AddInstruction(new (allocator_) HX86Clear());
+  }
   new_pre_header->AddInstruction(new (allocator_) HGoto());
   HSuspendCheck* suspend_check = new (allocator_) HSuspendCheck(header->GetDexPc());
   new_header->AddInstruction(suspend_check);

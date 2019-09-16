@@ -8037,6 +8037,30 @@ void InstructionCodeGeneratorX86::VisitIntermediateAddress(HIntermediateAddress*
   LOG(FATAL) << "Unreachable";
 }
 
+void LocationsBuilderX86::VisitX86Clear(HX86Clear* clr) {
+  clr->SetLocations(nullptr);
+}
+
+void InstructionCodeGeneratorX86::VisitX86Clear(HX86Clear* clr ATTRIBUTE_UNUSED) {
+  __ vzeroupper();
+}
+	
+bool LocationsBuilderX86::CpuHasAvxFeatureFlag() {
+  return codegen_->GetInstructionSetFeatures().HasAVX();
+}
+	
+bool LocationsBuilderX86::CpuHasAvx2FeatureFlag() {
+  return codegen_->GetInstructionSetFeatures().HasAVX2();
+}
+	
+bool InstructionCodeGeneratorX86::CpuHasAvxFeatureFlag() {
+  return codegen_->GetInstructionSetFeatures().HasAVX();
+}
+	
+bool InstructionCodeGeneratorX86::CpuHasAvx2FeatureFlag() {
+  return codegen_->GetInstructionSetFeatures().HasAVX2();
+}
+
 #undef __
 
 }  // namespace x86

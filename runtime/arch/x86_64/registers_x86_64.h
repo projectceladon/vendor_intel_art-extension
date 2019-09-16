@@ -71,6 +71,27 @@ enum FloatRegister {
 };
 std::ostream& operator<<(std::ostream& os, const FloatRegister& rhs);
 
+enum VectorRegister {
+  YMM0 = 0,
+  YMM1 = 1,
+  YMM2 = 2,
+  YMM3 = 3,
+  YMM4 = 4,
+  YMM5 = 5,
+  YMM6 = 6,
+  YMM7 = 7,
+  YMM8 = 8,
+  YMM9 = 9,
+  YMM10 = 10,
+  YMM11 = 11,
+  YMM12 = 12,
+  YMM13 = 13,
+  YMM14 = 14,
+  YMM15 = 15,
+  kNumberOfVectorRegisters = 16
+};
+std::ostream& operator<<(std::ostream& os, const VectorRegister& rhs);
+
 }  // namespace x86_64
 }  // namespace art
 
