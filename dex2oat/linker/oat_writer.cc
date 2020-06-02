@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #include "oat_writer.h"
 
 #include <algorithm>
@@ -206,8 +205,7 @@ class OatWriter::OatClassHeader {
     } else {
       type_ = kOatClassSomeCompiled;
     }
-    if (status == ClassStatus::kRetryVerificationAtRuntime ||
-        status == ClassStatus::kResolved) {
+    if (method_verif_bitmap != nullptr) {
       method_verification_bitmap_.reset(method_verif_bitmap);
       method_verification_bitmap_size_ = method_verification_bitmap_->GetSizeOf();
     } else {
@@ -980,6 +978,14 @@ class OatWriter::InitOatClassesMethodVisitor : public DexMethodVisitor {
 
     BitVector* method_verif_bitmap =
                writer_->compiler_driver_->GetMethodVerificationBitmap(class_ref);
+
+    const DexFile::ClassDef& class_def = dex_file_->GetClassDef(class_def_index_);
+    const uint8_t* class_data = dex_file_->GetClassData(class_def);
+    // method_verif_bitmap can be null when the class is empty, or when the status is not kResolved/kRetryVerificationAtRuntime
+    CHECK(method_verif_bitmap != nullptr || (status != ClassStatus::kRetryVerificationAtRuntime && status != ClassStatus::kResolved) || class_data == nullptr);
+    if(status != ClassStatus::kRetryVerificationAtRuntime || status != ClassStatus::kResolved) {
+       method_verif_bitmap = nullptr;
+    }
 
     writer_->oat_class_headers_.emplace_back(offset_,
                                              compiled_methods_with_code_,
